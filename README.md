@@ -131,6 +131,17 @@ second process. Rules for harnesses:
   name. Under another name the game silently uses the default `%APPDATA%\Minecraft Bedrock`
   profile instead of the instance's data.
 - Windows Firewall may ask once per new exe path (the game opens network sockets): **Cancel** is fine.
+- Every game signs in to Minecraft's online **signaling service** with the same ID (same PC, same
+  account), and each new sign-in knocks the previous one out. Two consequences:
+  - Make test worlds single-player: `Set-WorldSinglePlayer <worldDir>` (shim) turns multiplayer
+    and LAN/Xbox Live/platform broadcast off. Otherwise games joining their worlds at the same time
+    fail with "An error has occurred" (code "Blaze").
+  - Runs that join a server over NetherNet need the other games closed. The shim's `Start-Game`
+    and `Stop-Game` hold a machine-wide **signaling lock** (`%APPDATA%\levilauncher.exe\e2e-signaling.lock`)
+    for the game's lifetime: shared by default, exclusive when the run sets
+    `$script:ExclusiveSignaling = $true` (e.g. in its prelaunch script). An exclusive run blocks new
+    games, then waits for the running ones to close. The lock is held through file handles, so a
+    killed run never leaves it stuck.
 
 [BeetrootSkin](https://github.com/LiteLDev/BeetrootSkin/tree/main/tools/e2e) and
 [AlleviatedBackpacks](https://github.com/LiteLDev/AlleviatedBackpacks/tree/main/tools/e2e) have

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Machine-wide signaling lock in `harness-shim.ps1`: every headless game holds it shared from `Start-Game` to `Stop-Game`; runs that join a server over NetherNet set `$script:ExclusiveSignaling = $true` and get the machine to themselves (each game's sign-in to the signaling service knocks out the previous one).
+
 ## [0.1.0] - 2026-10-22
 
 ### Added

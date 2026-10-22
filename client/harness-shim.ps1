@@ -14,7 +14,8 @@
 #
 # Functions replaced (same parameters and waits as the harness versions):
 #   Focus-Game, Assert-GameForeground, Set-GameWindowSize, Move-Mouse, Click, Scroll, Press-Key,
-#   Type-Text, Get-ClientBitmap (ignores -FromScreen), Start-Game (wrapped).
+#   Type-Text, Get-ClientBitmap (ignores -FromScreen); Start-Game and Stop-Game are wrapped (signaling
+#   lock, see below).
 
 $script:HeadlessDir = $PSScriptRoot
 Import-Module (Join-Path $PSScriptRoot 'HeadlessInput.psm1') -Force -DisableNameChecking -Global
@@ -113,13 +114,78 @@ function Register-HeadlessNative([Parameter(Mandatory)][type]$Type) {
 
 # --- harness function overrides -------------------------------------------------------------------
 
-# Remember where the user was, so the mod hands the foreground back to that window when the game
-# window appears (the launch itself still activates the game for a moment).
+# --- signaling lock ------------------------------------------------------------------------------
+#
+# Every game instance on the machine signs in to Minecraft's online signaling service with the same
+# ID (same PC, same account) when it starts, and each new sign-in knocks the previous one out. Runs
+# that need online multiplayer (joining a server over NetherNet) therefore need every other game
+# closed while they play. Machine-wide reader/writer lock, held through file handles (the OS
+# releases them when a process dies, so a killed run never leaves it stuck):
+#   - every headless game holds it SHARED from Start-Game to Stop-Game (automatic, see below);
+#   - a run that sets $script:ExclusiveSignaling = $true (e.g. in its prelaunch script) holds it
+#     EXCLUSIVE instead: new games wait, then it waits for the running ones to close.
+# Files: <dir>\e2e-signaling.lock (the lock) and e2e-signaling.lock.wait (held by a waiting or
+# holding exclusive run, so new shared holders queue behind it instead of starving it).
+$script:SignalingLockDir = Join-Path $env:APPDATA 'levilauncher.exe'
+$script:SignalingLock = $null
+$script:SignalingWait = $null
+
+function Enter-SignalingLock([switch]$Exclusive, [int]$TimeoutMinutes = 120) {
+    if ($script:SignalingLock) { return }
+    New-Item -ItemType Directory -Force $script:SignalingLockDir | Out-Null
+    $lock = Join-Path $script:SignalingLockDir 'e2e-signaling.lock'
+    $wait = "$lock.wait"
+    $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+    $nextReport = Get-Date
+    $what = if ($Exclusive) { 'exclusive' } else { 'shared' }
+    while ($true) {
+        try {
+            if ($Exclusive) {
+                # Block new shared holders first, then wait for the current ones to close.
+                if (-not $script:SignalingWait) { $script:SignalingWait = [IO.File]::Open($wait, 'OpenOrCreate', 'ReadWrite', 'None') }
+                $script:SignalingLock = [IO.File]::Open($lock, 'OpenOrCreate', 'ReadWrite', 'None')
+            } else {
+                # Queue behind a waiting exclusive run: the .wait file is held without sharing then.
+                $w = [IO.File]::Open($wait, 'OpenOrCreate', 'Read', 'ReadWrite')
+                try { $script:SignalingLock = [IO.File]::Open($lock, 'OpenOrCreate', 'Read', 'Read') } finally { $w.Dispose() }
+            }
+            Write-Host "[e2e] signaling lock acquired ($what)"
+            return
+        } catch [System.IO.IOException] {
+            if ((Get-Date) -gt $deadline) {
+                if ($script:SignalingWait) { $script:SignalingWait.Dispose(); $script:SignalingWait = $null }
+                throw "Timed out after $TimeoutMinutes min waiting for the $what signaling lock ($lock)"
+            }
+            if ((Get-Date) -ge $nextReport) {
+                $why = if ($Exclusive) { 'other games are still running' } else { 'a run that needs online multiplayer has the games to itself' }
+                Write-Host "[e2e] waiting for the $what signaling lock: $why"
+                $nextReport = (Get-Date).AddSeconds(60)
+            }
+            Start-Sleep -Seconds 2
+        }
+    }
+}
+
+function Exit-SignalingLock {
+    if ($script:SignalingLock) { $script:SignalingLock.Dispose(); $script:SignalingLock = $null; Write-Host "[e2e] signaling lock released" }
+    if ($script:SignalingWait) { $script:SignalingWait.Dispose(); $script:SignalingWait = $null }
+}
+
+# Start-Game: take the signaling lock (shared, or exclusive with $script:ExclusiveSignaling) for
+# the game's lifetime, and remember where the user was so the mod hands the foreground back there.
+# Stop-Game: release it once the game is closed.
 if (Get-Command Start-Game -CommandType Function -ErrorAction SilentlyContinue) {
     $script:HeadlessOriginalStartGame = ${function:Start-Game}
     function Start-Game {
+        Enter-SignalingLock -Exclusive:([bool]$script:ExclusiveSignaling)
         $env:LEVI_HEADLESS_RETURN_FOCUS = [string][int64][HeadlessInput.Foreground]::Get()
         & $script:HeadlessOriginalStartGame @args
+    }
+}
+if (Get-Command Stop-Game -CommandType Function -ErrorAction SilentlyContinue) {
+    $script:HeadlessOriginalStopGame = ${function:Stop-Game}
+    function Stop-Game {
+        try { & $script:HeadlessOriginalStopGame @args } finally { Exit-SignalingLock }
     }
 }
 if (-not ('HeadlessInput.Foreground' -as [type])) {
