@@ -4,3 +4,4 @@
 /vsxmake*/
 compile_commands.json
 *.user
+/tools/out/

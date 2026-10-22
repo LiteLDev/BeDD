@@ -49,7 +49,10 @@ target("LeviHeadlessInput")
     add_headerfiles("src/**.h")
     add_files("src/**.cpp")
     after_build(function (target)
-        -- The PowerShell client ships next to the mod, so a harness only needs bin\LeviHeadlessInput.
+        -- The PowerShell client and harness shim ship next to the mod, so a harness only needs bin\LeviHeadlessInput.
         local bindir = path.join(os.projectdir(), "bin", target:name())
-        os.cp(path.join(os.projectdir(), "client", "HeadlessInput.psm1"), bindir)
+        os.mkdir(bindir)
+        for _, f in ipairs({"HeadlessInput.psm1", "harness-shim.ps1", "Start-HeadlessGame.ps1"}) do
+            os.cp(path.join(os.projectdir(), "client", f), path.join(bindir, f))
+        end
     end)

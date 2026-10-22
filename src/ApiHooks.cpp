@@ -37,6 +37,10 @@ HI_ORIG(GetFocus);
 HI_ORIG(SetForegroundWindow);
 HI_ORIG(GetRawInputData);
 HI_ORIG(GetRawInputBuffer);
+HI_ORIG(ShowWindow);
+HI_ORIG(SetWindowPos);
+HI_ORIG(SetActiveWindow);
+HI_ORIG(BringWindowToTop);
 
 #undef HI_ORIG
 
@@ -134,10 +138,56 @@ HWND WINAPI d_GetFocus() {
     return o_GetFocus();
 }
 
+// A top-level window of this process (the game window, also before Window.cpp has found it).
+bool ownTopLevel(HWND h) {
+    if (!h || GetAncestor(h, GA_ROOT) != h) return false;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(h, &pid);
+    return pid == GetCurrentProcessId();
+}
+
 BOOL WINAPI d_SetForegroundWindow(HWND h) {
     HI_COUNT("SetForegroundWindow");
-    if (bg() && h && h == gameWindow()) return TRUE; // the game stays in the background
+    if (bg() && ownTopLevel(h)) return TRUE; // the game stays in the background
     return o_SetForegroundWindow(h);
+}
+
+BOOL WINAPI d_ShowWindow(HWND h, int cmd) {
+    HI_COUNT("ShowWindow");
+    if (bg() && ownTopLevel(h)) {
+        // Show without activating (the start-up show would otherwise take the foreground).
+        switch (cmd) {
+        case SW_SHOWNORMAL:
+        case SW_SHOWDEFAULT:
+        case SW_RESTORE: cmd = SW_SHOWNOACTIVATE; break;
+        case SW_SHOW:
+        case SW_SHOWMAXIMIZED: cmd = SW_SHOWNA; break;
+        case SW_SHOWMINIMIZED: cmd = SW_SHOWMINNOACTIVE; break;
+        default: break;
+        }
+    }
+    return o_ShowWindow(h, cmd);
+}
+
+BOOL WINAPI d_SetWindowPos(HWND h, HWND after, int x, int y, int cx, int cy, UINT flags) {
+    HI_COUNT("SetWindowPos");
+    if (bg() && ownTopLevel(h)) {
+        flags |= SWP_NOACTIVATE;
+        if (after == HWND_TOP || after == HWND_TOPMOST) flags |= SWP_NOZORDER; // stay behind the user's windows
+    }
+    return o_SetWindowPos(h, after, x, y, cx, cy, flags);
+}
+
+HWND WINAPI d_SetActiveWindow(HWND h) {
+    HI_COUNT("SetActiveWindow");
+    if (bg() && ownTopLevel(h)) return gameWindow() ? gameWindow() : h;
+    return o_SetActiveWindow(h);
+}
+
+BOOL WINAPI d_BringWindowToTop(HWND h) {
+    HI_COUNT("BringWindowToTop");
+    if (bg() && ownTopLevel(h)) return TRUE;
+    return o_BringWindowToTop(h);
 }
 
 UINT WINAPI d_GetRawInputData(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size, UINT headerSize) {
@@ -178,7 +228,7 @@ UINT WINAPI d_GetRawInputBuffer(PRAWINPUT data, PUINT size, UINT headerSize) {
 
 #define HI_SLOT(fn) HookSlot{#fn, reinterpret_cast<void*>(&d_##fn), reinterpret_cast<void**>(&o_##fn)}
 
-std::array<HookSlot, 13> gSlots{
+std::array<HookSlot, 17> gSlots{
     HI_SLOT(ClipCursor),
     HI_SLOT(SetCursorPos),
     HI_SLOT(GetCursorPos),
@@ -192,6 +242,10 @@ std::array<HookSlot, 13> gSlots{
     HI_SLOT(SetForegroundWindow),
     HI_SLOT(GetRawInputData),
     HI_SLOT(GetRawInputBuffer),
+    HI_SLOT(ShowWindow),
+    HI_SLOT(SetWindowPos),
+    HI_SLOT(SetActiveWindow),
+    HI_SLOT(BringWindowToTop),
 };
 
 #undef HI_SLOT
@@ -258,6 +312,9 @@ HWND GetForegroundWindow() { return o_GetForegroundWindow ? o_GetForegroundWindo
 BOOL SetForegroundWindow(HWND h) { return o_SetForegroundWindow ? o_SetForegroundWindow(h) : ::SetForegroundWindow(h); }
 BOOL GetCursorPos(LPPOINT p) { return o_GetCursorPos ? o_GetCursorPos(p) : ::GetCursorPos(p); }
 SHORT GetAsyncKeyState(int vk) { return o_GetAsyncKeyState ? o_GetAsyncKeyState(vk) : ::GetAsyncKeyState(vk); }
+BOOL  SetWindowPos(HWND h, HWND after, int x, int y, int cx, int cy, UINT flags) {
+    return o_SetWindowPos ? o_SetWindowPos(h, after, x, y, cx, cy, flags) : ::SetWindowPos(h, after, x, y, cx, cy, flags);
+}
 } // namespace real
 
 } // namespace headless

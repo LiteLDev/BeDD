@@ -51,6 +51,7 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.clientWidth  = j.value("clientWidth", gOptions.clientWidth);
     gOptions.clientHeight = j.value("clientHeight", gOptions.clientHeight);
     gOptions.trace        = j.value("trace", gOptions.trace);
+    gOptions.pipeName     = j.value("pipeName", gOptions.pipeName);
 }
 
 bool Mod::load() {
@@ -59,27 +60,32 @@ bool Mod::load() {
     readOptions(getSelf().getConfigDir() / "config.json");
     gBackground = gOptions.background;
     log().info(
-        "LeviHeadlessInput loaded: background={} placement={} client={}x{} trace={}",
+        "LeviHeadlessInput loaded: background={} placement={} client={}x{} trace={} pipe={}",
         gOptions.background,
         gOptions.placement,
         gOptions.clientWidth,
         gOptions.clientHeight,
-        gOptions.trace
+        gOptions.trace,
+        gOptions.pipeName
     );
     return true;
 }
 
 bool Mod::enable() {
     installApiHooks();
+    installGameInputHooks();
     startWindowWatcher();
     startPipeServer();
+    startInputTrace();
     log().info("LeviHeadlessInput enabled");
     return true;
 }
 
 bool Mod::disable() {
+    stopInputTrace();
     stopPipeServer();
     stopWindowWatcher();
+    uninstallGameInputHooks();
     uninstallApiHooks();
     return true;
 }

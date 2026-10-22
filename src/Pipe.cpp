@@ -2,6 +2,7 @@
 // See README.md for the protocol.
 #include "Headless.h"
 
+#include <algorithm>
 #include <cctype>
 #include <thread>
 #include <unordered_map>
@@ -15,8 +16,9 @@ namespace {
 using json = nlohmann::json;
 using namespace std::chrono_literals;
 
-constexpr wchar_t kPipeName[] = L"\\\\.\\pipe\\LeviHeadlessInput";
-constexpr int     kProtocol   = 1;
+constexpr int kProtocol = 1;
+
+std::wstring gPipePath; // \\.\pipe\<options().pipeName>
 
 std::jthread      gServer;
 std::atomic<bool> gStopping{false};
@@ -156,52 +158,33 @@ void postMove(POINT p) {
         throw OpError("no game window yet");
 }
 
+// Mouse buttons and the wheel: Bedrock reads them only through GameInput (WM_LBUTTONDOWN and
+// friends are ignored), so they drive the virtual GameInput mouse. The pointer position comes from
+// GetCursorPos (hooked: the virtual cursor) and WM_MOUSEMOVE.
 struct Button {
-    int  vk;
-    UINT down, up;
-    USHORT rawDown, rawUp;
+    int vk;
+    int gi;
 };
 
 Button buttonOf(json const& j) {
     std::string b = j.value("button", "left");
-    if (b == "left") return {VK_LBUTTON, WM_LBUTTONDOWN, WM_LBUTTONUP, RI_MOUSE_LEFT_BUTTON_DOWN, RI_MOUSE_LEFT_BUTTON_UP};
-    if (b == "right")
-        return {VK_RBUTTON, WM_RBUTTONDOWN, WM_RBUTTONUP, RI_MOUSE_RIGHT_BUTTON_DOWN, RI_MOUSE_RIGHT_BUTTON_UP};
-    if (b == "middle")
-        return {VK_MBUTTON, WM_MBUTTONDOWN, WM_MBUTTONUP, RI_MOUSE_MIDDLE_BUTTON_DOWN, RI_MOUSE_MIDDLE_BUTTON_UP};
+    if (b == "left") return {VK_LBUTTON, kGiLeft};
+    if (b == "right") return {VK_RBUTTON, kGiRight};
+    if (b == "middle") return {VK_MBUTTON, kGiMiddle};
     throw OpError("unknown button '" + b + "'");
 }
 
-void postButton(Button const& b, POINT p, bool down) {
-    // The key state is applied before dispatch, so the flags must already include the change.
-    WPARAM flags = mouseKeyFlags();
-    WPARAM bit   = b.vk == VK_LBUTTON ? MK_LBUTTON : b.vk == VK_RBUTTON ? MK_RBUTTON : MK_MBUTTON;
-    flags        = down ? (flags | bit) : (flags & ~bit);
-    if (!post(Event{
-            .msg        = down ? b.down : b.up,
-            .wp         = flags,
-            .lp         = clientLParam(p),
-            .vk         = b.vk,
-            .vkDown     = down,
-            .moveCursor = true,
-            .cursor     = p,
-        }))
-        throw OpError("no game window yet");
-}
-
-void postRaw(LONG dx, LONG dy, USHORT buttonFlags, USHORT buttonData = 0, int vk = -1, bool vkDown = false) {
-    Event e{.msg = WM_INPUT, .wp = RIM_INPUT, .vk = vk, .vkDown = vkDown, .raw = true};
-    e.rawMouse.usFlags       = MOUSE_MOVE_RELATIVE;
-    e.rawMouse.usButtonFlags = buttonFlags;
-    e.rawMouse.usButtonData  = buttonData;
-    e.rawMouse.lLastX        = dx;
-    e.rawMouse.lLastY        = dy;
-    if (!post(e)) throw OpError("no game window yet");
+void setButton(Button const& b, bool down) {
+    vstate::setKey(b.vk, down);
+    gameInputMouse(0, 0, 0, b.gi, down);
 }
 
 void sleepMs(int ms) {
     if (ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
+
+// GameInput is polled once per frame: keep each state long enough for the game to read it.
+constexpr int kPollMs = 50;
 
 void flushOrThrow(json const& j) {
     auto timeout = std::chrono::milliseconds(j.value("timeoutMs", 5000));
@@ -243,6 +226,7 @@ json handle(json const& j) {
             {"passed",             s.passed.load()            },
             {"realForegroundSeen", s.realForegroundSeen.load()},
             {"api",                apiHookStats()             },
+            {"gameInput",          gameInputStats()           },
         };
     } else if (op == "background") {
         bool on = j.value("on", true);
@@ -281,61 +265,44 @@ json handle(json const& j) {
             }
         }
         flushOrThrow(j);
-    } else if (op == "mouse") {
+    } else if (op == "mouse" || op == "raw") {
+        // mouse: absolute pointer (menus, inventories). raw: relative movement (the in-world
+        // camera while the mouse is grabbed). Buttons and wheel work the same in both.
+        bool        raw    = op == "raw";
         std::string action = j.value("action", "move");
-        POINT       p      = targetPoint(j);
-        if (action == "move") {
-            postMove(p);
-        } else if (action == "down" || action == "up") {
-            postMove(p);
-            postButton(buttonOf(j), p, action == "down");
+        if (!raw && (j.contains("x") || j.contains("rx") || action == "move")) {
+            postMove(targetPoint(j));
+            flushOrThrow(j);
+            if (action != "move") sleepMs(j.value("settleMs", kPollMs)); // hover first, like a hand would
+        }
+        if (raw) {
+            int64_t dx = j.value("dx", 0), dy = j.value("dy", 0);
+            // Spread a move over a few frames (one huge delta can be clamped by the game).
+            int steps = std::max(1, j.value("steps", 1));
+            for (int i = 0; i < steps; ++i) {
+                gameInputMouse(dx * (i + 1) / steps - dx * i / steps, dy * (i + 1) / steps - dy * i / steps, 0, 0, false);
+                if (i + 1 < steps) sleepMs(16);
+            }
+        }
+        if (action == "down" || action == "up") {
+            setButton(buttonOf(j), action == "down");
         } else if (action == "click") {
             Button b = buttonOf(j);
-            postMove(p);
-            flushOrThrow(j);
-            sleepMs(j.value("settleMs", 30)); // hover first, like a hand would
-            postButton(b, p, true);
-            flushOrThrow(j);
-            sleepMs(j.value("holdMs", 60));
-            postButton(b, p, false);
+            setButton(b, true);
+            sleepMs(std::max(j.value("holdMs", 80), kPollMs));
+            setButton(b, false);
         } else if (action == "wheel") {
-            int notches = j.value("notches", 1);
-            postMove(p);
-            POINT screen = p;
-            ClientToScreen(gameWindow(), &screen);
-            WPARAM wp = MAKEWPARAM(static_cast<WORD>(mouseKeyFlags()), static_cast<WORD>(static_cast<short>(notches * WHEEL_DELTA)));
-            if (!post(Event{.msg = WM_MOUSEWHEEL, .wp = wp, .lp = MAKELPARAM(screen.x, screen.y)}))
-                throw OpError("no game window yet");
-        } else {
-            throw OpError("unknown mouse action " + action);
+            gameInputMouse(0, 0, j.value("notches", 1), 0, false);
+        } else if (action != "move") {
+            throw OpError("unknown " + op + " action " + action);
         }
-        flushOrThrow(j);
-    } else if (op == "raw") {
-        // Raw (WM_INPUT) mouse: relative look movement and buttons while the mouse is grabbed.
-        LONG        dx     = j.value("dx", 0), dy = j.value("dy", 0);
-        std::string action = j.value("action", "move");
-        if (action == "move") {
-            postRaw(dx, dy, 0);
-        } else if (action == "down" || action == "up" || action == "click") {
-            Button b = buttonOf(j);
-            if (action != "up") postRaw(dx, dy, b.rawDown, 0, b.vk, true);
-            if (action == "click") {
-                flushOrThrow(j);
-                sleepMs(j.value("holdMs", 60));
-            }
-            if (action != "down") postRaw(0, 0, b.rawUp, 0, b.vk, false);
-        } else if (action == "wheel") {
-            postRaw(0, 0, RI_MOUSE_WHEEL, static_cast<USHORT>(static_cast<short>(j.value("notches", 1) * WHEEL_DELTA)));
-        } else {
-            throw OpError("unknown raw action " + action);
-        }
-        flushOrThrow(j);
+        sleepMs(j.value("afterMs", kPollMs));
     } else if (op == "release") {
         for (int vk = 1; vk < 256; ++vk) {
             if (!vstate::keyDown(vk)) continue;
             if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON) {
                 json b{{"button", vk == VK_LBUTTON ? "left" : vk == VK_RBUTTON ? "right" : "middle"}};
-                postButton(buttonOf(b), vstate::cursor(), false);
+                setButton(buttonOf(b), false);
             } else if (vk != VK_SHIFT && vk != VK_CONTROL && vk != VK_MENU) {
                 postKey(vk, false);
             }
@@ -394,7 +361,7 @@ void serveClient(HANDLE pipe) {
 void serve(std::stop_token) {
     while (!gStopping) {
         HANDLE pipe = CreateNamedPipeW(
-            kPipeName,
+            gPipePath.c_str(),
             PIPE_ACCESS_DUPLEX,
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
             1,
@@ -419,16 +386,18 @@ void serve(std::stop_token) {
 } // namespace
 
 void startPipeServer() {
-    gStopping = false;
-    gServer   = std::jthread(serve);
-    log().info("control pipe: \\\\.\\pipe\\LeviHeadlessInput");
+    std::string const& name = options().pipeName;
+    gPipePath               = L"\\\\.\\pipe\\" + std::wstring(name.begin(), name.end());
+    gStopping               = false;
+    gServer                 = std::jthread(serve);
+    log().info("control pipe: \\\\.\\pipe\\{}", name);
 }
 
 void stopPipeServer() {
     if (!gServer.joinable()) return;
     gStopping = true;
     // Unblock ConnectNamedPipe with a throwaway connection.
-    HANDLE h = CreateFileW(kPipeName, GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+    HANDLE h = CreateFileW(gPipePath.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
     if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
     // ...and a client still connected is blocked in ReadFile.
     CancelSynchronousIo(gServer.native_handle());

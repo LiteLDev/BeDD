@@ -34,6 +34,8 @@ struct Options {
     int clientHeight = 0;
     /// Log message and API-hook statistics every few seconds.
     bool trace = false;
+    /// Control pipe name (\\.\pipe\<name>); one per game instance when several run in parallel.
+    std::string pipeName = "LeviHeadlessInput";
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -62,6 +64,7 @@ HWND GetForegroundWindow();
 BOOL SetForegroundWindow(HWND h);
 BOOL GetCursorPos(LPPOINT p);
 SHORT GetAsyncKeyState(int vk);
+BOOL  SetWindowPos(HWND h, HWND after, int x, int y, int cx, int cy, UINT flags);
 } // namespace real
 
 void installApiHooks();
@@ -75,6 +78,8 @@ void uninstallApiHooks();
 /// The subclassed game window, or nullptr while it does not exist yet.
 [[nodiscard]] HWND gameWindow();
 [[nodiscard]] bool gameThreadIsCurrent();
+/// True while the window procedure handles a synthetic event (on the game thread).
+[[nodiscard]] bool inSyntheticDispatch();
 
 void startWindowWatcher();
 void stopWindowWatcher();
@@ -116,6 +121,22 @@ struct Stats {
     std::atomic<uint64_t> realForegroundSeen{};
 };
 [[nodiscard]] Stats& stats();
+
+// ---------------------------------------------------------------------------------------------
+// GameInput (GameInputHooks.cpp): Bedrock reads the mouse through GDK GameInput, not window messages.
+// ---------------------------------------------------------------------------------------------
+void installGameInputHooks();
+void uninstallGameInputHooks();
+/// GameInput mouse button bits (GameInputMouseButtons).
+enum : int { kGiLeft = 0x1, kGiRight = 0x2, kGiMiddle = 0x4 };
+/// Move / scroll / press the virtual GameInput mouse (what the game reads in background mode).
+void gameInputMouse(int64_t dx, int64_t dy, int wheelNotches, int buttonMask, bool buttonDown);
+[[nodiscard]] uint32_t    gameInputButtons();
+[[nodiscard]] std::string gameInputStats();
+
+/// Trace.cpp: log the game's input events (trace mode only).
+void startInputTrace();
+void stopInputTrace();
 
 // ---------------------------------------------------------------------------------------------
 // Pipe (Pipe.cpp)

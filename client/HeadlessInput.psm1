@@ -9,7 +9,8 @@
 # Every input call returns once the game thread has processed the input (or throws).
 # Nothing here moves the real cursor, presses real keys or changes the foreground window.
 
-$script:PipeName = 'LeviHeadlessInput'
+# One pipe per game instance; $env:LEVI_HEADLESS_PIPE or Connect-HeadlessInput -PipeName picks it.
+$script:PipeName = if ($env:LEVI_HEADLESS_PIPE) { $env:LEVI_HEADLESS_PIPE } else { 'LeviHeadlessInput' }
 $script:Pipe     = $null
 $script:Reader   = $null
 $script:Writer   = $null
@@ -22,7 +23,7 @@ function Disconnect-HeadlessInput {
 
 # True when the game is running with the mod loaded (the pipe exists).
 function Test-HeadlessInput {
-    return [System.IO.File]::Exists("\\.\pipe\$script:PipeName")
+    return [System.IO.Directory]::GetFiles('\\.\pipe\') -contains "\\.\pipe\$script:PipeName"
 }
 
 function Open-HeadlessPipe([int]$TimeoutMs) {
@@ -38,7 +39,13 @@ function Open-HeadlessPipe([int]$TimeoutMs) {
 }
 
 # Waits until the mod's pipe accepts a connection and the game window exists. Returns the ping reply.
-function Connect-HeadlessInput([int]$TimeoutSeconds = 180) {
+# Selects the pipe (game instance) the following calls talk to.
+function Set-HeadlessPipe([Parameter(Mandatory)][string]$PipeName) {
+    if ($PipeName -ne $script:PipeName) { Disconnect-HeadlessInput; $script:PipeName = $PipeName }
+}
+
+function Connect-HeadlessInput([int]$TimeoutSeconds = 180, [string]$PipeName) {
+    if ($PipeName) { Set-HeadlessPipe $PipeName }
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $last = $null
     while ((Get-Date) -lt $deadline) {
@@ -130,6 +137,55 @@ function Send-HeadlessRaw(
 # Releases every key and button the virtual state still holds down.
 function Clear-HeadlessInput { Invoke-HeadlessInput @{ op = 'release' } | Out-Null }
 
-Export-ModuleMember -Function Connect-HeadlessInput, Disconnect-HeadlessInput, Test-HeadlessInput, Invoke-HeadlessInput,
+Add-Type -AssemblyName System.Drawing
+if (-not ('HeadlessInput.Win' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace HeadlessInput {
+public static class Win {
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
+    [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr ctx);
+}
+}
+'@
+}
+
+# Physical pixels (the desktop may use display scaling): per-monitor-v2 DPI awareness, as the harnesses do.
+[HeadlessInput.Win]::SetProcessDpiAwarenessContext([IntPtr]::new(-4)) | Out-Null
+
+# The game's client area as a System.Drawing.Bitmap (dispose it). PrintWindow(PW_RENDERFULLCONTENT)
+# captures the window while it is covered by other windows.
+function Get-HeadlessBitmap {
+    $h = [IntPtr][int64](Invoke-HeadlessInput @{ op = 'ping' }).hwnd
+    $wr = New-Object HeadlessInput.Win+RECT; [HeadlessInput.Win]::GetWindowRect($h, [ref]$wr) | Out-Null
+    $cr = New-Object HeadlessInput.Win+RECT; [HeadlessInput.Win]::GetClientRect($h, [ref]$cr) | Out-Null
+    $o = New-Object HeadlessInput.Win+POINT; [HeadlessInput.Win]::ClientToScreen($h, [ref]$o) | Out-Null
+    $full = New-Object System.Drawing.Bitmap ($wr.Right - $wr.Left), ($wr.Bottom - $wr.Top)
+    $gf = [System.Drawing.Graphics]::FromImage($full)
+    $hdc = $gf.GetHdc()
+    try { [HeadlessInput.Win]::PrintWindow($h, $hdc, 2) | Out-Null } finally { $gf.ReleaseHdc($hdc); $gf.Dispose() }
+    $bmp = New-Object System.Drawing.Bitmap $cr.Right, $cr.Bottom
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    try {
+        $g.DrawImage($full, (New-Object System.Drawing.Rectangle 0, 0, $cr.Right, $cr.Bottom),
+            (New-Object System.Drawing.Rectangle ($o.X - $wr.Left), ($o.Y - $wr.Top), $cr.Right, $cr.Bottom), 'Pixel')
+    } finally { $g.Dispose(); $full.Dispose() }
+    return $bmp
+}
+
+# Saves the game's client area as PNG.
+function Save-HeadlessScreenshot([Parameter(Mandatory)][string]$Path) {
+    $bmp = Get-HeadlessBitmap
+    try { $bmp.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png) } finally { $bmp.Dispose() }
+    return $Path
+}
+
+Export-ModuleMember -Function Connect-HeadlessInput, Set-HeadlessPipe, Disconnect-HeadlessInput, Test-HeadlessInput, Invoke-HeadlessInput,
     Get-HeadlessState, Set-HeadlessBackground, Set-HeadlessWindow, Send-HeadlessKey, Send-HeadlessText,
-    Send-HeadlessMouse, Send-HeadlessRaw, Clear-HeadlessInput
+    Send-HeadlessMouse, Send-HeadlessRaw, Clear-HeadlessInput, Get-HeadlessBitmap, Save-HeadlessScreenshot

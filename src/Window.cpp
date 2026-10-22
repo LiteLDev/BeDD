@@ -205,8 +205,9 @@ std::string processNameOf(DWORD pid) {
 }
 
 void rememberReturnFocus() {
-    if (char const* env = std::getenv("LEVI_HEADLESS_RETURN_FOCUS")) {
-        gReturnFocus = reinterpret_cast<HWND>(static_cast<uintptr_t>(std::strtoull(env, nullptr, 0)));
+    char buf[32]{};
+    if (GetEnvironmentVariableA("LEVI_HEADLESS_RETURN_FOCUS", buf, sizeof(buf)) > 0) {
+        gReturnFocus = reinterpret_cast<HWND>(static_cast<uintptr_t>(std::strtoull(buf, nullptr, 0)));
         return;
     }
     HWND fg = real::GetForegroundWindow();
@@ -224,14 +225,15 @@ void traceTick() {
         msgs += std::format(" 0x{:04X}={}", i, n);
     }
     log().info(
-        "trace: synthetic={} swallowedInput={} swallowedFocus={} passed={} realForeground={} | msgs:{} | api: {}",
+        "trace: synthetic={} swallowedInput={} swallowedFocus={} passed={} realForeground={} | msgs:{} | api: {} | gameinput: {}",
         gStats.synthetic.load(),
         gStats.swallowedInput.load(),
         gStats.swallowedFocus.load(),
         gStats.passed.load(),
         real::GetForegroundWindow() == gWindow.load(),
         msgs.empty() ? " none" : msgs,
-        apiHookStats()
+        apiHookStats(),
+        gameInputStats()
     );
 }
 
@@ -296,6 +298,8 @@ void watch(std::stop_token stop) {
 HWND gameWindow() { return gWindow.load(std::memory_order_relaxed); }
 
 bool gameThreadIsCurrent() { return GetCurrentThreadId() == gGameThread.load(std::memory_order_relaxed); }
+
+bool inSyntheticDispatch() { return tSynthetic; }
 
 Stats& stats() { return gStats; }
 
@@ -364,7 +368,7 @@ std::string applyWindowLayout(int clientW, int clientH, std::string const& place
         done = std::format("moved off screen to x={}", x);
     }
     if (placement == "back" || placement == "offscreen") {
-        SetWindowPos(h, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        real::SetWindowPos(h, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         giveAwayForeground(h);
         done += done.empty() ? "" : ", ";
         done += "sent to the back of the Z order";
