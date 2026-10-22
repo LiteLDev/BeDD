@@ -1,0 +1,154 @@
+#include "Headless.h"
+
+#include <array>
+#include <fstream>
+#include <mutex>
+
+#include <nlohmann/json.hpp>
+
+#include "ll/api/mod/NativeMod.h"
+#include "ll/api/mod/RegisterHelper.h"
+
+namespace headless {
+
+namespace {
+
+class Mod {
+public:
+    static Mod& getInstance() {
+        static Mod instance;
+        return instance;
+    }
+
+    Mod() : mSelf(*ll::mod::NativeMod::current()) {}
+
+    [[nodiscard]] ll::mod::NativeMod& getSelf() const { return mSelf; }
+
+    bool load();
+    bool enable();
+    bool disable();
+
+private:
+    ll::mod::NativeMod& mSelf;
+};
+
+Options           gOptions;
+std::atomic<bool> gBackground{false};
+
+void readOptions(std::filesystem::path const& file) {
+    std::ifstream in(file);
+    if (!in) {
+        log().info("No {} (background mode off; the e2e harness writes it)", file.string());
+        return;
+    }
+    auto j = nlohmann::json::parse(in, nullptr, false, true);
+    if (j.is_discarded() || !j.is_object()) {
+        log().error("{} is not a JSON object; using defaults", file.string());
+        return;
+    }
+    gOptions.background   = j.value("background", gOptions.background);
+    gOptions.placement    = j.value("placement", gOptions.placement);
+    gOptions.clientWidth  = j.value("clientWidth", gOptions.clientWidth);
+    gOptions.clientHeight = j.value("clientHeight", gOptions.clientHeight);
+    gOptions.trace        = j.value("trace", gOptions.trace);
+}
+
+bool Mod::load() {
+    // Flush every message so the harness sees them immediately.
+    getSelf().getLogger().setFlushLevel(ll::io::LogLevel::Trace);
+    readOptions(getSelf().getConfigDir() / "config.json");
+    gBackground = gOptions.background;
+    log().info(
+        "LeviHeadlessInput loaded: background={} placement={} client={}x{} trace={}",
+        gOptions.background,
+        gOptions.placement,
+        gOptions.clientWidth,
+        gOptions.clientHeight,
+        gOptions.trace
+    );
+    return true;
+}
+
+bool Mod::enable() {
+    installApiHooks();
+    startWindowWatcher();
+    startPipeServer();
+    log().info("LeviHeadlessInput enabled");
+    return true;
+}
+
+bool Mod::disable() {
+    stopPipeServer();
+    stopWindowWatcher();
+    uninstallApiHooks();
+    return true;
+}
+
+} // namespace
+
+ll::io::Logger& log() { return Mod::getInstance().getSelf().getLogger(); }
+
+Options& options() { return gOptions; }
+
+std::atomic<bool>& backgroundMode() { return gBackground; }
+
+// ---------------------------------------------------------------------------------------------
+// Virtual input state
+// ---------------------------------------------------------------------------------------------
+namespace vstate {
+namespace {
+std::array<std::atomic<uint8_t>, 256> gKeys{}; // bit 0x80 = down, 0x01 = toggled
+std::mutex                            gCursorMutex;
+POINT                                 gCursor{};
+
+void setOne(int vk, bool down) {
+    if (vk <= 0 || vk > 255) return;
+    auto& k   = gKeys[static_cast<size_t>(vk)];
+    uint8_t v = k.load();
+    if (down && !(v & 0x80)) v ^= 0x01; // a new press flips the toggle (Caps Lock style)
+    v = down ? static_cast<uint8_t>(v | 0x80) : static_cast<uint8_t>(v & ~0x80);
+    k.store(v);
+}
+
+// The generic modifier is down while either side is.
+void syncGeneric(int generic, int left, int right) { setOne(generic, keyDown(left) || keyDown(right)); }
+} // namespace
+
+void setKey(int vk, bool down) {
+    switch (vk) {
+    case VK_SHIFT: setOne(VK_LSHIFT, down); break;
+    case VK_CONTROL: setOne(VK_LCONTROL, down); break;
+    case VK_MENU: setOne(VK_LMENU, down); break;
+    default: setOne(vk, down); break;
+    }
+    syncGeneric(VK_SHIFT, VK_LSHIFT, VK_RSHIFT);
+    syncGeneric(VK_CONTROL, VK_LCONTROL, VK_RCONTROL);
+    syncGeneric(VK_MENU, VK_LMENU, VK_RMENU);
+}
+
+bool keyDown(int vk) { return vk > 0 && vk <= 255 && (gKeys[static_cast<size_t>(vk)].load() & 0x80); }
+
+SHORT keyState(int vk) {
+    if (vk <= 0 || vk > 255) return 0;
+    uint8_t v = gKeys[static_cast<size_t>(vk)].load();
+    return static_cast<SHORT>(((v & 0x80) ? 0x8000 : 0) | (v & 0x01));
+}
+
+void setCursor(POINT client) {
+    std::lock_guard lock(gCursorMutex);
+    gCursor = client;
+}
+
+POINT cursor() {
+    std::lock_guard lock(gCursorMutex);
+    return gCursor;
+}
+
+void releaseAll() {
+    for (auto& k : gKeys) k.store(static_cast<uint8_t>(k.load() & 0x01));
+}
+} // namespace vstate
+
+} // namespace headless
+
+LL_REGISTER_MOD(headless::Mod, headless::Mod::getInstance());
