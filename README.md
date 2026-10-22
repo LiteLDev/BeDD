@@ -141,7 +141,8 @@ second process. Rules for harnesses:
     for the game's lifetime: shared by default, exclusive when the run sets
     `$script:ExclusiveSignaling = $true` (e.g. in its prelaunch script). An exclusive run blocks new
     games, then waits for the running ones to close. The lock is held through file handles, so a
-    killed run never leaves it stuck.
+    killed run never leaves it stuck. An exclusive run also waits until no `Minecraft.Windows`
+    process is left at all, so games started outside the lock (older harnesses) cannot break it.
 
 [BeetrootSkin](https://github.com/LiteLDev/BeetrootSkin/tree/main/tools/e2e) and
 [AlleviatedBackpacks](https://github.com/LiteLDev/AlleviatedBackpacks/tree/main/tools/e2e) have

@@ -150,6 +150,24 @@ function Enter-SignalingLock([switch]$Exclusive, [int]$TimeoutMinutes = 120) {
                 try { $script:SignalingLock = [IO.File]::Open($lock, 'OpenOrCreate', 'Read', 'Read') } finally { $w.Dispose() }
             }
             Write-Host "[e2e] signaling lock acquired ($what)"
+            if ($Exclusive) {
+                # Games outside the lock (harnesses without this shim, or loaded before it had
+                # the lock) still sign in with the same ID: wait until no game runs at all. Called
+                # before our own game starts, so any Minecraft.Windows process is someone else's.
+                $reported = $false
+                while (Get-Process -Name 'Minecraft.Windows' -ErrorAction SilentlyContinue) {
+                    if ((Get-Date) -gt $deadline) {
+                        Exit-SignalingLock
+                        throw "Timed out after $TimeoutMinutes min waiting for games outside the signaling lock to close"
+                    }
+                    if (-not $reported) {
+                        $others = (Get-Process -Name 'Minecraft.Windows' | ForEach-Object { "$($_.Id) $(Split-Path (Split-Path $_.Path) -Leaf)" }) -join ', '
+                        Write-Host "[e2e] exclusive signaling: waiting for games outside the lock to close ($others)"
+                        $reported = $true
+                    }
+                    Start-Sleep -Seconds 2
+                }
+            }
             return
         } catch [System.IO.IOException] {
             if ((Get-Date) -gt $deadline) {
