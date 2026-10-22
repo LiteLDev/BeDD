@@ -1,0 +1,16 @@
+name: Feature request
+description: A new op, a new input path, or harness support
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What do you want to do?
+      description: The test you are trying to write and what is missing for it.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: Ideas
+      description: How it could work (protocol, PowerShell call), if you have one.

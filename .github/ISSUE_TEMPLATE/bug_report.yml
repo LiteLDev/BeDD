@@ -1,0 +1,46 @@
+name: Bug report
+description: Input that does not reach the game, or a game that still reacts to the real devices
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did the script send (JSON request or PowerShell call), what did you expect, and what did the game do instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start the game with background mode on
+        2. Send-HeadlessKey E
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: LeviHeadlessInput version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: levilamina
+    attributes:
+      label: LeviLamina and Minecraft versions
+      placeholder: LeviLamina 26.51.7, Minecraft 1.26.51.01
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: config.json
+      render: json
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The relevant part of logs/latest.log, ideally with "trace": true.
+      render: text
