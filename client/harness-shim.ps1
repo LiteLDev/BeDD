@@ -50,6 +50,40 @@ function Uninstall-HeadlessInputMod([Parameter(Mandatory)][string]$ModsDir) {
     if (Test-Path $dest) { Write-Host "[e2e] FAILED to remove $dest; delete it by hand" -ForegroundColor Red }
 }
 
+# Makes a world single-player: no "multiplayer game", no LAN, Xbox Live or platform broadcast
+# (level.dat and level.dat_old). Every game instance on a machine signs in to Minecraft's
+# signaling service with the same ID (same PC, same account), and a world opened for multiplayer
+# registers a session there: with several instances joining at once they knock each other out
+# ("An error has occurred", code "Blaze"). A single-player test world never touches it. Call it
+# right after restoring a test world.
+function Set-WorldSinglePlayer([Parameter(Mandatory)][string]$WorldDir) {
+    $tags = [ordered]@{
+        MultiplayerGame = 1; MultiplayerGameIntent = 1; LANBroadcast = 1; LANBroadcastIntent = 1   # TAG_Byte
+        XBLBroadcastIntent = 3; PlatformBroadcastIntent = 3                                          # TAG_Int
+    }
+    foreach ($f in 'level.dat', 'level.dat_old') {
+        $path = Join-Path $WorldDir $f
+        if (-not (Test-Path $path)) { continue }
+        $b = [IO.File]::ReadAllBytes($path)
+        foreach ($name in $tags.Keys) {
+            $type = [byte]$tags[$name]
+            $nb = [Text.Encoding]::UTF8.GetBytes($name)
+            $pat = [byte[]](@($type, [byte]($nb.Length -band 0xFF), [byte]($nb.Length -shr 8)) + $nb)
+            # Bedrock level.dat: 8-byte header, then little-endian NBT.
+            for ($i = 8; $i -le $b.Length - $pat.Length; $i++) {
+                $hit = $true
+                for ($j = 0; $j -lt $pat.Length; $j++) { if ($b[$i + $j] -ne $pat[$j]) { $hit = $false; break } }
+                if (-not $hit) { continue }
+                $v = $i + $pat.Length
+                $len = if ($type -eq 1) { 1 } else { 4 }
+                for ($k = 0; $k -lt $len; $k++) { $b[$v + $k] = 0 }
+                break
+            }
+        }
+        [IO.File]::WriteAllBytes($path, $b)
+    }
+}
+
 # --- Native class redirect ----------------------------------------------------------------------
 
 # Scenarios also call the harness's C# helpers directly ([X.Native]::Key(vk, up),
