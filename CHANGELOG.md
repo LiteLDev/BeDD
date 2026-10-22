@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-23
+
 ### Added
 
+- Exclusive signaling lock also waits until no `Minecraft.Windows` process is left, so games started outside the lock cannot break online-multiplayer runs.
 - Machine-wide signaling lock in `harness-shim.ps1`: every headless game holds it shared from `Start-Game` to `Stop-Game`; runs that join a server over NetherNet set `$script:ExclusiveSignaling = $true` and get the machine to themselves (each game's sign-in to the signaling service knocks out the previous one).
+
+### Fixed
+
+- Virtual mouse clicks, wheel notches and camera moves arrived once per mouse device (twice on a PC with two mice): the virtual state now goes to one device and the others report idle.
+- `enable()` could hang while installing the hooks: all hooks of a batch are now installed during a single thread pause, and nothing is logged while threads are paused.
 
 ## [0.1.0] - 2026-10-22
 
@@ -24,5 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Start-HeadlessGame.ps1` (start an instance without activating it) and `clone-instance.ps1` (cheap clone instances for parallel games).
 - Trace mode: message, API-hook and GameInput statistics, and every input event that reaches the game, marked synthetic or real.
 
-[Unreleased]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/LiteLDev/LeviHeadlessInput/releases/tag/v0.1.0

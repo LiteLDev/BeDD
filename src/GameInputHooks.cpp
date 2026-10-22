@@ -9,10 +9,15 @@
 // IGameInputReading 12 GetKeyCount, 13 GetKeyState, 14 GetMouseState.
 #include "Headless.h"
 
+#include <chrono>
 #include <format>
 #include <mutex>
+#include <optional>
+#include <unordered_map>
+#include <vector>
 
 #include "ll/api/memory/Hook.h"
+#include "ll/api/thread/GlobalThreadPauser.h"
 
 namespace headless {
 
@@ -50,6 +55,7 @@ using GetKeyCountFn = uint32_t(STDMETHODCALLTYPE*)(void* self);
 using GetKeyStateFn = uint32_t(STDMETHODCALLTYPE*)(void* self, uint32_t count, GiKeyState* states);
 using GetMouseFn    = bool(STDMETHODCALLTYPE*)(void* self, GiMouseState* state);
 using ReleaseFn     = ULONG(STDMETHODCALLTYPE*)(void* self);
+using GetDeviceFn   = void(STDMETHODCALLTYPE*)(void* self, void** device); // IGameInputReading slot 5
 
 GetReadingFn  o_GetCurrentReading  = nullptr;
 GetNextFn     o_GetNextReading     = nullptr;
@@ -68,20 +74,59 @@ void* t_GetMouseState      = nullptr;
 std::once_flag        gReadingHooksOnce;
 std::atomic<uint64_t> gMouseReads{}, gKeyReads{};
 
-// Virtual GameInput mouse: relative position and wheel accumulate the "raw" op's deltas on top of
-// where the real device was when background mode first read it (so the camera does not jump).
+// Virtual GameInput mouse: relative position and wheel accumulate the "raw" op's deltas.
+//
+// Bedrock polls every mouse device separately, so the virtual state goes to ONE device (the
+// "primary": the first one polled, replaced when it has not been polled for a while, e.g. when it
+// was unplugged); every other device reports idle (no buttons, no movement). Otherwise a PC with
+// two mice would get every virtual click, wheel notch and camera move twice.
+//
+// Each device starts from the real position/wheel it had when first seen ("base"). The primary
+// reports base + (virtual total - total at its last report) and then moves its base there; other
+// devices keep reporting their base. So neither the first read nor a change of primary makes the
+// camera jump.
 std::mutex gMouseMutex;
-bool       gMouseInit = false;
-int64_t    gPosX = 0, gPosY = 0, gWheelX = 0, gWheelY = 0;
+int64_t    gPosX = 0, gPosY = 0, gWheelX = 0, gWheelY = 0; // virtual totals
 uint32_t   gButtons = 0;
+
+struct DeviceMouse {
+    int64_t baseX = 0, baseY = 0, baseWheelX = 0, baseWheelY = 0;
+    int64_t attachX = 0, attachY = 0, attachWheelX = 0, attachWheelY = 0;
+    std::chrono::steady_clock::time_point lastPoll{};
+};
+std::unordered_map<void*, DeviceMouse> gDevices; // keyed by IGameInputDevice*
+void*                                  gPrimary = nullptr;
+constexpr auto                         kPrimaryStale = std::chrono::seconds(2);
+
+void attachPrimary(void* device, DeviceMouse& d) {
+    gPrimary       = device;
+    d.attachX      = gPosX;
+    d.attachY      = gPosY;
+    d.attachWheelX = gWheelX;
+    d.attachWheelY = gWheelY;
+}
 
 void** vtableOf(void* obj) { return *reinterpret_cast<void***>(obj); }
 
-bool hookSlot(void* target, void* detour, void** original, char const* name) {
-    if (ll::memory::hook(target, detour, reinterpret_cast<ll::memory::FuncPtr*>(original), ll::memory::HookPriority::Highest)
+// Pauses the other threads once for a batch of hooks (see installApiHooks); log after it ends.
+struct HookBatch {
+    std::optional<ll::thread::GlobalThreadPauser> pauser;
+    std::vector<std::string>                      failures;
+    HookBatch() {
+        if (ll::memory::shouldHookSuspendThreads()) pauser.emplace();
+    }
+    void finish() {
+        pauser.reset();
+        for (auto const& f : failures) log().error("GameInput: hooking {} failed", f);
+        failures.clear();
+    }
+};
+
+bool hookSlot(HookBatch& batch, void* target, void* detour, void** original, char const* name) {
+    if (ll::memory::hook(target, detour, reinterpret_cast<ll::memory::FuncPtr*>(original), ll::memory::HookPriority::Highest, false)
             != 0
         || !*original) {
-        log().error("GameInput: hooking {} failed", name);
+        batch.failures.emplace_back(name);
         *original = nullptr;
         return false;
     }
@@ -117,21 +162,47 @@ bool STDMETHODCALLTYPE d_GetMouseState(void* self, GiMouseState* state) {
     gMouseReads.fetch_add(1, std::memory_order_relaxed);
     bool ok = o_GetMouseState(self, state);
     if (!bg() || !state) return ok;
+
+    void* device = nullptr;
+    reinterpret_cast<GetDeviceFn>(vtableOf(self)[5])(self, &device);
+    if (device) reinterpret_cast<ReleaseFn>(vtableOf(device)[2])(device); // only used as a key
+
     std::lock_guard lock(gMouseMutex);
-    if (!gMouseInit) {
-        if (ok) {
-            gPosX   = state->positionX;
-            gPosY   = state->positionY;
-            gWheelX = state->wheelX;
-            gWheelY = state->wheelY;
-        }
-        gMouseInit = true;
+    auto         now   = std::chrono::steady_clock::now();
+    auto [it, isNew]   = gDevices.try_emplace(device);
+    DeviceMouse& d     = it->second;
+    if (isNew && ok) {
+        d.baseX      = state->positionX;
+        d.baseY      = state->positionY;
+        d.baseWheelX = state->wheelX;
+        d.baseWheelY = state->wheelY;
     }
-    state->buttons   = gButtons;
-    state->positionX = gPosX;
-    state->positionY = gPosY;
-    state->wheelX    = gWheelX;
-    state->wheelY    = gWheelY;
+    d.lastPoll = now;
+    if (!gPrimary) {
+        attachPrimary(device, d);
+    } else if (gPrimary != device) {
+        auto p = gDevices.find(gPrimary);
+        if (p == gDevices.end() || now - p->second.lastPoll > kPrimaryStale) {
+            // The primary is gone: continue from where this device's idle report left off.
+            attachPrimary(device, d);
+        }
+    }
+
+    bool primary     = gPrimary == device;
+    state->buttons   = primary ? gButtons : 0;
+    state->positionX = d.baseX + (primary ? gPosX - d.attachX : 0);
+    state->positionY = d.baseY + (primary ? gPosY - d.attachY : 0);
+    state->wheelX    = d.baseWheelX + (primary ? gWheelX - d.attachWheelX : 0);
+    state->wheelY    = d.baseWheelY + (primary ? gWheelY - d.attachWheelY : 0);
+    if (primary) {
+        // Fold what was reported into the base: a device's base is always the position it last
+        // reported, so losing or regaining "primary" never makes the camera jump.
+        d.baseX      = state->positionX;
+        d.baseY      = state->positionY;
+        d.baseWheelX = state->wheelX;
+        d.baseWheelY = state->wheelY;
+        attachPrimary(device, d);
+    }
     if (HWND h = gameWindow()) {
         POINT p = vstate::cursor();
         ClientToScreen(h, &p);
@@ -147,10 +218,12 @@ void hookReadingVtable(void* reading) {
         t_GetKeyCount   = vt[12];
         t_GetKeyState   = vt[13];
         t_GetMouseState = vt[14];
-        int n           = 0;
-        n += hookSlot(t_GetKeyCount, reinterpret_cast<void*>(&d_GetKeyCount), reinterpret_cast<void**>(&o_GetKeyCount), "GetKeyCount");
-        n += hookSlot(t_GetKeyState, reinterpret_cast<void*>(&d_GetKeyState), reinterpret_cast<void**>(&o_GetKeyState), "GetKeyState");
-        n += hookSlot(t_GetMouseState, reinterpret_cast<void*>(&d_GetMouseState), reinterpret_cast<void**>(&o_GetMouseState), "GetMouseState");
+        int       n     = 0;
+        HookBatch batch;
+        n += hookSlot(batch, t_GetKeyCount, reinterpret_cast<void*>(&d_GetKeyCount), reinterpret_cast<void**>(&o_GetKeyCount), "GetKeyCount");
+        n += hookSlot(batch, t_GetKeyState, reinterpret_cast<void*>(&d_GetKeyState), reinterpret_cast<void**>(&o_GetKeyState), "GetKeyState");
+        n += hookSlot(batch, t_GetMouseState, reinterpret_cast<void*>(&d_GetMouseState), reinterpret_cast<void**>(&o_GetMouseState), "GetMouseState");
+        batch.finish();
         log().info("GameInput: IGameInputReading hooks installed: {}/3", n);
     });
 }
@@ -174,7 +247,7 @@ HRESULT STDMETHODCALLTYPE d_GetPreviousReading(void* self, void* ref, uint32_t k
 }
 
 void unhookIf(void*& target, void* detour) {
-    if (target) ll::memory::unhook(target, detour);
+    if (target) ll::memory::unhook(target, detour, false);
     target = nullptr;
 }
 
@@ -216,14 +289,20 @@ void installGameInputHooks() {
             break;
         }
     }
-    hookSlot(t_GetCurrentReading, reinterpret_cast<void*>(&d_GetCurrentReading), reinterpret_cast<void**>(&o_GetCurrentReading), "GetCurrentReading");
-    hookSlot(t_GetNextReading, reinterpret_cast<void*>(&d_GetNextReading), reinterpret_cast<void**>(&o_GetNextReading), "GetNextReading");
-    hookSlot(t_GetPreviousReading, reinterpret_cast<void*>(&d_GetPreviousReading), reinterpret_cast<void**>(&o_GetPreviousReading), "GetPreviousReading");
+    {
+        HookBatch batch;
+        hookSlot(batch, t_GetCurrentReading, reinterpret_cast<void*>(&d_GetCurrentReading), reinterpret_cast<void**>(&o_GetCurrentReading), "GetCurrentReading");
+        hookSlot(batch, t_GetNextReading, reinterpret_cast<void*>(&d_GetNextReading), reinterpret_cast<void**>(&o_GetNextReading), "GetNextReading");
+        hookSlot(batch, t_GetPreviousReading, reinterpret_cast<void*>(&d_GetPreviousReading), reinterpret_cast<void**>(&o_GetPreviousReading), "GetPreviousReading");
+        batch.finish();
+    }
     // Our IGameInput instance stays alive on purpose (the hooks point into its DLL).
     log().info("GameInput: v2 hooks installed");
 }
 
 void uninstallGameInputHooks() {
+    std::optional<ll::thread::GlobalThreadPauser> pauser;
+    if (ll::memory::shouldHookSuspendThreads()) pauser.emplace();
     unhookIf(t_GetCurrentReading, reinterpret_cast<void*>(&d_GetCurrentReading));
     unhookIf(t_GetNextReading, reinterpret_cast<void*>(&d_GetNextReading));
     unhookIf(t_GetPreviousReading, reinterpret_cast<void*>(&d_GetPreviousReading));
@@ -246,7 +325,18 @@ uint32_t gameInputButtons() {
 }
 
 std::string gameInputStats() {
-    return std::format("mouseReads={} keyReads={} hooked={}", gMouseReads.load(), gKeyReads.load(), o_GetMouseState != nullptr);
+    size_t devices = 0;
+    {
+        std::lock_guard lock(gMouseMutex);
+        devices = gDevices.size();
+    }
+    return std::format(
+        "mouseReads={} keyReads={} mouseDevices={} hooked={}",
+        gMouseReads.load(),
+        gKeyReads.load(),
+        devices,
+        o_GetMouseState != nullptr
+    );
 }
 
 } // namespace headless

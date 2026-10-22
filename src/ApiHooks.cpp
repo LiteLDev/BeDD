@@ -5,7 +5,11 @@
 #include <array>
 #include <string_view>
 
+#include <optional>
+#include <vector>
+
 #include "ll/api/memory/Hook.h"
+#include "ll/api/thread/GlobalThreadPauser.h"
 
 namespace headless {
 
@@ -261,34 +265,46 @@ HookSlot* slotFor(std::string_view name) {
 void installApiHooks() {
     HMODULE user32 = GetModuleHandleW(L"user32.dll");
     if (!user32) user32 = LoadLibraryW(L"user32.dll");
-    int installed = 0;
-    for (auto& s : gSlots) {
-        s.target = reinterpret_cast<void*>(GetProcAddress(user32, s.name));
-        if (!s.target) {
-            log().error("user32!{} not found; not hooked", s.name);
-            continue;
+    int                      installed = 0;
+    std::vector<std::string> failures;
+    {
+        // One thread pause for the whole batch, as LeviLamina's HookRegistrar does: every pause
+        // risks stopping a thread inside a lock the hooking code needs (a hang in enable() was
+        // seen once). No logging while the other threads are paused.
+        std::optional<ll::thread::GlobalThreadPauser> pauser;
+        if (ll::memory::shouldHookSuspendThreads()) pauser.emplace();
+        for (auto& s : gSlots) {
+            s.target = reinterpret_cast<void*>(GetProcAddress(user32, s.name));
+            if (!s.target) {
+                failures.push_back(std::string("user32!") + s.name + " not found; not hooked");
+                continue;
+            }
+            int rc = ll::memory::hook(
+                s.target,
+                s.detour,
+                reinterpret_cast<ll::memory::FuncPtr*>(s.original),
+                ll::memory::HookPriority::Highest,
+                false
+            );
+            if (rc != 0 || !*s.original) {
+                failures.push_back(std::string("hooking user32!") + s.name + " failed (" + std::to_string(rc) + ")");
+                *s.original = nullptr;
+                s.target    = nullptr;
+                continue;
+            }
+            ++installed;
         }
-        int rc = ll::memory::hook(
-            s.target,
-            s.detour,
-            reinterpret_cast<ll::memory::FuncPtr*>(s.original),
-            ll::memory::HookPriority::Highest
-        );
-        if (rc != 0 || !*s.original) {
-            log().error("hooking user32!{} failed ({})", s.name, rc);
-            *s.original = nullptr;
-            s.target    = nullptr;
-            continue;
-        }
-        ++installed;
     }
+    for (auto const& f : failures) log().error("{}", f);
     log().info("user32 hooks installed: {}/{}", installed, gSlots.size());
 }
 
 void uninstallApiHooks() {
+    std::optional<ll::thread::GlobalThreadPauser> pauser;
+    if (ll::memory::shouldHookSuspendThreads()) pauser.emplace();
     for (auto& s : gSlots) {
         if (!s.target) continue;
-        ll::memory::unhook(s.target, s.detour);
+        ll::memory::unhook(s.target, s.detour, false);
         s.target    = nullptr;
         *s.original = nullptr;
     }
