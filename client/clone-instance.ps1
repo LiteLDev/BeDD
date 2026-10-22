@@ -12,8 +12,16 @@
   Every instance is a separate folder with its own mods\, logs\latest.log and game data, so
   several games can run at the same time, each driven through its own LeviHeadlessInput pipe.
 
+  Start a clone only as Minecraft.Windows.exe (Start-HeadlessGame.ps1): LeviLauncher.dll's data
+  isolation keys on that file name. Under another name the game silently uses the default
+  %APPDATA%\Minecraft Bedrock (your normal Minecraft profile) instead of the clone's data.
+
+  Every harness on the machine must then only touch its own instance's game (match the process
+  path, not just the name "Minecraft.Windows"): a harness that focuses, feeds or closes every
+  Minecraft.Windows process breaks the other instances' runs.
+
 .EXAMPLE
-  pwsh -NoProfile -File tools/clone-instance.ps1 -Slot 2
+  pwsh -NoProfile -File bin/LeviHeadlessInput/clone-instance.ps1 -Slot 2
 #>
 param(
     [Parameter(Mandatory)][ValidateRange(1, 32)][int]$Slot,

@@ -23,28 +23,55 @@ Targets Minecraft **1.26.51.01** with LeviLamina **26.51.7** (client), like the 
  ◀──{"ok":true}── after the game thread dispatched it
 ```
 
-1. **Synthetic input goes through the game's own window procedure.** The mod subclasses the game
-   window. Every request becomes ordinary window messages (`WM_KEYDOWN`, `WM_CHAR`,
-   `WM_MOUSEMOVE`, `WM_LBUTTONDOWN`, `WM_MOUSEWHEEL`, or `WM_INPUT` for raw mouse), dispatched on
-   the game thread in order. The game handles them exactly like real input
-   (`MainGameCore::WndProc_PC::onKeyboardAction` → `HIDControllerGameCoreDesktop::onKeyDown`,
-   `MouseDevice::feed`, ...), so UI hover, clicks, chat, key mappings all work. The reply is sent
-   only after the game thread processed the input, so scripts are deterministic.
-2. **The game never loses focus.** In background mode the focus-loss messages are swallowed, so the
+1. **Keyboard, text and pointer position go through the game's own window procedure.** The mod
+   subclasses the game window. Keys become `WM_KEYDOWN`/`WM_KEYUP`, text `WM_CHAR`, the pointer
+   `WM_MOUSEMOVE` plus a virtual cursor (what the hooked `GetCursorPos` returns), dispatched on the
+   game thread in order. The game handles them exactly like real input
+   (`MainGameCore::WndProc_PC::onKeyboardAction` → `HIDControllerGameCoreDesktop::onKeyDown`), so
+   chat, key mappings and UI hover work. The reply is sent only after the game thread processed
+   the input, so scripts are deterministic.
+2. **Mouse buttons, wheel and camera go through a virtual GameInput mouse.** Bedrock reads the
+   mouse with the GDK **GameInput** API (`GameInputRedist.dll`, interface v2), straight from the
+   device: window messages such as `WM_LBUTTONDOWN` are ignored, and without the mod your real
+   mouse would still click and turn the camera in a background game. The mod hooks
+   `IGameInputReading::GetMouseState` (and `GetKeyCount`/`GetKeyState`): in background mode the game
+   reads the virtual buttons, relative position (camera), wheel and absolute position instead.
+3. **The game never loses focus.** In background mode the focus-loss messages are swallowed, so the
    game does not pause, open the pause menu or release its keys when it is not the foreground
-   window. At start-up the window goes to the bottom of the Z order and the foreground is handed back
-   to the window you were using.
-3. **Your real input never reaches the game.** Real client-area input messages are swallowed, and
+   window. `Start-HeadlessGame.ps1` starts the exe with `SW_SHOWNOACTIVATE`, the hooked
+   `ShowWindow`/`SetWindowPos`/`SetActiveWindow`/`BringWindowToTop`/`SetForegroundWindow` never
+   activate the game's windows, and the window is kept at the bottom of the Z order: in tests the
+   game never appeared in the foreground at all.
+4. **Your real input never reaches the game.** Real client-area input messages are swallowed, and
    user32 calls through which the game reads or grabs the devices are hooked in-process to see a
    *virtual* state instead: `ClipCursor` (no-op: your cursor is never confined), `SetCursorPos`
    (moves the virtual cursor only), `GetCursorPos`/`GetPhysicalCursorPos`, `GetAsyncKeyState`,
    `GetKeyState`, `GetKeyboardState`, `GetForegroundWindow`/`GetActiveWindow`/`GetFocus` (report the
    game window), `SetForegroundWindow` (no-op for the game window), `GetRawInputData` (resolves the
    synthetic raw-input handles), `GetRawInputBuffer` (drops real buffered raw input).
-4. **Screenshots** use `PrintWindow(PW_RENDERFULLCONTENT)`, which works while the window is covered.
+5. **Screenshots** use `PrintWindow(PW_RENDERFULLCONTENT)`, which works while the window is covered.
 
 Escape hatch: **Ctrl+Shift+F12** on the real keyboard while the game window has the focus turns
 background mode off (real input works again), as does `Set-HeadlessBackground $false`.
+
+## Several games at once
+
+Because nothing needs the foreground, several game instances can run side by side, each driven
+through its own pipe:
+
+```powershell
+pwsh -NoProfile -File bin\LeviHeadlessInput\clone-instance.ps1 -Slot 2       # versions\1.26.51.01-hi2
+& bin\LeviHeadlessInput\Start-HeadlessGame.ps1 -Instance 1.26.51.01-hi2      # no launcher, no activation
+Connect-HeadlessInput -PipeName LeviHeadlessInput-2                         # pipeName from its config.json
+```
+
+`clone-instance.ps1` makes `versions\<base>-hi<N>` from the LeviLauncher instance with hard links
+(game files) and junctions (`data`, `Installers`), and copies only the per-instance state
+(`Minecraft Bedrock`: worlds, options, sign-in; `mods\LeviLamina`), so a clone costs ~90 MB and a
+few seconds. Each clone has its own `mods\`, `logs\latest.log` and worlds. Bedrock does not stop a
+second process. Windows Firewall may ask once per new exe path (the game opens network sockets):
+**Cancel** is fine. Harnesses give each instance ("slot") its own lock file, see
+BeetrootSkin's `tools/e2e` for a complete example (`run.ps1 -Slot`, `Set-E2EInstance`).
 
 ## Build
 
@@ -114,7 +141,7 @@ Connect-HeadlessInput                                   # waits for the pipe and
 Send-HeadlessKey E                                      # press; -Action down|up; -Vk 0x10
 Send-HeadlessText '/give @s apple 3'                    # WM_CHAR, no key presses
 Send-HeadlessMouse click -RX 0.5 -RY 0.474              # move|down|up|click|wheel; -X -Y pixels; -Button right
-Send-HeadlessRaw move -Dx 200 -Dy 0                     # raw mouse (camera); click|down|up|wheel
+Send-HeadlessRaw move -Dx 200 -Dy 0                     # camera (relative); down|up|click -Button right to use an item
 Save-HeadlessScreenshot C:\temp\shot.png
 Get-HeadlessState                                       # counters, hooked-API calls, real foreground?
 Set-HeadlessBackground $false                           # hand the game back to the real devices
@@ -132,8 +159,8 @@ game thread has dispatched the input (`timeoutMs`, default 5000).
 | `state` | | `ping` fields + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api}` |
 | `key` | `key` (name) or `vk`; `action` press\|down\|up; `holdMs` | names: letters, digits, ESC, ENTER, BACK, TAB, SPACE, SHIFT, CTRL, ALT, LEFT/UP/RIGHT/DOWN, HOME, END, PGUP, PGDN, INSERT, DELETE, F1..F24, SLASH, GRAVE, MINUS, EQUALS |
 | `text` | `text`; `delayMs` | one `WM_CHAR` per UTF-16 unit |
-| `mouse` | `action` move\|down\|up\|click\|wheel; `x`,`y` (client px) or `rx`,`ry` (fractions); `button` left\|right\|middle; `notches`; `holdMs` | no point = the virtual cursor |
-| `raw` | `action` move\|down\|up\|click\|wheel; `dx`,`dy`; `button`; `notches` | synthetic `WM_INPUT` (relative) |
+| `mouse` | `action` move\|down\|up\|click\|wheel; `x`,`y` (client px) or `rx`,`ry` (fractions); `button` left\|right\|middle; `notches`; `holdMs` | moves the virtual cursor (if a point is given), then buttons/wheel on the virtual GameInput mouse; no point = where the cursor is |
+| `raw` | `action` move\|down\|up\|click\|wheel; `dx`,`dy` (mouse counts); `steps`; `button`; `notches`; `holdMs` | virtual GameInput mouse: camera while the mouse is grabbed |
 | `release` | | releases every held key/button |
 | `focus` | | re-sends the "focus gained" messages |
 | `window` | `clientWidth`, `clientHeight`, `placement` back\|offscreen\|none | never activates the window |
@@ -145,7 +172,7 @@ game thread has dispatched the input (`timeoutMs`, default 5000).
 `mods\LeviHeadlessInput\config\config.json` (written by `Install-HeadlessInputMod`):
 
 ```json
-{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "trace": false }
+{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "trace": false, "pipeName": "LeviHeadlessInput" }
 ```
 
 Without the file the mod is passive (background off; the pipe still works). `trace` logs message

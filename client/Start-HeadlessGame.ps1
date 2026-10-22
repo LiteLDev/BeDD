@@ -53,6 +53,8 @@ public static class Launch {
 }
 
 $dir = Join-Path $VersionsDir $Instance
+# Always this exact name: LeviLauncher.dll's data isolation keys on it (under another name the game
+# would use the default %APPDATA%\Minecraft Bedrock profile instead of the instance's data).
 $exe = Join-Path $dir 'Minecraft.Windows.exe'
 if (-not (Test-Path $exe)) { throw "No game instance at $dir" }
 $env:LEVI_HEADLESS_RETURN_FOCUS = [string][int64][HeadlessInput.Launch]::GetForegroundWindow()
