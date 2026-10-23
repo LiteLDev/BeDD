@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-23
+
 ### Added
+
+- Loopback-only sockets (`loopbackOnly`, on by default): in background mode `bind()` to 0.0.0.0/:: is turned into a loopback bind, so a new game instance (a new exe path) no longer raises the Windows Firewall "allow access" prompt that stopped unattended runs. Outgoing connections (local servers, the internet) are unaffected; nothing outside the PC can reach a test game. `state` reports `loopbackRebinds`.
 
 - Safety net in the `Start-Game` wrapper: worlds of the instance written in the last 15 minutes (the test world a harness just restored) are made single-player before the game starts, so a harness that forgot `Set-WorldSinglePlayer` no longer breaks other projects' parallel runs with "Blaze". Older worlds are never touched.
 
@@ -36,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Start-HeadlessGame.ps1` (start an instance without activating it) and `clone-instance.ps1` (cheap clone instances for parallel games).
 - Trace mode: message, API-hook and GameInput statistics, and every input event that reaches the game, marked synthetic or real.
 
-[Unreleased]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/LiteLDev/LeviHeadlessInput/releases/tag/v0.1.0

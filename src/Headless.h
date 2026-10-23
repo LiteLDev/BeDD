@@ -36,6 +36,8 @@ struct Options {
     bool trace = false;
     /// Control pipe name (\\.\pipe\<name>); one per game instance when several run in parallel.
     std::string pipeName = "LeviHeadlessInput";
+    /// In background mode, turn wildcard bind()s into loopback ones (no firewall prompts).
+    bool loopbackOnly = true;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -133,6 +135,11 @@ enum : int { kGiLeft = 0x1, kGiRight = 0x2, kGiMiddle = 0x4 };
 void gameInputMouse(int64_t dx, int64_t dy, int wheelNotches, int buttonMask, bool buttonDown);
 [[nodiscard]] uint32_t    gameInputButtons();
 [[nodiscard]] std::string gameInputStats();
+
+// NetHooks.cpp: loopback-only sockets in background mode (no Windows Firewall prompts).
+void                   installNetHooks();
+void                   uninstallNetHooks();
+[[nodiscard]] uint64_t loopbackRebinds();
 
 /// Trace.cpp: log the game's input events (trace mode only).
 void startInputTrace();

@@ -227,6 +227,7 @@ json handle(json const& j) {
             {"realForegroundSeen", s.realForegroundSeen.load()},
             {"api",                apiHookStats()             },
             {"gameInput",          gameInputStats()           },
+            {"loopbackRebinds",    loopbackRebinds()          },
         };
     } else if (op == "background") {
         bool on = j.value("on", true);

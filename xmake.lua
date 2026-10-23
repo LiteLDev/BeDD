@@ -44,7 +44,7 @@ target("LeviHeadlessInput")
         {tools = {"clang_cl"}}
     )
     add_packages("levilamina", "nlohmann_json")
-    add_syslinks("user32")
+    add_syslinks("user32", "ws2_32")
     add_includedirs("src")
     add_headerfiles("src/**.h")
     add_files("src/**.cpp")

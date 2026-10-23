@@ -52,6 +52,7 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.clientHeight = j.value("clientHeight", gOptions.clientHeight);
     gOptions.trace        = j.value("trace", gOptions.trace);
     gOptions.pipeName     = j.value("pipeName", gOptions.pipeName);
+    gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
 }
 
 bool Mod::load() {
@@ -59,6 +60,8 @@ bool Mod::load() {
     getSelf().getLogger().setFlushLevel(ll::io::LogLevel::Trace);
     readOptions(getSelf().getConfigDir() / "config.json");
     gBackground = gOptions.background;
+    // Before the game sets up its network (load() runs before enable()).
+    if (gOptions.background && gOptions.loopbackOnly) installNetHooks();
     log().info(
         "LeviHeadlessInput loaded: background={} placement={} client={}x{} trace={} pipe={}",
         gOptions.background,
@@ -87,6 +90,7 @@ bool Mod::disable() {
     stopWindowWatcher();
     uninstallGameInputHooks();
     uninstallApiHooks();
+    uninstallNetHooks();
     return true;
 }
 
