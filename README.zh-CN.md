@@ -82,7 +82,8 @@ Connect-HeadlessInput -PipeName LeviHeadlessInput-1.26.51.01-hi2
 - 按**实例目录**识别游戏进程，不要只看进程名 `Minecraft.Windows`，否则会误操作、误关其他实例的游戏；
 - 必须以 `Minecraft.Windows.exe` 这个文件名启动：LeviLauncher 的数据隔离按这个文件名生效，换了名字游戏会悄悄改用默认的
   `%APPDATA%\Minecraft Bedrock`（你平时玩的存档目录）；
-- 每个新实例路径第一次启动时，Windows 防火墙可能弹一次"允许访问"，点**取消**即可。
+- 游戏实例不会再弹 Windows 防火墙的"允许访问"：开启 `loopbackOnly`（默认）后，游戏只在本机回环地址上监听，对外连接不受影响。
+  测试框架启动的专用服务器不在此列，每个新路径会问一次，点**取消**即可。
 
 完整的测试框架示例见 [BeetrootSkin](https://github.com/LiteLDev/BeetrootSkin/tree/main/tools/e2e) 和
 [AlleviatedBackpacks](https://github.com/LiteLDev/AlleviatedBackpacks/tree/main/tools/e2e)（`run.ps1 -Slot`、`Set-E2EInstance`）。

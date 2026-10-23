@@ -85,6 +85,7 @@ pipe still works). A harness writes:
 | `clientWidth`, `clientHeight` | client-area size applied once the window exists (0 = leave it) |
 | `trace` | log message/API-hook statistics every 5 s and every key/mouse event that reaches the game's input layer |
 | `pipeName` | `\\.\pipe\<pipeName>`; one per game instance when several run at once |
+| `loopbackOnly` | default `true`: in background mode, binds to 0.0.0.0/:: go to loopback, so new instances never raise the Windows Firewall "allow access" prompt; outgoing connections still work |
 
 The environment variable `LEVI_HEADLESS_RETURN_FOCUS` (a window handle, set by
 `Start-HeadlessGame.ps1`) tells the mod which window gets the foreground back if the game still
@@ -130,7 +131,9 @@ second process. Rules for harnesses:
 - Always start the exe as `Minecraft.Windows.exe`: LeviLauncher's data isolation keys on that file
   name. Under another name the game silently uses the default `%APPDATA%\Minecraft Bedrock`
   profile instead of the instance's data.
-- Windows Firewall may ask once per new exe path (the game opens network sockets): **Cancel** is fine.
+- Game instances do not raise Windows Firewall prompts: with `loopbackOnly` the game only listens
+  on loopback. Dedicated servers started by harnesses are not covered: they ask once per new exe
+  path, and **Cancel** is fine.
 - Every game signs in to Minecraft's online **signaling service** with the same ID (same PC, same
   account), and each new sign-in knocks the previous one out. Two consequences:
   - Make test worlds single-player: `Set-WorldSinglePlayer <worldDir>` (shim) turns multiplayer
