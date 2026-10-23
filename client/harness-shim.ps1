@@ -85,6 +85,23 @@ function Set-WorldSinglePlayer([Parameter(Mandatory)][string]$WorldDir) {
     }
 }
 
+# Safety net, run by the Start-Game wrapper: makes single-player every world of this instance whose
+# level.dat was written in the last -Minutes, i.e. the test world the harness has just restored,
+# even if the harness forgot Set-WorldSinglePlayer (a harness copied before it existed broke the
+# other projects' parallel runs with "Blaze"). Older worlds (e.g. a human's own worlds in the
+# LeviLauncher instance) are never touched. Needs the harness's $script:VersionDir.
+function Set-RecentWorldsSinglePlayer([int]$Minutes = 15) {
+    $versionDir = Get-Variable -Name VersionDir -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+    if (-not $versionDir) { return }
+    $since = (Get-Date).AddMinutes(-$Minutes)
+    $levels = Get-ChildItem (Join-Path $versionDir 'Minecraft Bedrock\Users\*\games\com.mojang\minecraftWorlds\*\level.dat') -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -gt $since }
+    foreach ($l in $levels) {
+        Set-WorldSinglePlayer $l.DirectoryName
+        Write-Host "[e2e] headless input: world '$(Split-Path $l.DirectoryName -Leaf)' set to single-player (signaling safety)"
+    }
+}
+
 # --- Native class redirect ----------------------------------------------------------------------
 
 # Scenarios also call the harness's C# helpers directly ([X.Native]::Key(vk, up),
@@ -196,6 +213,7 @@ if (Get-Command Start-Game -CommandType Function -ErrorAction SilentlyContinue) 
     $script:HeadlessOriginalStartGame = ${function:Start-Game}
     function Start-Game {
         Enter-SignalingLock -Exclusive:([bool]$script:ExclusiveSignaling)
+        Set-RecentWorldsSinglePlayer
         $env:LEVI_HEADLESS_RETURN_FOCUS = [string][int64][HeadlessInput.Foreground]::Get()
         & $script:HeadlessOriginalStartGame @args
     }

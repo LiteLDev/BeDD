@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Safety net in the `Start-Game` wrapper: worlds of the instance written in the last 15 minutes (the test world a harness just restored) are made single-player before the game starts, so a harness that forgot `Set-WorldSinglePlayer` no longer breaks other projects' parallel runs with "Blaze". Older worlds are never touched.
+
 ## [0.1.1] - 2026-10-23
 
 ### Added

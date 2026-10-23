@@ -135,7 +135,8 @@ second process. Rules for harnesses:
   account), and each new sign-in knocks the previous one out. Two consequences:
   - Make test worlds single-player: `Set-WorldSinglePlayer <worldDir>` (shim) turns multiplayer
     and LAN/Xbox Live/platform broadcast off. Otherwise games joining their worlds at the same time
-    fail with "An error has occurred" (code "Blaze").
+    fail with "An error has occurred" (code "Blaze"). As a safety net the shim's `Start-Game` also
+    does this for every world of the instance written in the last 15 minutes (the one just restored).
   - Runs that join a server over NetherNet need the other games closed. The shim's `Start-Game`
     and `Stop-Game` hold a machine-wide **signaling lock** (`%APPDATA%\levilauncher.exe\e2e-signaling.lock`)
     for the game's lifetime: shared by default, exclusive when the run sets
