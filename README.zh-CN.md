@@ -1,5 +1,7 @@
 # LeviHeadlessInput
 
+<img src="docs/logo.png" alt="" width="128" align="right">
+
 [English](README.md) | 简体中文
 
 用脚本驱动 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 版 Minecraft 基岩版**客户端**，

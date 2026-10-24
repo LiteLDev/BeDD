@@ -1,5 +1,7 @@
 # LeviHeadlessInput
 
+<img src="docs/logo.png" alt="" width="128" align="right">
+
 English | [简体中文](README.zh-CN.md)
 
 Drive a [LeviLamina](https://github.com/LiteLDev/LeviLamina) Minecraft Bedrock **client** from
