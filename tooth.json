@@ -6,7 +6,7 @@
   "info": {
     "name": "LeviHeadlessInput",
     "description": "Drive a Minecraft Bedrock client from test scripts without touching the real mouse, keyboard or foreground window",
-    "tags": ["platform:levilamina", "type:mod", "client", "testing"],
+    "tags": ["platform:levilamina", "type:mod", "client", "testing", "category:developer", "automation", "input"],
     "avatar_url": "https://raw.githubusercontent.com/LiteLDev/LeviHeadlessInput/main/docs/logo.png"
   },
   "variants": [
