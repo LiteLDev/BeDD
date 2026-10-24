@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - A logo (`docs/logo.png`), shown on [LeviMC Mods](https://levimc.org/mods/) through `avatar_url` in `tooth.json`.
+- README rewritten for script authors, with a showcase gallery (`docs/showcase/`, reproducible with `tools/showcase/record.ps1`); the internals, pipe protocol and build notes moved to CONTRIBUTING.md.
 
 ## [0.1.2] - 2026-10-23
 

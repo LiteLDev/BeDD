@@ -4,105 +4,149 @@
 
 [English](README.md) | 简体中文
 
-用脚本驱动 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 版 Minecraft 基岩版**客户端**，
-**全程不碰你的鼠标、键盘和前台窗口**，还能**同时跑多个游戏实例**。
+[![Release](https://img.shields.io/github/v/release/LiteLDev/LeviHeadlessInput)](https://github.com/LiteLDev/LeviHeadlessInput/releases)
+[![License](https://img.shields.io/github/license/LiteLDev/LeviHeadlessInput)](COPYING.LESSER)
 
-客户端 mod 的端到端测试通常对前台的游戏发送真实输入（`SendInput`）：测试期间没人能用电脑，一次也只能测一个游戏。
-LeviHeadlessInput 是一个仅供测试使用的客户端 mod，配有 PowerShell 客户端。脚本通过命名管道把指令发给 mod，
-由 mod 在游戏内部注入输入；游戏始终留在后台，并且不理会真实的输入设备。
+让 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 客户端 mod 的端到端测试**在后台跑**。
+脚本在 Minecraft 基岩版里按键、打字、点击，你的鼠标、键盘和窗口照常归你用，还能同时开好几个游戏一起测。
+
+<p align="center"><img src="docs/showcase/desktop.webp" alt="三个 Minecraft 窗口跟着测试脚本动，前面的终端一直保持焦点" width="100%"></p>
 
 > [!WARNING]
-> 这是**测试工具**。加载后只要开着后台模式，游戏就会忽略你真实的鼠标和键盘。不要把它留在你平时玩的游戏里
-> （在游戏窗口按 **Ctrl+Shift+F12** 可以关闭后台模式）。
+> 这是**测试工具**。后台模式开着时，游戏不理会你真实的鼠标和键盘。别把它留在平时玩的游戏里
+> （在游戏窗口按 **Ctrl+Shift+F12** 可以关掉后台模式）。
 
-适配 Minecraft **1.26.51.01**（GDK 版）与 LeviLamina **26.51.7**（客户端）。
+## 特性
 
-## 原理
+- **测试时照常用电脑。** 游戏不抢前台、不锁鼠标、不吃你的按键，你点哪儿都不会点进游戏里。
+- **多开一起测。** 每个游戏实例一条自己的管道；克隆一个实例只要几秒钟。
+- **跟真人玩一样。** 按键、聊天、键位绑定、菜单、悬停提示、点击、转视角都和真鼠标键盘一样生效。
+- **结果确定。** 每个调用都等游戏处理完输入才返回，不用靠猜的 `sleep`。
+- **窗口被挡住也能截图。** 游戏可以躲在你其他窗口后面。
+- **直接接进现有测试框架。** 一个文件替换掉 LeviLauncher 测试框架里常见的 `Click`、`Press-Key`、`Focus-Game` 等函数，测试场景一行不用改。
 
-1. **键盘、文字和指针位置走游戏自己的窗口过程。** mod 子类化游戏窗口，把按键转成 `WM_KEYDOWN`/`WM_KEYUP`、
-   文字转成 `WM_CHAR`、指针转成 `WM_MOUSEMOVE` 加一个虚拟光标（被 hook 的 `GetCursorPos` 返回它），
-   在游戏线程上按顺序派发。游戏处理它们的方式和处理真实输入完全一样，聊天、按键映射、界面悬停都正常。
-   只有游戏线程处理完之后才回复，所以脚本是确定性的。
-2. **鼠标按键、滚轮和视角走虚拟 GameInput 鼠标。** 基岩版通过 GDK 的 **GameInput** API（`GameInputRedist.dll`，接口 v2）
-   直接从设备读鼠标：游戏根本不看 `WM_LBUTTONDOWN` 这类消息。所以不加处理的话，即使游戏在后台，你的真实鼠标照样会点击、转视角。
-   mod hook 了 `IGameInputReading::GetMouseState`（以及 `GetKeyCount`/`GetKeyState`），后台模式下游戏读到的是虚拟的按键、
-   相对位移（视角）、滚轮和绝对位置。
-3. **游戏不会抢前台，也不会失去焦点。** 失焦消息被吞掉，游戏不会暂停、不会松开按键。`Start-HeadlessGame.ps1` 以
-   `SW_SHOWNOACTIVATE` 启动游戏；`ShowWindow`/`SetWindowPos`/`SetActiveWindow`/`BringWindowToTop`/`SetForegroundWindow`
-   都被 hook，永远不会激活游戏窗口；窗口一直处于 Z 序最底层。
-4. **真实输入到不了游戏。** 发往游戏客户区的真实输入消息会被吞掉；游戏用来读取或抓取设备的 user32 调用看到的都是**虚拟**状态：
-   `ClipCursor` 不生效（光标永远不会被锁住），`SetCursorPos` 只移动虚拟光标，`GetCursorPos`、`GetAsyncKeyState`、
-   `GetKeyState`、`GetKeyboardState`、`GetForegroundWindow` 等都返回虚拟值，真实的 raw input 会被丢弃。
-5. **截图**使用 `PrintWindow(PW_RENDERFULLCONTENT)`，窗口被挡住时也能截。
+<p align="center"><img src="docs/showcase/how-it-feels.svg" alt="你的输入只到你自己的应用；脚本通过各自的管道驱动三个后台游戏" width="100%"></p>
 
 ## 安装
 
+装进跑测试的那个游戏实例，例如用 [lip](https://github.com/futrime/lip)：
+
 ```powershell
-lip install github.com/LiteLDev/LeviHeadlessInput     # 装到游戏实例的 mods\ 目录
+lip install github.com/LiteLDev/LeviHeadlessInput#client
 ```
 
 也可以从 [Releases](https://github.com/LiteLDev/LeviHeadlessInput/releases) 下载
-`leviheadlessinput-client-windows-x64.zip` 解压到 `mods\`。测试框架一般会在每次运行时自己部署它。
+`leviheadlessinput-client-windows-x64.zip`，解压到该实例的 `mods\` 目录。多数测试框架会在每次运行开始时自己放进去、结束后删掉
+（[见下文](#接入测试框架)）。
 
-没有 `mods\LeviHeadlessInput\config\config.json` 时 mod 处于被动状态（后台模式关闭，管道照常工作）。测试框架会写入：
+需要 Minecraft **1.26.51.01**（GDK 版）和 LeviLamina **26.51.7**（客户端），通过 LeviLauncher 启动。
+只有测试机上的游戏需要装，服务器和玩家都不用。
 
-```json
-{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "trace": false, "pipeName": "LeviHeadlessInput" }
-```
+## 用法
 
-各字段的含义见[英文 README](README.md#install)。
-
-## PowerShell 客户端
+PowerShell 模块就放在 mod 旁边：
 
 ```powershell
 Import-Module .\mods\LeviHeadlessInput\HeadlessInput.psm1
-Connect-HeadlessInput                                   # 等待管道和游戏窗口就绪
-Send-HeadlessKey E                                      # 按键；-Action down|up；-Vk 0x10
-Send-HeadlessText '/give @s apple 3'                    # 输入文字（WM_CHAR，不产生按键）
-Send-HeadlessMouse click -RX 0.5 -RY 0.474              # move|down|up|click|wheel；-X -Y 像素；-Button right
-Send-HeadlessRaw move -Dx 200 -Dy 0                     # 转视角（相对位移）；down|up|click -Button right 使用物品
-Save-HeadlessScreenshot C:\temp\shot.png
-Get-HeadlessState                                       # 统计、被 hook 的 API 调用次数、是否在前台
-Set-HeadlessBackground $false                           # 把游戏交还给真实设备
-Set-HeadlessPipe LeviHeadlessInput-2                    # 切换到另一个实例
+Connect-HeadlessInput                          # 等游戏启动好
+Send-HeadlessKey E                             # 打开背包
+Send-HeadlessMouse click -RX 0.5 -RY 0.474     # 按窗口比例位置点击
+Send-HeadlessKey T; Send-HeadlessText '/give @s apple 3'; Send-HeadlessKey ENTER
+Save-HeadlessScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 ```
 
-## 多开
+| 命令 | 作用 |
+|---|---|
+| `Connect-HeadlessInput [-PipeName p]` | 等游戏就绪，并选定之后的调用发给哪个游戏 |
+| `Send-HeadlessKey E` | 按一下键；`-Action down`/`up` 按住或松开，`-Vk 0x10` 指定任意虚拟键码 |
+| `Send-HeadlessText '...'` | 输入文字（不产生按键，所以 `t` 不会打开聊天栏）；`-DelayMs` 设定每个字的间隔 |
+| `Send-HeadlessMouse click -RX 0.5 -RY 0.5` | `move`、`down`、`up`、`click`、`wheel`，位置用 `-X -Y` 像素或 `-RX -RY` 比例；`-Button right` 右键 |
+| `Send-HeadlessRaw move -Dx 200` | 在世界里转视角；`click -Button right` 使用物品 |
+| `Clear-HeadlessInput` | 松开所有还按着的键和鼠标按钮 |
+| `Save-HeadlessScreenshot path.png` / `Get-HeadlessBitmap` | 游戏画面，被挡住也照样截 |
+| `Set-HeadlessWindow 1600 900` | 调整游戏窗口大小，不会把它提到前面 |
+| `Set-HeadlessBackground $false` | 把游戏交还给你的真鼠标和键盘 |
+| `Get-HeadlessState` | 游戏是否在线、收到了多少输入、是否抢过前台 |
 
-既然不需要前台，就可以同时跑多个游戏实例，每个实例用自己的管道：
+按键名：字母、数字、`ESC`、`ENTER`、`BACK`、`TAB`、`SPACE`、`SHIFT`、`CTRL`、`ALT`、方向键（`LEFT` 等）、
+`HOME`、`END`、`PGUP`、`PGDN`、`INSERT`、`DELETE`、`F1`..`F24`、`SLASH`、`GRAVE`、`MINUS`、`EQUALS`。
+
+### 多开
 
 ```powershell
-pwsh -NoProfile -File clone-instance.ps1 -Slot 2                      # versions\1.26.51.01-hi2
-& .\Start-HeadlessGame.ps1 -Instance 1.26.51.01-hi2                    # 不经过启动器，不激活窗口
-Connect-HeadlessInput -PipeName LeviHeadlessInput-1.26.51.01-hi2
+pwsh -NoProfile -File clone-instance.ps1 -Slot 2                  # versions\1.26.51.01-hi2，约 90 MB，几秒钟
+& .\Start-HeadlessGame.ps1 -Instance 1.26.51.01-hi2                # 启动时不把窗口提到前面
+Connect-HeadlessInput -PipeName LeviHeadlessInput-1.26.51.01-hi2   # 该实例配置里的 pipeName
 ```
 
-`clone-instance.ps1` 用硬链接（游戏文件）和目录联接（`data`、`Installers`）克隆 LeviLauncher 实例，只复制每个实例自己的状态
-（`Minecraft Bedrock`：世界、设置、登录信息；`mods\LeviLamina`），一个克隆约 90 MB，几秒钟就能建好。测试框架需要注意：
+克隆出来的实例有自己的 `mods\`、日志、存档和设置。几条规矩，免得并行的测试互相打架：
 
-- 每个实例（槽位）用自己的锁文件；
-- 按**实例目录**识别游戏进程，不要只看进程名 `Minecraft.Windows`，否则会误操作、误关其他实例的游戏；
-- 必须以 `Minecraft.Windows.exe` 这个文件名启动：LeviLauncher 的数据隔离按这个文件名生效，换了名字游戏会悄悄改用默认的
-  `%APPDATA%\Minecraft Bedrock`（你平时玩的存档目录）；
-- 游戏实例不会再弹 Windows 防火墙的"允许访问"：开启 `loopbackOnly`（默认）后，游戏只在本机回环地址上监听，对外连接不受影响。
-  测试框架启动的专用服务器不在此列，每个新路径会问一次，点**取消**即可。
+- 每个实例用自己的锁文件；按**实例目录**找自己的游戏进程，别只看进程名 `Minecraft.Windows`（不然会关掉别人的游戏）。
+- 一定以 `Minecraft.Windows.exe` 这个文件名启动（`Start-HeadlessGame.ps1` 就是这样做的）：换个名字，游戏会悄悄改用你平时玩的
+  Minecraft 存档目录，而不是这个实例的。
+- 测试存档用 `Set-WorldSinglePlayer <存档目录>`（框架垫片里提供）设成单人：同一台电脑上的游戏共用一个联机登录，
+  多个多人存档同时打开会报"发生错误"（代码 "Blaze"）。
+- 需要在线加入服务器的测试，在 `Start-Game` 之前设 `$script:ExclusiveSignaling = $true`，等其他游戏关掉后独占整台电脑。
 
-完整的测试框架示例见 [BeetrootSkin](https://github.com/LiteLDev/BeetrootSkin/tree/main/tools/e2e) 和
-[AlleviatedBackpacks](https://github.com/LiteLDev/AlleviatedBackpacks/tree/main/tools/e2e)（`run.ps1 -Slot`、`Set-E2EInstance`）。
+### 接入测试框架
 
-## 接入测试框架、协议
-
-见[英文 README](README.md#use-it-from-a-harness)：`harness-shim.ps1` 可以原地替换常见的测试框架函数（`Click`、`Press-Key`、
-`Focus-Game` 等，参数不变），并支持把测试框架 C# 类里的输入方法重定向到管道；管道协议是按行分隔的 JSON。
-
-## 构建
-
-需要 Windows x64、[xmake](https://xmake.io)、Visual Studio 生成工具（MSVC 14.4x 或更新）和 LLVM（`clang-cl`）：
+`harness-shim.ps1` 原地替换 LeviLauncher 测试框架的常用函数（`Focus-Game`、`Assert-GameForeground`、
+`Set-GameWindowSize`、`Move-Mouse`、`Click`、`Scroll`、`Press-Key`、`Type-Text`、`Get-ClientBitmap`，参数不变），
+并包装 `Start-Game`/`Stop-Game`：
 
 ```powershell
-xmake f -a x64 -m release -p windows --target_type=client -y
-xmake -y        # -> bin\LeviHeadlessInput\
+. "$PSScriptRoot/lib.ps1"
+if (-not $Foreground) {
+    . "$headlessDir\harness-shim.ps1"
+    Register-HeadlessNative ([MyE2E.Native])   # 可选，见下文
+}
+# 部署完你的 mod、把其他 mod 挪开之后：
+if ($script:Headless) { Install-HeadlessInputMod -ModsDir $script:ModsDir -PipeName 'LeviHeadlessInput-<实例名>' }
+# ……在 finally 里、游戏关掉之后：
+if ($script:Headless) { Uninstall-HeadlessInputMod -ModsDir $script:ModsDir }
 ```
+
+游戏用 `Start-HeadlessGame.ps1` 启动，不要走启动器；"把其他 mod 挪开"那一步要跳过 `LeviHeadlessInput`：它每次运行都重新装、
+结束就删（留下一份的话，正常启动的游戏会不理你的鼠标键盘）。
+
+如果测试场景直接调用框架自己的输入类（比如 `[MyE2E.Native]::Key(0x10, $false)`），给这个类加上下面几个字段，
+并在每个方法开头加一行判断，`Register-HeadlessNative` 会把它们填好：
+
+```csharp
+public static Action<ushort, bool> KeyRedirect;          // (vk, up)
+public static Action<int, bool>    MouseButtonRedirect;  // (0 左 / 1 右 / 2 中, up)
+public static Action<int>          WheelRedirect;        // (delta，每格 120)
+public static Action<char>         UnicodeRedirect;
+public static Action<int, int>     MoveRelativeRedirect; // 视角
+public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedirect(vk, up); return; } /* 原来的 SendInput */ }
+```
+
+完整的测试框架可以参考 [BeetrootSkin](https://github.com/LiteLDev/BeetrootSkin/tree/main/tools/e2e) 和
+[AlleviatedBackpacks](https://github.com/LiteLDev/AlleviatedBackpacks/tree/main/tools/e2e)。
+
+## 设置
+
+`mods\LeviHeadlessInput\config\config.json`，一般由测试框架写入（`Install-HeadlessInputMod` 会写）。
+没有这个文件时 mod 是被动的：后台模式关闭，管道照样能用。
+
+```json
+{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "LeviHeadlessInput" }
+```
+
+| 键 | |
+|---|---|
+| `background` | 让游戏待在后台，不受你真鼠标键盘的影响 |
+| `placement` | `back`（放到你的窗口后面）、`offscreen`（移出屏幕）或 `none` |
+| `clientWidth`、`clientHeight` | 游戏窗口大小（0 表示不改），每次运行点击位置都一样 |
+| `pipeName` | 多开时每个实例一个 |
+| `loopbackOnly` | 默认 `true`：新实例不会弹 Windows 防火墙提示（测试框架自己启动的专用服务器还是会问一次，点**取消**即可） |
+| `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
+
+## 更多
+
+更多视频和截图：https://levimc.org/mods/github.com/LiteLDev/LeviHeadlessInput/?tab=gallery
+
+想自己构建、了解管道协议或内部原理？见 [CONTRIBUTING.md](CONTRIBUTING.md#development)。
 
 ## 许可证
 

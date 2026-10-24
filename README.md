@@ -4,238 +4,166 @@
 
 English | [简体中文](README.zh-CN.md)
 
-Drive a [LeviLamina](https://github.com/LiteLDev/LeviLamina) Minecraft Bedrock **client** from
-scripts **without touching your mouse, keyboard or foreground window**, and run **several game
-instances at once**.
+[![Release](https://img.shields.io/github/v/release/LiteLDev/LeviHeadlessInput)](https://github.com/LiteLDev/LeviHeadlessInput/releases)
+[![License](https://img.shields.io/github/license/LiteLDev/LeviHeadlessInput)](COPYING.LESSER)
 
-End-to-end tests of client mods usually send real input (`SendInput`) to a game in the foreground:
-nobody can use the PC during a run, and only one game can be tested at a time. LeviHeadlessInput is
-a test-only client mod with a PowerShell client. A script talks to the game over a named pipe; the
-mod feeds the input into the game itself while the game stays in the background and ignores the
-real devices.
+Run end-to-end tests of your [LeviLamina](https://github.com/LiteLDev/LeviLamina) client mods
+**in the background**. Your script presses keys, types and clicks inside Minecraft Bedrock, while
+your own mouse, keyboard and windows stay yours, and several games can play at once.
+
+<p align="center"><img src="docs/showcase/desktop.webp" alt="Three Minecraft windows react to a test script while the terminal in front keeps the focus" width="100%"></p>
 
 > [!WARNING]
-> This is a **testing tool**. While it is loaded with background mode on, the game ignores your
-> real mouse and keyboard. Do not leave it installed in a game you play
-> (**Ctrl+Shift+F12** in the game window turns background mode off).
+> This is a **testing tool**. While background mode is on, the game ignores your real mouse and
+> keyboard. Do not leave it in a game you play (**Ctrl+Shift+F12** in the game window turns
+> background mode off).
 
-Targets Minecraft **1.26.51.01** (GDK) with LeviLamina **26.51.7** (client).
+## Features
 
-## How it works
+- **Keep using your PC.** The game never takes the foreground, the cursor or your keystrokes, and
+  your clicks never land in it.
+- **Several games at once.** Each game instance has its own pipe; a cheap clone of an instance
+  takes a few seconds.
+- **Plays like a player.** Keys, chat, key bindings, menus, hover tooltips, clicks and the camera
+  all work as with a real mouse and keyboard.
+- **Deterministic.** Every call returns once the game has handled the input, so no guessing sleeps.
+- **Screenshots of covered windows.** The game can sit behind your other windows.
+- **Drop-in for existing harnesses.** One file replaces the usual `Click`, `Press-Key`, `Focus-Game`
+  helpers of LeviLauncher harnesses; scenarios stay as they are.
 
-```
- test script (pwsh)                      Minecraft.Windows.exe + LeviHeadlessInput.dll
- ──────────────────                      ─────────────────────────────────────────────
- Send-HeadlessKey E ──JSON line──▶ \\.\pipe\LeviHeadlessInput
-                                          │ queue Event{WM_KEYDOWN 'E'}; PostMessage(hwnd, WM_LHI)
-                                          ▼
-                                   subclassed window procedure (game thread)
-                                     WM_LHI → apply virtual key/cursor state
-                                            → CallWindowProc(game's WndProc, WM_KEYDOWN, ...)
-                                     real WM_KEY*/WM_MOUSE*/WM_INPUT/WM_POINTER* → swallowed
-                                     WM_ACTIVATEAPP(0)/WM_KILLFOCUS/WM_ACTIVATE(inactive) → swallowed
- ◀──{"ok":true}── after the game thread dispatched it
-```
-
-1. **Keyboard, text and pointer position go through the game's own window procedure.** The mod
-   subclasses the game window. Keys become `WM_KEYDOWN`/`WM_KEYUP`, text `WM_CHAR`, the pointer
-   `WM_MOUSEMOVE` plus a virtual cursor (what the hooked `GetCursorPos` returns), dispatched on the
-   game thread in order. The game handles them exactly like real input
-   (`MainGameCore::WndProc_PC::onKeyboardAction` → `HIDControllerGameCoreDesktop::onKeyDown`), so
-   chat, key mappings and UI hover work. The reply is sent only after the game thread processed
-   the input, so scripts are deterministic.
-2. **Mouse buttons, wheel and camera go through a virtual GameInput mouse.** Bedrock reads the
-   mouse with the GDK **GameInput** API (`GameInputRedist.dll`, interface v2), straight from the
-   device: window messages such as `WM_LBUTTONDOWN` are ignored, and without the mod your real
-   mouse would still click and turn the camera in a background game. The mod hooks
-   `IGameInputReading::GetMouseState` (and `GetKeyCount`/`GetKeyState`): in background mode the game
-   reads virtual buttons, relative position (camera), wheel and absolute position instead.
-3. **The game never takes the foreground or loses focus.** Focus-loss messages are swallowed, so
-   the game does not pause or release its keys. `Start-HeadlessGame.ps1` starts the exe with
-   `SW_SHOWNOACTIVATE`; the hooked `ShowWindow`/`SetWindowPos`/`SetActiveWindow`/
-   `BringWindowToTop`/`SetForegroundWindow` never activate the game's windows, and the window is
-   kept at the bottom of the Z order.
-4. **Your real input never reaches the game.** Real client-area input messages are swallowed, and
-   the user32 calls through which the game reads or grabs the devices see a *virtual* state:
-   `ClipCursor` (no-op: your cursor is never confined), `SetCursorPos` (moves the virtual cursor
-   only), `GetCursorPos`/`GetPhysicalCursorPos`, `GetAsyncKeyState`, `GetKeyState`,
-   `GetKeyboardState`, `GetForegroundWindow`/`GetActiveWindow`/`GetFocus` (report the game window),
-   `GetRawInputData`/`GetRawInputBuffer` (real raw input is dropped).
-5. **Screenshots** use `PrintWindow(PW_RENDERFULLCONTENT)`, which works while the window is covered.
+<p align="center"><img src="docs/showcase/how-it-feels.svg" alt="Your input goes to your apps; the script drives three background games over one pipe each" width="100%"></p>
 
 ## Install
 
+Put it into the game instance your tests run, for example with
+[lip](https://github.com/futrime/lip):
+
 ```powershell
-lip install github.com/LiteLDev/LeviHeadlessInput     # into the game instance's mods\ folder
+lip install github.com/LiteLDev/LeviHeadlessInput#client
 ```
 
 or unzip `leviheadlessinput-client-windows-x64.zip` from the
-[releases](https://github.com/LiteLDev/LeviHeadlessInput/releases) into `mods\`. Test harnesses
-usually deploy it themselves for each run (see [Use it from a harness](#use-it-from-a-harness)).
+[releases](https://github.com/LiteLDev/LeviHeadlessInput/releases) into the instance's `mods\`
+folder. Most harnesses copy it in at the start of a run and remove it afterwards
+([see below](#plug-it-into-a-harness)).
 
-Without `mods\LeviHeadlessInput\config\config.json` the mod is passive (background mode off; the
-pipe still works). A harness writes:
+Needs Minecraft **1.26.51.01** (GDK) with LeviLamina **26.51.7** (client), started through
+LeviLauncher. Only the test PC's game needs it; servers and players do not.
 
-```json
-{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "trace": false, "pipeName": "LeviHeadlessInput" }
-```
+## How to use
 
-| Key | |
-|---|---|
-| `background` | shield the game from focus loss and the real devices, keep it out of the foreground |
-| `placement` | `back` (bottom of the Z order), `offscreen` or `none` |
-| `clientWidth`, `clientHeight` | client-area size applied once the window exists (0 = leave it) |
-| `trace` | log message/API-hook statistics every 5 s and every key/mouse event that reaches the game's input layer |
-| `pipeName` | `\\.\pipe\<pipeName>`; one per game instance when several run at once |
-| `loopbackOnly` | default `true`: in background mode, binds to 0.0.0.0/:: go to loopback, so new instances never raise the Windows Firewall "allow access" prompt; outgoing connections still work |
-
-The environment variable `LEVI_HEADLESS_RETURN_FOCUS` (a window handle, set by
-`Start-HeadlessGame.ps1`) tells the mod which window gets the foreground back if the game still
-activates itself while starting.
-
-## PowerShell client
-
-`HeadlessInput.psm1` ships next to the mod:
+The PowerShell module ships next to the mod:
 
 ```powershell
 Import-Module .\mods\LeviHeadlessInput\HeadlessInput.psm1
-Connect-HeadlessInput                                   # waits for the pipe and the game window
-Send-HeadlessKey E                                      # press; -Action down|up; -Vk 0x10
-Send-HeadlessText '/give @s apple 3'                    # WM_CHAR, no key presses
-Send-HeadlessMouse click -RX 0.5 -RY 0.474              # move|down|up|click|wheel; -X -Y pixels; -Button right
-Send-HeadlessRaw move -Dx 200 -Dy 0                     # camera (relative); down|up|click -Button right to use an item
-Save-HeadlessScreenshot C:\temp\shot.png
-Get-HeadlessState                                       # counters, hooked-API calls, real foreground?
-Set-HeadlessBackground $false                           # hand the game back to the real devices
-Set-HeadlessPipe LeviHeadlessInput-2                    # talk to another instance
+Connect-HeadlessInput                          # waits until the game is up
+Send-HeadlessKey E                             # open the inventory
+Send-HeadlessMouse click -RX 0.5 -RY 0.474     # click at a fraction of the window
+Send-HeadlessKey T; Send-HeadlessText '/give @s apple 3'; Send-HeadlessKey ENTER
+Save-HeadlessScreenshot C:\temp\shot.png       # works while the window is covered
 ```
 
-## Several games at once
+| Command | What it does |
+|---|---|
+| `Connect-HeadlessInput [-PipeName p]` | wait for the game and pick which game the next calls go to |
+| `Send-HeadlessKey E` | press a key; `-Action down`/`up` to hold, `-Vk 0x10` for any virtual key |
+| `Send-HeadlessText '...'` | type text (no key presses, so `t` does not open chat); `-DelayMs` per character |
+| `Send-HeadlessMouse click -RX 0.5 -RY 0.5` | `move`, `down`, `up`, `click`, `wheel` at `-X -Y` pixels or `-RX -RY` fractions; `-Button right` |
+| `Send-HeadlessRaw move -Dx 200` | turn the camera in the world; `click -Button right` to use an item |
+| `Clear-HeadlessInput` | release every key and button still held |
+| `Save-HeadlessScreenshot path.png` / `Get-HeadlessBitmap` | the game's picture, even when covered |
+| `Set-HeadlessWindow 1600 900` | resize the game window without bringing it forward |
+| `Set-HeadlessBackground $false` | hand the game back to your real mouse and keyboard |
+| `Get-HeadlessState` | is the game up, how much input arrived, did it ever get the foreground |
 
-Because nothing needs the foreground, several game instances can run side by side, each driven
-through its own pipe:
+Key names: letters, digits, `ESC`, `ENTER`, `BACK`, `TAB`, `SPACE`, `SHIFT`, `CTRL`, `ALT`, arrows
+(`LEFT`...), `HOME`, `END`, `PGUP`, `PGDN`, `INSERT`, `DELETE`, `F1`..`F24`, `SLASH`, `GRAVE`,
+`MINUS`, `EQUALS`.
+
+### Several games at once
 
 ```powershell
-pwsh -NoProfile -File clone-instance.ps1 -Slot 2                      # versions\1.26.51.01-hi2
-& .\Start-HeadlessGame.ps1 -Instance 1.26.51.01-hi2                    # no launcher, no activation
-Connect-HeadlessInput -PipeName LeviHeadlessInput-1.26.51.01-hi2       # pipeName from its config.json
+pwsh -NoProfile -File clone-instance.ps1 -Slot 2                  # versions\1.26.51.01-hi2, ~90 MB, seconds
+& .\Start-HeadlessGame.ps1 -Instance 1.26.51.01-hi2                # starts it without bringing it forward
+Connect-HeadlessInput -PipeName LeviHeadlessInput-1.26.51.01-hi2   # the pipeName in that instance's config
 ```
 
-`clone-instance.ps1` makes `versions\<base>-hi<N>` from a LeviLauncher instance with hard links
-(game files) and junctions (`data`, `Installers`), and copies only the per-instance state
-(`Minecraft Bedrock`: worlds, options, sign-in; `mods\LeviLamina`), so a clone costs ~90 MB and a
-few seconds. Each clone has its own `mods\`, `logs\latest.log` and worlds. Bedrock does not stop a
-second process. Rules for harnesses:
+A clone has its own `mods\`, logs, worlds and options. A few rules keep parallel runs from
+tripping over each other:
 
-- Give every instance ("slot") its own lock file.
-- Match game processes by **instance folder**, never by the name `Minecraft.Windows` alone: a
-  harness that focuses, feeds or closes every `Minecraft.Windows` process breaks the other runs.
-- Always start the exe as `Minecraft.Windows.exe`: LeviLauncher's data isolation keys on that file
-  name. Under another name the game silently uses the default `%APPDATA%\Minecraft Bedrock`
-  profile instead of the instance's data.
-- Game instances do not raise Windows Firewall prompts: with `loopbackOnly` the game only listens
-  on loopback. Dedicated servers started by harnesses are not covered: they ask once per new exe
-  path, and **Cancel** is fine.
-- Every game signs in to Minecraft's online **signaling service** with the same ID (same PC, same
-  account), and each new sign-in knocks the previous one out. Two consequences:
-  - Make test worlds single-player: `Set-WorldSinglePlayer <worldDir>` (shim) turns multiplayer
-    and LAN/Xbox Live/platform broadcast off. Otherwise games joining their worlds at the same time
-    fail with "An error has occurred" (code "Blaze"). As a safety net the shim's `Start-Game` also
-    does this for every world of the instance written in the last 15 minutes (the one just restored).
-  - Runs that join a server over NetherNet need the other games closed. The shim's `Start-Game`
-    and `Stop-Game` hold a machine-wide **signaling lock** (`%APPDATA%\levilauncher.exe\e2e-signaling.lock`)
-    for the game's lifetime: shared by default, exclusive when the run sets
-    `$script:ExclusiveSignaling = $true` (e.g. in its prelaunch script). An exclusive run blocks new
-    games, then waits for the running ones to close. The lock is held through file handles, so a
-    killed run never leaves it stuck. An exclusive run also waits until no `Minecraft.Windows`
-    process is left at all, so games started outside the lock (older harnesses) cannot break it.
+- Give every instance its own lock file, and find your game by its **instance folder**, never just
+  by the name `Minecraft.Windows` (or you close someone else's game).
+- Start games as `Minecraft.Windows.exe` (`Start-HeadlessGame.ps1` does): under another file name
+  the game uses your normal Minecraft profile instead of the instance's.
+- Make test worlds single-player with `Set-WorldSinglePlayer <worldDir>` (from the harness shim):
+  games on one PC share an online sign-in, and multiplayer worlds opened at the same time fail with
+  "An error has occurred" (code "Blaze").
+- A run that joins a server online sets `$script:ExclusiveSignaling = $true` before `Start-Game`
+  and gets the PC to itself while the other games close.
 
-[BeetrootSkin](https://github.com/LiteLDev/BeetrootSkin/tree/main/tools/e2e) and
-[AlleviatedBackpacks](https://github.com/LiteLDev/AlleviatedBackpacks/tree/main/tools/e2e) have
-complete harnesses (`run.ps1 -Slot`, `Set-E2EInstance`).
+### Plug it into a harness
 
-## Use it from a harness
-
-`harness-shim.ps1` is a drop-in for PowerShell harnesses with the usual helper names. Dot-source it
-right after the harness's own `lib.ps1`, at script level:
+`harness-shim.ps1` replaces the usual helpers of LeviLauncher harnesses (`Focus-Game`,
+`Assert-GameForeground`, `Set-GameWindowSize`, `Move-Mouse`, `Click`, `Scroll`, `Press-Key`,
+`Type-Text`, `Get-ClientBitmap`, same parameters) and wraps `Start-Game`/`Stop-Game`:
 
 ```powershell
 . "$PSScriptRoot/lib.ps1"
 if (-not $Foreground) {
-    . "$headlessDir\harness-shim.ps1"          # replaces Click/Press-Key/Focus-Game/... (same parameters)
-    Register-HeadlessNative ([MyE2E.Native])   # routes [MyE2E.Native]::Key/MouseButton/... too (see below)
+    . "$headlessDir\harness-shim.ps1"
+    Register-HeadlessNative ([MyE2E.Native])   # optional, see below
 }
-...
 # after deploying your mod and moving the other mods aside:
 if ($script:Headless) { Install-HeadlessInputMod -ModsDir $script:ModsDir -PipeName 'LeviHeadlessInput-<instance>' }
-...
-finally {
-    # after the game is closed:
-    if ($script:Headless) { Uninstall-HeadlessInputMod -ModsDir $script:ModsDir }
-}
+# ... and in finally, once the game is closed:
+if ($script:Headless) { Uninstall-HeadlessInputMod -ModsDir $script:ModsDir }
 ```
 
-The shim replaces `Focus-Game` (no-op), `Assert-GameForeground` (checks the pipe instead),
-`Set-GameWindowSize` (sized by the mod, never activated), `Move-Mouse`, `Click`, `Scroll`,
-`Press-Key`, `Type-Text` and `Get-ClientBitmap` (`-FromScreen` ignored), and wraps `Start-Game`.
-Coordinates are unchanged: client pixels, or fractions of the client area with `-Relative`. Start
-headless games with `Start-HeadlessGame.ps1` rather than through the launcher.
+Start games with `Start-HeadlessGame.ps1` rather than the launcher, and keep `LeviHeadlessInput`
+out of any "move other mods aside" step: it is installed fresh each run and removed afterwards (a
+leftover copy would make a normally started game ignore your mouse and keyboard).
 
-Keep `'LeviHeadlessInput'` out of any "move other mods aside" step: it is installed fresh every run
-and removed afterwards. A leftover must never be parked and restored later, because a normally
-started game with it ignores the real mouse and keyboard.
-
-Scenarios that call the harness's C# class directly (`[MyE2E.Native]::Key(0x10, $false)` to hold
-Shift, `::MouseButton(1, $false)` to hold right-click, ...) keep working once the class has
-redirect fields that `Register-HeadlessNative` fills:
+If your scenarios call the harness's own input class directly (`[MyE2E.Native]::Key(0x10, $false)`
+and friends), give it these fields and a one-line guard at the top of each method;
+`Register-HeadlessNative` fills them:
 
 ```csharp
 public static Action<ushort, bool> KeyRedirect;          // (vk, up)
 public static Action<int, bool>    MouseButtonRedirect;  // (0 left / 1 right / 2 middle, up)
 public static Action<int>          WheelRedirect;        // (delta, 120 per notch)
 public static Action<char>         UnicodeRedirect;
-public static Action<int, int>     MoveRelativeRedirect; // relative mouse (camera)
+public static Action<int, int>     MoveRelativeRedirect; // camera
 public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedirect(vk, up); return; } /* SendInput as before */ }
-// ...same one-line guard at the top of MouseButton, Wheel, Unicode, MoveRelative
 ```
 
-## Protocol
+[BeetrootSkin](https://github.com/LiteLDev/BeetrootSkin/tree/main/tools/e2e) and
+[AlleviatedBackpacks](https://github.com/LiteLDev/AlleviatedBackpacks/tree/main/tools/e2e) have
+complete harnesses to copy from.
 
-`\\.\pipe\<pipeName>` (local only, default `LeviHeadlessInput`), UTF-8, one JSON object per line
-each way. An `id` is echoed. Replies are `{"ok":true,...}` or `{"ok":false,"error":"..."}`. Input
-ops reply after the game thread has dispatched the input (`timeoutMs`, default 5000).
+## Settings
 
-| op | fields | |
-|---|---|---|
-| `ping` | | `protocol`, `pid`, `hwnd`, `background`, `client{w,h}`, `cursor{x,y}`, `realForeground` |
-| `state` | | `ping` fields + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput}` |
-| `key` | `key` (name) or `vk`; `action` press\|down\|up; `holdMs` | names: letters, digits, ESC, ENTER, BACK, TAB, SPACE, SHIFT, CTRL, ALT, LEFT/UP/RIGHT/DOWN, HOME, END, PGUP, PGDN, INSERT, DELETE, F1..F24, SLASH, GRAVE, MINUS, EQUALS |
-| `text` | `text`; `delayMs` | one `WM_CHAR` per UTF-16 unit |
-| `mouse` | `action` move\|down\|up\|click\|wheel; `x`,`y` (client px) or `rx`,`ry` (fractions); `button` left\|right\|middle; `notches`; `holdMs` | moves the virtual cursor (if a point is given), then buttons/wheel on the virtual GameInput mouse |
-| `raw` | `action` move\|down\|up\|click\|wheel; `dx`,`dy` (mouse counts); `steps`; `button`; `notches`; `holdMs` | virtual GameInput mouse: camera while the mouse is grabbed |
-| `release` | | releases every held key/button |
-| `focus` | | re-sends the "focus gained" messages |
-| `window` | `clientWidth`, `clientHeight`, `placement` back\|offscreen\|none | never activates the window |
-| `background` | `on` | background mode on/off |
-| `flush` | | waits until everything posted was dispatched |
+`mods\LeviHeadlessInput\config\config.json`, usually written by the harness
+(`Install-HeadlessInputMod` does it). Without it the mod stays passive: background mode off, the
+pipe still answers.
 
-## Building
-
-Windows x64, [xmake](https://xmake.io), Visual Studio Build Tools (MSVC 14.4x or newer) and LLVM
-(`clang-cl`):
-
-```powershell
-xmake f -a x64 -m release -p windows --target_type=client -y
-xmake -y        # -> bin\LeviHeadlessInput\ (DLL, manifest, HeadlessInput.psm1, harness-shim.ps1, Start-HeadlessGame.ps1, clone-instance.ps1)
+```json
+{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "LeviHeadlessInput" }
 ```
 
-The mod packer reads the version from `git describe`, so the repository needs at least one commit.
+| Key | |
+|---|---|
+| `background` | keep the game in the background and away from your real mouse and keyboard |
+| `placement` | `back` (behind your windows), `offscreen` or `none` |
+| `clientWidth`, `clientHeight` | game window size (0 = leave it), so clicks land in the same place every run |
+| `pipeName` | one per game instance when several run at once |
+| `loopbackOnly` | default `true`: no Windows Firewall prompt for each new instance (dedicated servers your harness starts still ask once; **Cancel** is fine) |
+| `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
 
-`tools\dev.ps1 [-Trace]` is a playground: it takes the shared e2e lock
-(`%APPDATA%\levilauncher.exe\bei-e2e.lock`), deploys the mod, launches the game and logs every
-foreground and cursor-clip change to `tools\out\desktop-watch.log` until the game exits or
-`tools\out\dev.stop` exists (`tools\out\dev.restart` redeploys and relaunches without giving up the
-lock). It always closes the game, removes the mod and releases the lock.
+## More
+
+More videos and pictures: https://levimc.org/mods/github.com/LiteLDev/LeviHeadlessInput/?tab=gallery
+
+Building it yourself, the pipe protocol or how it works inside? See [CONTRIBUTING.md](CONTRIBUTING.md#development).
 
 ## License
 

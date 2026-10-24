@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-labelledby="t d">
+  <title id="t">Your input stays yours, the script drives the games</title>
+  <desc id="d">Your mouse and keyboard go to your own apps and never reach the games. A test script sends keys, text and clicks over one pipe per game to three Minecraft instances running in the background, and each game answers once it has handled the input.</desc>
+  <style>
+    .bg { fill: #16213a; }
+    .card { fill: #1f2d4b; stroke: #33476f; stroke-width: 2; }
+    .h { font: 600 22px "Segoe UI", system-ui, sans-serif; fill: #e8eefc; }
+    .s { font: 400 16px "Segoe UI", system-ui, sans-serif; fill: #9fb0d4; }
+    .code { font: 400 15px Consolas, "Cascadia Mono", ui-monospace, monospace; fill: #d7e3ff; }
+    .c1 { fill: #67d4ff; } .c2 { fill: #ffd75e; } .c3 { fill: #7ee787; }
+    .pipe { stroke: #3d5585; stroke-width: 6; stroke-linecap: round; fill: none; }
+    .ok { stroke: #7ee787; stroke-width: 4; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .block { stroke: #ff6b6b; stroke-width: 3; stroke-dasharray: 10 8; fill: none; }
+    .mine { stroke: #7ee787; stroke-width: 4; fill: none; stroke-dasharray: 10 8; }
+    .title { fill: #0f1626; }
+    .tt { font: 400 13px "Segoe UI", system-ui, sans-serif; fill: #c9d4ee; }
+    .sky { fill: url(#sky); } .grass { fill: #5f9f35; } .dirt { fill: #7a5535; } .water { fill: #3f76e4; }
+    .hl { fill: #2e4472; opacity: 0; }
+    /* animation: one 6 s cycle, each game served in turn */
+    .l1 { animation: l1 6s steps(1) infinite; } .l2 { animation: l2 6s steps(1) infinite; } .l3 { animation: l3 6s steps(1) infinite; }
+    @keyframes l1 { 0% { opacity: 1; } 33% { opacity: 0; } }
+    @keyframes l2 { 0% { opacity: 0; } 33% { opacity: 1; } 66% { opacity: 0; } }
+    @keyframes l3 { 0% { opacity: 0; } 66% { opacity: 1; } }
+    .r1 { animation: r1 6s linear infinite; } .r2 { animation: r2 6s linear infinite; } .r3 { animation: r3 6s linear infinite; }
+    @keyframes r1 { 0%, 14% { opacity: 0; } 16%, 30% { opacity: 1; } 33%, 100% { opacity: 0; } }
+    @keyframes r2 { 0%, 47% { opacity: 0; } 49%, 63% { opacity: 1; } 66%, 100% { opacity: 0; } }
+    @keyframes r3 { 0%, 80% { opacity: 0; } 82%, 96% { opacity: 1; } 99%, 100% { opacity: 0; } }
+    .pan { animation: pan 6s ease-in-out infinite; }
+    @keyframes pan { 0%, 15% { transform: translateX(0); } 30% { transform: translateX(-60px); } 100% { transform: translateX(-60px); } }
+    .chat { animation: r2 6s linear infinite; }
+    .inv { animation: r3 6s linear infinite; }
+    .caret { animation: caret 1s steps(1) infinite; }
+    @keyframes caret { 50% { opacity: 0; } }
+    .flow { animation: flow 1.2s linear infinite; }
+    @keyframes flow { to { stroke-dashoffset: -18; } }
+    @media (prefers-reduced-motion: reduce) {
+      .r2, .r3, .l2, .l3, .pan, .chat, .inv, .flow, .caret { animation: none; }
+      .l1, .r1 { animation: none; opacity: 1; }
+      .dot { display: none; }
+    }
+  </style>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fb2ff"/><stop offset="1" stop-color="#b9d6ff"/></linearGradient>
+    <clipPath id="v1"><rect x="880" y="88" width="340" height="132"/></clipPath>
+    <clipPath id="v2"><rect x="880" y="293" width="340" height="132"/></clipPath>
+    <clipPath id="v3"><rect x="880" y="498" width="340" height="132"/></clipPath>
+    <g id="kb"><rect width="120" height="44" rx="6" fill="#2a3b60" stroke="#4a6396" stroke-width="2"/>
+      <g fill="#4a6396"><rect x="8" y="8" width="14" height="10" rx="2"/><rect x="26" y="8" width="14" height="10" rx="2"/><rect x="44" y="8" width="14" height="10" rx="2"/><rect x="62" y="8" width="14" height="10" rx="2"/><rect x="80" y="8" width="14" height="10" rx="2"/><rect x="98" y="8" width="14" height="10" rx="2"/><rect x="8" y="24" width="14" height="10" rx="2"/><rect x="26" y="24" width="68" height="10" rx="2"/><rect x="98" y="24" width="14" height="10" rx="2"/></g></g>
+  </defs>
+
+  <rect class="bg" width="1280" height="720"/>
+
+  <!-- you -->
+  <rect class="card" x="40" y="60" width="340" height="190" rx="14"/>
+  <text class="h" x="64" y="100">You</text>
+  <text class="s" x="64" y="126">mouse and keyboard, as always</text>
+  <use href="#kb" x="64" y="160"/>
+  <rect x="208" y="150" width="40" height="62" rx="20" fill="#2a3b60" stroke="#4a6396" stroke-width="2"/>
+  <line x1="228" y1="152" x2="228" y2="174" stroke="#4a6396" stroke-width="2"/>
+
+  <!-- your apps -->
+  <rect class="card" x="40" y="420" width="340" height="230" rx="14"/>
+  <text class="h" x="64" y="460">Your apps</text>
+  <text class="s" x="64" y="486">keep the focus, the cursor, every key</text>
+  <rect x="64" y="506" width="292" height="122" rx="8" fill="#0f1626"/>
+  <rect x="64" y="506" width="292" height="22" rx="8" fill="#2a3b60"/>
+  <g fill="#3d5585"><rect x="80" y="542" width="150" height="8" rx="4"/><rect x="80" y="562" width="220" height="8" rx="4"/><rect x="96" y="582" width="170" height="8" rx="4"/><rect x="96" y="602" width="110" height="8" rx="4"/></g>
+  <rect class="caret" x="212" y="600" width="3" height="14" fill="#e8eefc"/>
+  <path class="mine flow" d="M210 256 V 414"/>
+
+  <!-- your input never reaches the games -->
+  <path class="block" d="M386 110 H 840"/>
+  <circle cx="852" cy="110" r="14" fill="none" stroke="#ff6b6b" stroke-width="3"/>
+  <line x1="842" y1="120" x2="862" y2="100" stroke="#ff6b6b" stroke-width="3"/>
+  <text class="s" x="440" y="96">ignored by the games in the background</text>
+
+  <!-- the script -->
+  <rect class="card" x="430" y="250" width="320" height="220" rx="14"/>
+  <text class="h" x="454" y="290">e2e.ps1</text>
+  <rect class="hl l1" x="444" y="306" width="292" height="26" rx="4"/>
+  <rect class="hl l2" x="444" y="340" width="292" height="26" rx="4"/>
+  <rect class="hl l3" x="444" y="374" width="292" height="26" rx="4"/>
+  <text class="code" x="454" y="324"><tspan class="c1">game 1</tspan> Send-HeadlessRaw move</text>
+  <text class="code" x="454" y="358"><tspan class="c2">game 2</tspan> Send-HeadlessText '/…'</text>
+  <text class="code" x="454" y="392"><tspan class="c3">game 3</tspan> Send-HeadlessKey E</text>
+  <text class="s" x="454" y="438">each call returns once the game</text>
+  <text class="s" x="454" y="458">has handled it</text>
+
+  <!-- pipes -->
+  <path id="p1" class="pipe" d="M750 360 C 800 360, 800 155, 862 155"/>
+  <path id="p2" class="pipe" d="M750 360 H 862"/>
+  <path id="p3" class="pipe" d="M750 360 C 800 360, 800 565, 862 565"/>
+  <circle class="dot" r="9" fill="#67d4ff" opacity="0">
+    <animateMotion dur="6s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;0.14;1" calcMode="linear"><mpath href="#p1"/></animateMotion>
+    <animate attributeName="opacity" values="1;0" keyTimes="0;0.15" dur="6s" calcMode="discrete" repeatCount="indefinite"/>
+  </circle>
+  <circle class="dot" r="9" fill="#ffd75e" opacity="0">
+    <animateMotion dur="6s" repeatCount="indefinite" keyPoints="0;0;1;1" keyTimes="0;0.34;0.47;1" calcMode="linear"><mpath href="#p2"/></animateMotion>
+    <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.34;0.48" dur="6s" calcMode="discrete" repeatCount="indefinite"/>
+  </circle>
+  <circle class="dot" r="9" fill="#7ee787" opacity="0">
+    <animateMotion dur="6s" repeatCount="indefinite" keyPoints="0;0;1;1" keyTimes="0;0.67;0.80;1" calcMode="linear"><mpath href="#p3"/></animateMotion>
+    <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.67;0.81" dur="6s" calcMode="discrete" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- game 1: camera turns -->
+  <rect x="866" y="60" width="368" height="174" rx="8" fill="#0f1626" stroke="#33476f" stroke-width="2"/>
+  <text class="tt" x="880" y="80">Minecraft - game 1</text>
+  <g clip-path="url(#v1)">
+    <rect class="sky" x="880" y="88" width="340" height="132"/>
+    <g class="pan">
+      <rect class="water" x="880" y="170" width="200" height="50"/>
+      <rect class="grass" x="1080" y="160" width="260" height="14"/><rect class="dirt" x="1080" y="174" width="260" height="46"/>
+      <rect x="1140" y="118" width="12" height="42" fill="#6b4a2b"/><rect x="1118" y="96" width="56" height="34" fill="#3f8a2e"/>
+      <rect x="1230" y="124" width="12" height="36" fill="#6b4a2b"/><rect x="1210" y="104" width="52" height="30" fill="#3f8a2e"/>
+      <rect x="940" y="110" width="60" height="12" fill="#ffffff" opacity=".8"/><rect x="1180" y="100" width="70" height="10" fill="#ffffff" opacity=".8"/>
+    </g>
+  </g>
+  <path class="ok r1" d="M1196 206 l8 8 l16 -18"/>
+
+  <!-- game 2: chat command -->
+  <rect x="866" y="265" width="368" height="174" rx="8" fill="#0f1626" stroke="#33476f" stroke-width="2"/>
+  <text class="tt" x="880" y="285">Minecraft - game 2</text>
+  <g clip-path="url(#v2)">
+    <rect class="sky" x="880" y="293" width="340" height="132"/>
+    <rect class="grass" x="880" y="375" width="340" height="14"/><rect class="dirt" x="880" y="389" width="340" height="36"/>
+    <rect x="1000" y="331" width="12" height="44" fill="#6b4a2b"/><rect x="976" y="309" width="60" height="34" fill="#3f8a2e"/>
+    <g class="chat" opacity="0">
+      <rect x="1080" y="351" width="44" height="22" fill="#f2f2f2"/><rect x="1118" y="347" width="16" height="16" fill="#e6e6e6"/>
+      <rect x="1084" y="373" width="6" height="8" fill="#dcdcdc"/><rect x="1112" y="373" width="6" height="8" fill="#dcdcdc"/>
+      <rect x="880" y="401" width="340" height="24" fill="#000000" opacity=".55"/>
+      <text class="code" x="888" y="418" style="font-size:13px">/summon sheep ^ ^ ^4</text>
+    </g>
+  </g>
+  <path class="ok r2" d="M1196 411 l8 8 l16 -18"/>
+
+  <!-- game 3: inventory opens -->
+  <rect x="866" y="470" width="368" height="174" rx="8" fill="#0f1626" stroke="#33476f" stroke-width="2"/>
+  <text class="tt" x="880" y="490">Minecraft - game 3</text>
+  <g clip-path="url(#v3)">
+    <rect class="sky" x="880" y="498" width="340" height="132"/>
+    <rect class="grass" x="880" y="582" width="340" height="14"/><rect class="dirt" x="880" y="596" width="340" height="34"/>
+    <g class="inv" opacity="0">
+      <rect x="880" y="498" width="340" height="132" fill="#000000" opacity=".4"/>
+      <rect x="980" y="508" width="140" height="112" fill="#c6c6c6" stroke="#ffffff" stroke-width="2"/>
+      <g fill="#8b8b8b">
+        <rect x="990" y="560" width="14" height="14"/><rect x="1006" y="560" width="14" height="14"/><rect x="1022" y="560" width="14" height="14"/><rect x="1038" y="560" width="14" height="14"/><rect x="1054" y="560" width="14" height="14"/><rect x="1070" y="560" width="14" height="14"/><rect x="1086" y="560" width="14" height="14"/>
+        <rect x="990" y="580" width="14" height="14"/><rect x="1006" y="580" width="14" height="14"/><rect x="1022" y="580" width="14" height="14"/><rect x="1038" y="580" width="14" height="14"/><rect x="1054" y="580" width="14" height="14"/><rect x="1070" y="580" width="14" height="14"/><rect x="1086" y="580" width="14" height="14"/>
+        <rect x="990" y="600" width="14" height="14"/><rect x="1006" y="600" width="14" height="14"/><rect x="1022" y="600" width="14" height="14"/><rect x="1038" y="600" width="14" height="14"/><rect x="1054" y="600" width="14" height="14"/><rect x="1070" y="600" width="14" height="14"/><rect x="1086" y="600" width="14" height="14"/>
+      </g>
+      <rect x="1006" y="518" width="30" height="34" fill="#8b8b8b"/>
+    </g>
+  </g>
+  <path class="ok r3" d="M1196 616 l8 8 l16 -18"/>
+
+  <text class="s" x="866" y="680">three games, one pipe each, all in the background</text>
+</svg>

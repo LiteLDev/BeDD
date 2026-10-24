@@ -5,3 +5,4 @@
 compile_commands.json
 *.user
 /tools/out/
+/tools/showcase/out/
