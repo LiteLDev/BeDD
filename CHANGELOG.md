@@ -7,10 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-24
+
 ### Added
 
-- A logo (`docs/logo.png`), shown on [LeviMC Mods](https://levimc.org/mods/) through `avatar_url` in `tooth.json`.
-- README rewritten for script authors, with a showcase gallery (`docs/showcase/`, reproducible with `tools/showcase/record.ps1`); the internals, pipe protocol and build notes moved to CONTRIBUTING.md.
+- A logo, and a recording of three games driven at once in the background, in the [LeviMC Mods gallery](https://levimc.org/mods/github.com/LiteLDev/LeviHeadlessInput/?tab=gallery).
+
+### Changed
+
+- The README is rewritten for people writing test scripts. How it works inside, the pipe protocol and build notes moved to [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [0.1.2] - 2026-10-23
 
@@ -45,7 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Start-HeadlessGame.ps1` (start an instance without activating it) and `clone-instance.ps1` (cheap clone instances for parallel games).
 - Trace mode: message, API-hook and GameInput statistics, and every input event that reaches the game, marked synthetic or real.
 
-[Unreleased]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/LiteLDev/LeviHeadlessInput/releases/tag/v0.1.0
