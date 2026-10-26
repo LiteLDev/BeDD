@@ -7,7 +7,7 @@
 [![Release](https://img.shields.io/github/v/release/LiteLDev/LeviHeadlessInput)](https://github.com/LiteLDev/LeviHeadlessInput/releases)
 [![License](https://img.shields.io/github/license/LiteLDev/LeviHeadlessInput)](COPYING.LESSER)
 
-让 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 客户端 mod 的端到端测试**在后台跑**。
+让 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 客户端模组的端到端测试**在后台跑**。
 脚本在 Minecraft 基岩版里按键、打字、点击，你的鼠标、键盘和窗口照常归你用，还能同时开好几个游戏一起测。
 
 <p align="center"><img src="docs/showcase/desktop.webp" alt="三个 Minecraft 窗口跟着测试脚本动，前面的终端一直保持焦点" width="100%"></p>
@@ -16,7 +16,7 @@
 > 这是**测试工具**。后台模式开着时，游戏不理会你真实的鼠标和键盘。别把它留在平时玩的游戏里
 > （在游戏窗口按 **Ctrl+Shift+F12** 可以关掉后台模式）。
 
-## 特性
+## 功能
 
 - **测试时照常用电脑。** 游戏不抢前台、不锁鼠标、不吃你的按键，你点哪儿都不会点进游戏里。
 - **多开一起测。** 每个游戏实例一条自己的管道；克隆一个实例只要几秒钟。
@@ -29,7 +29,7 @@
 
 ## 安装
 
-装进跑测试的那个游戏实例，例如用 [lip](https://github.com/futrime/lip)：
+装进跑测试的那个游戏实例，例如用 [lip](https://github.com/LiteLDev/lip)：
 
 ```powershell
 lip install github.com/LiteLDev/LeviHeadlessInput#client
@@ -39,12 +39,12 @@ lip install github.com/LiteLDev/LeviHeadlessInput#client
 `leviheadlessinput-client-windows-x64.zip`，解压到该实例的 `mods\` 目录。多数测试框架会在每次运行开始时自己放进去、结束后删掉
 （[见下文](#接入测试框架)）。
 
-需要 Minecraft **1.26.51.01**（GDK 版）和 LeviLamina **26.51.7**（客户端），通过 LeviLauncher 启动。
-只有测试机上的游戏需要装，服务器和玩家都不用。
+需要 Minecraft 基岩版 **1.26.51**（GDK 版）和 LeviLamina **26.51.x**（客户端），装在用 LeviLauncher 安装的游戏实例里。
+测试时用 `Start-HeadlessGame.ps1` 启动这个实例，不走启动器（[见下文](#多开)）。只有测试机上的游戏需要装，服务器和玩家都不用。
 
-## 用法
+## 使用方法
 
-PowerShell 模块就放在 mod 旁边：
+PowerShell 模块就放在模组旁边：
 
 ```powershell
 Import-Module .\mods\LeviHeadlessInput\HeadlessInput.psm1
@@ -100,13 +100,13 @@ if (-not $Foreground) {
     . "$headlessDir\harness-shim.ps1"
     Register-HeadlessNative ([MyE2E.Native])   # 可选，见下文
 }
-# 部署完你的 mod、把其他 mod 挪开之后：
+# 部署完你的模组、把其他模组挪开之后：
 if ($script:Headless) { Install-HeadlessInputMod -ModsDir $script:ModsDir -PipeName 'LeviHeadlessInput-<实例名>' }
 # ……在 finally 里、游戏关掉之后：
 if ($script:Headless) { Uninstall-HeadlessInputMod -ModsDir $script:ModsDir }
 ```
 
-游戏用 `Start-HeadlessGame.ps1` 启动，不要走启动器；"把其他 mod 挪开"那一步要跳过 `LeviHeadlessInput`：它每次运行都重新装、
+游戏用 `Start-HeadlessGame.ps1` 启动，不要走启动器；"把其他模组挪开"那一步要跳过 `LeviHeadlessInput`：它每次运行都重新装、
 结束就删（留下一份的话，正常启动的游戏会不理你的鼠标键盘）。
 
 如果测试场景直接调用框架自己的输入类（比如 `[MyE2E.Native]::Key(0x10, $false)`），给这个类加上下面几个字段，
@@ -127,7 +127,7 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 ## 设置
 
 `mods\LeviHeadlessInput\config\config.json`，一般由测试框架写入（`Install-HeadlessInputMod` 会写）。
-没有这个文件时 mod 是被动的：后台模式关闭，管道照样能用。
+没有这个文件时模组是被动的：后台模式关闭，管道照样能用。
 
 ```json
 { "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "LeviHeadlessInput" }
@@ -150,4 +150,4 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 
 ## 许可证
 
-[LGPL-3.0-or-later](COPYING.LESSER)。GameInput 接口布局参考微软公开的 `GameInput.h`（v2），不包含任何微软代码。
+[LGPL-3.0-or-later](COPYING.LESSER) © LeviMC。GameInput 接口布局参考微软公开的 `GameInput.h`（v2），不包含任何微软代码。

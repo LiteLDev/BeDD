@@ -13,17 +13,20 @@ Use the [issue templates](https://github.com/LiteLDev/LeviHeadlessInput/issues/n
 
 ## Development setup
 
-See [Building](#building) below. The code is small:
+See [Development](#development) below. The code is small:
 
 | File | |
 |---|---|
+| `src/Headless.h` | shared state and declarations of the parts below |
 | `src/Mod.cpp` | entry point, config, virtual key/cursor state |
 | `src/Window.cpp` | window discovery, subclassing, synthetic event dispatch, focus shield, placement |
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
+| `src/NetHooks.cpp` | loopback-only sockets in background mode (`loopbackOnly`, no firewall prompt) |
 | `src/Pipe.cpp` | control pipe and protocol |
 | `src/Trace.cpp` | trace-mode input logging |
-| `client/` | PowerShell client, harness shim, launcher and clone scripts (shipped next to the DLL) |
+| `src/MemoryOperators.cpp` | routes `new`/`delete` through LeviLamina's allocator (required by LeviLamina) |
+| `client/` | PowerShell client, harness shim, game start (`Start-HeadlessGame.ps1`) and clone scripts (shipped next to the DLL) |
 
 When you hook a game or LeviLamina symbol, check the SDK headers under
 `%LOCALAPPDATA%\.xmake\packages\l\levilamina\<version>\<hash>\include` first. Only call `MCAPI`,
@@ -49,8 +52,7 @@ other than `HeadlessInput.psm1`. Script authors find everything they need in the
 
 ### Building
 
-Windows x64, [xmake](https://xmake.io), Visual Studio Build Tools (MSVC 14.4x or newer) and LLVM
-(`clang-cl`):
+You need Windows x64, [xmake](https://xmake.io), Visual Studio Build Tools with MSVC 14.4x or newer, and LLVM (`clang-cl`).
 
 ```powershell
 xmake f -a x64 -m release -p windows --target_type=client -y
@@ -58,12 +60,6 @@ xmake -y        # -> bin\LeviHeadlessInput\ (DLL, manifest, HeadlessInput.psm1, 
 ```
 
 The mod packer reads the version from `git describe`, so the repository needs at least one commit.
-
-`tools\dev.ps1 [-Trace]` is a playground: it takes the shared e2e lock
-(`%APPDATA%\levilauncher.exe\bei-e2e.lock`), deploys the mod, launches the game and logs every
-foreground and cursor-clip change to `tools\out\desktop-watch.log` until the game exits or
-`tools\out\dev.stop` exists (`tools\out\dev.restart` redeploys and relaunches without giving up the
-lock). It always closes the game, removes the mod and releases the lock.
 
 `tools\dev.ps1 [-Trace]` is a playground: it takes the shared e2e lock
 (`%APPDATA%\levilauncher.exe\bei-e2e.lock`), deploys the mod, launches the game and logs every
@@ -151,4 +147,4 @@ ops reply after the game thread has dispatched the input (`timeoutMs`, default 5
 
 ## License
 
-By contributing you agree that your contributions are licensed under the [LGPL-3.0](COPYING.LESSER), the license of this project.
+By contributing you agree that your contributions are licensed under the [LGPL-3.0-or-later](COPYING.LESSER), the license of this project.

@@ -36,7 +36,7 @@ your own mouse, keyboard and windows stay yours, and several games can play at o
 ## Install
 
 Put it into the game instance your tests run, for example with
-[lip](https://github.com/futrime/lip):
+[lip](https://github.com/LiteLDev/lip):
 
 ```powershell
 lip install github.com/LiteLDev/LeviHeadlessInput#client
@@ -47,8 +47,10 @@ or unzip `leviheadlessinput-client-windows-x64.zip` from the
 folder. Most harnesses copy it in at the start of a run and remove it afterwards
 ([see below](#plug-it-into-a-harness)).
 
-Needs Minecraft **1.26.51.01** (GDK) with LeviLamina **26.51.7** (client), started through
-LeviLauncher. Only the test PC's game needs it; servers and players do not.
+Needs Minecraft Bedrock Edition **1.26.51** (GDK) with LeviLamina **26.51.x** (client), in a game
+instance installed with LeviLauncher. Tests start that instance with `Start-HeadlessGame.ps1`
+rather than through the launcher ([see below](#several-games-at-once)). Only the test PC's game
+needs it; servers and players do not.
 
 ## How to use
 
@@ -167,5 +169,5 @@ Building it yourself, the pipe protocol or how it works inside? See [CONTRIBUTIN
 
 ## License
 
-[LGPL-3.0-or-later](COPYING.LESSER). GameInput interface layouts follow Microsoft's public
+[LGPL-3.0-or-later](COPYING.LESSER) © LeviMC. GameInput interface layouts follow Microsoft's public
 `GameInput.h` (v2); no Microsoft code is included.

@@ -12,7 +12,7 @@ commands on a local named pipe:
 
 ## Supported versions
 
-Only the latest release receives fixes.
+Only the latest release of LeviHeadlessInput receives fixes.
 
 ## Reporting a vulnerability
 
