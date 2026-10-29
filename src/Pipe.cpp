@@ -231,10 +231,12 @@ json handle(json const& j) {
             {"gameInput",          gameInputStats()           },
             {"loopbackRebinds",    loopbackRebinds()          },
             {"serverQueriesRefused", serverQueriesRefused()     },
+            {"audio",              audioStats()               },
         };
     } else if (op == "background") {
         bool on = j.value("on", true);
         backgroundMode() = on;
+        syncAudioMute();
         if (!on) vstate::releaseAll();
         log().info("background mode {} (control pipe)", on ? "on" : "off");
         r.update(windowInfo());

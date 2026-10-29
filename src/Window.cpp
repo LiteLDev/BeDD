@@ -140,6 +140,7 @@ LRESULT CALLBACK subclassProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (m == WM_KEYDOWN && w == VK_F12 && (real::GetAsyncKeyState(VK_CONTROL) & 0x8000)
                 && (real::GetAsyncKeyState(VK_SHIFT) & 0x8000)) {
                 backgroundMode() = false;
+                syncAudioMute();
                 vstate::releaseAll();
                 log().warn("Ctrl+Shift+F12: background mode off, real input goes to the game again");
             }
@@ -555,6 +556,7 @@ std::string takeOver() {
     if (!h) return "no game window yet";
     gTakenOver       = true;
     backgroundMode() = false;
+    syncAudioMute();
     vstate::releaseAll();
     return runOnGameThread(h, kTakeOver);
 }
@@ -565,6 +567,7 @@ std::string handBack() {
     vstate::releaseAll();
     gTakenOver       = false;
     backgroundMode() = true;
+    syncAudioMute();
     return runOnGameThread(h, kHandBack);
 }
 

@@ -38,6 +38,8 @@ function Install-HeadlessInputMod([Parameter(Mandatory)][string]$ModsDir, [switc
     @{ background = $true; placement = $Placement; clientWidth = $script:WindowW; clientHeight = $script:WindowH; trace = [bool]$Trace; pipeName = $PipeName; manager = -not $NoManager } |
         ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $dest 'config\config.json')
     $script:HeadlessNoManager = [bool]$NoManager
+    # No console window flashing up as the game starts (LeviLamina's CrashLogger.exe).
+    Set-HeadlessCrashLogger $ModsDir
     Set-HeadlessPipe $PipeName
     Write-Host "[e2e] headless input: deployed LeviHeadlessInput (the game will not take the mouse, keyboard or foreground)"
 }

@@ -22,6 +22,7 @@ See [Development](#development) below. The code is small:
 | `src/Window.cpp` | window discovery, subclassing, synthetic event dispatch, focus shield, placement |
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
+| `src/Audio.cpp` | FMOD hooks: the game's master channel group is muted in background mode (`mute`) |
 | `src/NetHooks.cpp` | loopback-only network in background mode (`loopbackOnly`: no firewall prompt, no queries to servers off the PC) |
 | `src/Pipe.cpp` | control pipe and protocol |
 | `src/Manager.cpp` | link to the session's manager window |

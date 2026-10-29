@@ -46,6 +46,8 @@ struct Options {
     /// In background mode, register with the session's manager window when one runs: the game
     /// window then stays off screen and off the taskbar, and the manager shows it instead.
     bool manager = true;
+    /// In background mode, mute the game (FMOD master channel group): headless games stay silent.
+    bool mute = true;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -177,6 +179,13 @@ enum : int { kGiLeft = 0x1, kGiRight = 0x2, kGiMiddle = 0x4 };
 void gameInputMouse(int64_t dx, int64_t dy, int wheelNotches, int buttonMask, bool buttonDown);
 [[nodiscard]] uint32_t    gameInputButtons();
 [[nodiscard]] std::string gameInputStats();
+
+// Audio.cpp: the game is muted in background mode (FMOD).
+void installAudioHooks();
+void uninstallAudioHooks();
+/// Mute or unmute the game as background mode is now (call after changing it).
+void                      syncAudioMute();
+[[nodiscard]] std::string audioStats();
 
 // NetHooks.cpp: loopback-only network in background mode (no Windows Firewall prompts).
 void                   installNetHooks();

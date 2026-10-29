@@ -80,6 +80,23 @@ if (-not (Test-Path $exe)) { throw "No game instance at $dir" }
 # Only a game whose mod links to the manager (background mode, "manager" not false) goes there.
 $config = $null
 try { $config = Get-Content (Join-Path $dir 'mods\LeviHeadlessInput\config\config.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch { }
+# LeviLamina's crash logger in the game process instead of CrashLogger.exe, a console program that
+# would flash a console window on the desktop as the game starts (see Set-HeadlessCrashLogger in
+# HeadlessInput.psm1).
+if ($config -and $config.background -eq $true) {
+    $ll = Join-Path $dir 'mods\LeviLamina\config\Config.json'
+    try {
+        $c = Get-Content $ll -Raw -ErrorAction Stop | ConvertFrom-Json
+        $cl = $c.modules.crashLogger
+        if ($cl -and $cl.enabled -ne $false -and $cl.builtin -ne $true) {
+            $cl | Add-Member -NotePropertyName builtin -NotePropertyValue $true -Force
+            [IO.File]::WriteAllText($ll, ($c | ConvertTo-Json -Depth 32), (New-Object System.Text.UTF8Encoding($false)))
+        }
+    } catch [System.Management.Automation.ItemNotFoundException] {
+    } catch {
+        Write-Warning "[headless] could not switch LeviLamina to its built-in crash logger ($ll): $($_.Exception.Message)"
+    }
+}
 $managed = -not $NoManager -and $env:LEVI_HEADLESS_MANAGER -ne '0' -and $config -and $config.background -eq $true -and $config.manager -ne $false
 $manager = $null
 if ($managed) { $manager = & (Join-Path $PSScriptRoot 'HeadlessManager.ps1') -Ensure }

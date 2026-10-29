@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Config `mute` (default `true`): in background mode the game is silent. The mod hides focus loss from the game, so it never paused its audio, and headless games played menu music and sounds on the user's speakers. Taking a game over makes it audible again; `state` reports `audio`.
+
+### Fixed
+
+- A console window flashed on the desktop at every game start: LeviLamina starts its crash logger, `CrashLogger.exe`, as a console program, and the game has no console to give it. `Install-HeadlessInputMod` and `Start-HeadlessGame.ps1` (for background games) switch the instance's LeviLamina to its built-in crash logger (`modules.crashLogger.builtin`).
+
 ## [0.2.0] - 2026-10-29
 
 ### Added

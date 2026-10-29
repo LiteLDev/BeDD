@@ -168,7 +168,10 @@ complete harnesses to copy from.
 
 `mods\LeviHeadlessInput\config\config.json`, usually written by the harness
 (`Install-HeadlessInputMod` does it). Without it the mod stays passive: background mode off, the
-pipe still answers.
+pipe still answers. `Install-HeadlessInputMod` and `Start-HeadlessGame.ps1` also switch the
+instance's LeviLamina to its built-in crash logger (`modules.crashLogger.builtin` in
+`mods\LeviLamina\config\Config.json`): the default `CrashLogger.exe` is a console program, and its
+console window would flash on the desktop at every game start.
 
 ```json
 { "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "LeviHeadlessInput" }
@@ -182,6 +185,7 @@ pipe still answers.
 | `pipeName` | one per game instance when several run at once |
 | `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new instance, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). Dedicated servers your harness starts still ask once per server folder; **Cancel** is fine |
 | `manager` | default `true`: in background mode the game shows up in the manager window when one runs, and its own window stays off screen and off the taskbar |
+| `mute` | default `true`: in background mode the game makes no sound (it is audible again while you take it over) |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
 
 ## More

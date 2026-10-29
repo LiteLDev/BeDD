@@ -134,6 +134,25 @@ function Send-HeadlessRaw(
     Invoke-HeadlessInput @{ op = 'raw'; action = $Action; dx = $Dx; dy = $Dy; button = $Button; notches = $Notches; holdMs = $HoldMs } | Out-Null
 }
 
+# Switches the instance's LeviLamina (<ModsDir>\LeviLamina) to its built-in crash logger. By default
+# LeviLamina starts CrashLogger.exe, a console program, as the game loads: the game has no console,
+# so Windows opens one for it, and with Windows Terminal as the default terminal that console flashes
+# on the desktop at every game start. The built-in crash logger catches crashes inside the game
+# process instead (logs\crash as before). Start-HeadlessGame.ps1 does the same for background games.
+function Set-HeadlessCrashLogger([Parameter(Mandatory)][string]$ModsDir) {
+    $file = Join-Path $ModsDir 'LeviLamina\config\Config.json'
+    if (-not (Test-Path $file)) { return } # LeviLamina writes it on the game's first start
+    try {
+        $c = Get-Content $file -Raw | ConvertFrom-Json
+        $cl = $c.modules.crashLogger
+        if (-not $cl -or $cl.enabled -eq $false -or $cl.builtin -eq $true) { return }
+        $cl | Add-Member -NotePropertyName builtin -NotePropertyValue $true -Force
+        [IO.File]::WriteAllText($file, ($c | ConvertTo-Json -Depth 32), (New-Object System.Text.UTF8Encoding($false)))
+    } catch {
+        Write-Warning "[headless] could not switch LeviLamina to its built-in crash logger ($file): $($_.Exception.Message)"
+    }
+}
+
 # Releases every key and button the virtual state still holds down.
 function Clear-HeadlessInput { Invoke-HeadlessInput @{ op = 'release' } | Out-Null }
 
@@ -187,5 +206,5 @@ function Save-HeadlessScreenshot([Parameter(Mandatory)][string]$Path) {
 }
 
 Export-ModuleMember -Function Connect-HeadlessInput, Set-HeadlessPipe, Disconnect-HeadlessInput, Test-HeadlessInput, Invoke-HeadlessInput,
-    Get-HeadlessState, Set-HeadlessBackground, Set-HeadlessWindow, Send-HeadlessKey, Send-HeadlessText,
+    Set-HeadlessCrashLogger, Get-HeadlessState, Set-HeadlessBackground, Set-HeadlessWindow, Send-HeadlessKey, Send-HeadlessText,
     Send-HeadlessMouse, Send-HeadlessRaw, Clear-HeadlessInput, Get-HeadlessBitmap, Save-HeadlessScreenshot

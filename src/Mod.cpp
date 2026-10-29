@@ -54,6 +54,7 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.pipeName     = j.value("pipeName", gOptions.pipeName);
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
     gOptions.manager      = j.value("manager", gOptions.manager);
+    gOptions.mute         = j.value("mute", gOptions.mute);
 }
 
 bool Mod::load() {
@@ -66,15 +67,18 @@ bool Mod::load() {
     // Also before the game window exists: a managed game's window never shows on the taskbar.
     startManagerLink();
     if (gOptions.background) installApiHooks();
+    // Before the game sets up its audio: not a sound, not even while it loads.
+    if (gOptions.mute) installAudioHooks();
     log().info(
-        "LeviHeadlessInput loaded: background={} placement={} client={}x{} trace={} pipe={} manager={}",
+        "LeviHeadlessInput loaded: background={} placement={} client={}x{} trace={} pipe={} manager={} mute={}",
         gOptions.background,
         gOptions.placement,
         gOptions.clientWidth,
         gOptions.clientHeight,
         gOptions.trace,
         gOptions.pipeName,
-        gOptions.manager
+        gOptions.manager,
+        gOptions.mute
     );
     return true;
 }
@@ -97,6 +101,7 @@ bool Mod::disable() {
     uninstallGameInputHooks();
     uninstallApiHooks();
     uninstallNetHooks();
+    uninstallAudioHooks();
     return true;
 }
 

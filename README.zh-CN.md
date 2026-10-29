@@ -143,7 +143,9 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 ## 设置
 
 `mods\LeviHeadlessInput\config\config.json`，一般由测试框架写入（`Install-HeadlessInputMod` 会写）。
-没有这个文件时模组是被动的：后台模式关闭，管道照样能用。
+没有这个文件时模组是被动的：后台模式关闭，管道照样能用。`Install-HeadlessInputMod` 和 `Start-HeadlessGame.ps1`
+还会把实例的 LeviLamina 切到内置崩溃记录器（`mods\LeviLamina\config\Config.json` 里的
+`modules.crashLogger.builtin`）：默认的 `CrashLogger.exe` 是控制台程序，每次启动游戏都会在桌面上闪一下黑窗口。
 
 ```json
 { "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "LeviHeadlessInput" }
@@ -157,6 +159,7 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 | `pipeName` | 多开时每个实例一个 |
 | `loopbackOnly` | 默认 `true`：游戏只在本机通信，新实例不会弹 Windows 防火墙提示，也不会去查询本机以外的游戏服务器（否则它们可能以"局域网世界"出现在测试存档前面）。测试框架自己启动的专用服务器每个服务器目录还是会问一次，点**取消**即可 |
 | `manager` | 默认 `true`：后台模式下，有管理窗口时游戏显示在管理窗口里，自己的窗口留在屏幕外、不进任务栏 |
+| `mute` | 默认 `true`：后台模式下游戏不出声（你接管游戏时恢复声音） |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
 
 ## 更多
