@@ -158,7 +158,7 @@ pipe still answers.
 | `placement` | `back` (behind your windows), `offscreen` or `none` |
 | `clientWidth`, `clientHeight` | game window size (0 = leave it), so clicks land in the same place every run |
 | `pipeName` | one per game instance when several run at once |
-| `loopbackOnly` | default `true`: no Windows Firewall prompt for each new instance (dedicated servers your harness starts still ask once; **Cancel** is fine) |
+| `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new instance, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). Dedicated servers your harness starts still ask once per server folder; **Cancel** is fine |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
 
 ## More

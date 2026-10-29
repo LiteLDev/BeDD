@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `state` reports `serverQueriesRefused`, and GameInput statistics report `virtualReadings`.
+
+### Fixed
+
+- `enable()` could still hang for good while installing the hooks, most often with several games starting at once: a thread stopped by the hook pause while holding the process heap lock blocked the hooking code. The heap stays locked while the threads are paused now.
+- Virtual clicks, wheel and camera were lost while nobody touched the real mouse (unattended runs stayed on the title screen with Play highlighted): GameInput has no mouse reading until the device reports input. The game now gets a virtual reading of the device instead.
+- With `loopbackOnly`, a game could join a "LAN world" instead of the test world and hang at "Connecting to multiplayer game" (~97%): game servers queried through a proxy on the PC were listed as LAN worlds ahead of the test world. Game servers outside the PC are no longer queried.
+- With `loopbackOnly`, outgoing TCP connections (WinHTTP) were bound to loopback and reached the internet only through a proxy on the PC. They are left alone now.
+- `loopbackOnly` stays in force after the game is handed back (`Set-HeadlessBackground $false`, Ctrl+Shift+F12): sockets opened afterwards raised the firewall prompt.
+
 ## [0.1.3] - 2026-10-24
 
 ### Added

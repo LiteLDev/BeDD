@@ -5,11 +5,9 @@
 #include <array>
 #include <string_view>
 
-#include <optional>
 #include <vector>
 
 #include "ll/api/memory/Hook.h"
-#include "ll/api/thread/GlobalThreadPauser.h"
 
 namespace headless {
 
@@ -262,19 +260,24 @@ HookSlot* slotFor(std::string_view name) {
 
 } // namespace
 
+HookPause::HookPause() {
+    if (!ll::memory::shouldHookSuspendThreads()) return;
+    HANDLE heap   = GetProcessHeap();
+    bool   locked = HeapLock(heap) != FALSE;
+    mPauser.emplace();
+    if (locked) HeapUnlock(heap);
+}
+
 void installApiHooks() {
     HMODULE user32 = GetModuleHandleW(L"user32.dll");
     if (!user32) user32 = LoadLibraryW(L"user32.dll");
     int                      installed = 0;
     std::vector<std::string> failures;
+    // Resolved before the pause: GetProcAddress takes loader locks a paused thread may hold.
+    for (auto& s : gSlots) s.target = reinterpret_cast<void*>(GetProcAddress(user32, s.name));
     {
-        // One thread pause for the whole batch, as LeviLamina's HookRegistrar does: every pause
-        // risks stopping a thread inside a lock the hooking code needs (a hang in enable() was
-        // seen once). No logging while the other threads are paused.
-        std::optional<ll::thread::GlobalThreadPauser> pauser;
-        if (ll::memory::shouldHookSuspendThreads()) pauser.emplace();
+        HookPause pause;
         for (auto& s : gSlots) {
-            s.target = reinterpret_cast<void*>(GetProcAddress(user32, s.name));
             if (!s.target) {
                 failures.push_back(std::string("user32!") + s.name + " not found; not hooked");
                 continue;
@@ -300,8 +303,7 @@ void installApiHooks() {
 }
 
 void uninstallApiHooks() {
-    std::optional<ll::thread::GlobalThreadPauser> pauser;
-    if (ll::memory::shouldHookSuspendThreads()) pauser.emplace();
+    HookPause pause;
     for (auto& s : gSlots) {
         if (!s.target) continue;
         ll::memory::unhook(s.target, s.detour, false);

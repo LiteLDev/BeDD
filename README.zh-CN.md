@@ -139,7 +139,7 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 | `placement` | `back`（放到你的窗口后面）、`offscreen`（移出屏幕）或 `none` |
 | `clientWidth`、`clientHeight` | 游戏窗口大小（0 表示不改），每次运行点击位置都一样 |
 | `pipeName` | 多开时每个实例一个 |
-| `loopbackOnly` | 默认 `true`：新实例不会弹 Windows 防火墙提示（测试框架自己启动的专用服务器还是会问一次，点**取消**即可） |
+| `loopbackOnly` | 默认 `true`：游戏只在本机通信，新实例不会弹 Windows 防火墙提示，也不会去查询本机以外的游戏服务器（否则它们可能以"局域网世界"出现在测试存档前面）。测试框架自己启动的专用服务器每个服务器目录还是会问一次，点**取消**即可 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
 
 ## 更多

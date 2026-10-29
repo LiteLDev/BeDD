@@ -4,11 +4,18 @@
 // mode IGameInputReading::GetMouseState / GetKeyCount / GetKeyState report the virtual state
 // instead (driven by the "raw" op for the mouse, and by synthetic key events for the keyboard).
 //
+// GameInput has a reading for a mouse only once the device reported input. While nobody touches
+// the real mouse (an unattended run), the game's GetCurrentReading fails, it sees no mouse state at
+// all and virtual clicks are lost (the cursor still hovers: that goes through window messages). In
+// background mode such a miss is answered with a virtual reading of that device instead.
+//
 // Only the vtable slots used here are declared (GameInput v2, GameInput.h of Microsoft.GameInput
-// 2.x): IGameInput 4 GetCurrentReading, 5 GetNextReading, 6 GetPreviousReading;
-// IGameInputReading 12 GetKeyCount, 13 GetKeyState, 14 GetMouseState.
+// 2.x): IGameInput 3 GetCurrentTimestamp, 4 GetCurrentReading, 5 GetNextReading,
+// 6 GetPreviousReading; IGameInputReading 3 GetInputKind, 4 GetTimestamp, 5 GetDevice,
+// 12 GetKeyCount, 13 GetKeyState, 14 GetMouseState.
 #include "Headless.h"
 
+#include <array>
 #include <chrono>
 #include <format>
 #include <mutex>
@@ -17,7 +24,6 @@
 #include <vector>
 
 #include "ll/api/memory/Hook.h"
-#include "ll/api/thread/GlobalThreadPauser.h"
 
 namespace headless {
 
@@ -27,9 +33,13 @@ bool bg() { return backgroundMode().load(std::memory_order_relaxed); }
 
 // {BBAA66D2-837A-40F7-A303-917D500955F4} = GameInput::v2::IGameInput
 constexpr GUID kIID_IGameInputV2{0xbbaa66d2, 0x837a, 0x40f7, {0xa3, 0x03, 0x91, 0x7d, 0x50, 0x09, 0x55, 0xf4}};
+constexpr GUID kIID_IUnknown{0x00000000, 0x0000, 0x0000, {0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
 
 constexpr uint32_t kKindKeyboard = 0x10;
 constexpr uint32_t kKindMouse    = 0x20;
+
+constexpr HRESULT kDeviceDisconnected = static_cast<HRESULT>(0x838A0001); // GAMEINPUT_E_DEVICE_DISCONNECTED
+constexpr HRESULT kReadingNotFound    = static_cast<HRESULT>(0x838A0003); // GAMEINPUT_E_READING_NOT_FOUND
 
 struct GiMouseState {
     uint32_t buttons;
@@ -54,8 +64,9 @@ using GetNextFn     = HRESULT(STDMETHODCALLTYPE*)(void* self, void* ref, uint32_
 using GetKeyCountFn = uint32_t(STDMETHODCALLTYPE*)(void* self);
 using GetKeyStateFn = uint32_t(STDMETHODCALLTYPE*)(void* self, uint32_t count, GiKeyState* states);
 using GetMouseFn    = bool(STDMETHODCALLTYPE*)(void* self, GiMouseState* state);
-using ReleaseFn     = ULONG(STDMETHODCALLTYPE*)(void* self);
+using ReleaseFn     = ULONG(STDMETHODCALLTYPE*)(void* self); // IUnknown slot 2 (AddRef, slot 1, alike)
 using GetDeviceFn   = void(STDMETHODCALLTYPE*)(void* self, void** device); // IGameInputReading slot 5
+using TimestampFn   = uint64_t(STDMETHODCALLTYPE*)(void* self);             // IGameInput slot 3
 
 GetReadingFn  o_GetCurrentReading  = nullptr;
 GetNextFn     o_GetNextReading     = nullptr;
@@ -71,8 +82,10 @@ void* t_GetKeyCount        = nullptr;
 void* t_GetKeyState        = nullptr;
 void* t_GetMouseState      = nullptr;
 
+void* gGameInput = nullptr; // our IGameInput (kept alive)
+
 std::once_flag        gReadingHooksOnce;
-std::atomic<uint64_t> gMouseReads{}, gKeyReads{};
+std::atomic<uint64_t> gMouseReads{}, gKeyReads{}, gVirtualReadings{};
 
 // Virtual GameInput mouse: relative position and wheel accumulate the "raw" op's deltas.
 //
@@ -108,15 +121,12 @@ void attachPrimary(void* device, DeviceMouse& d) {
 
 void** vtableOf(void* obj) { return *reinterpret_cast<void***>(obj); }
 
-// Pauses the other threads once for a batch of hooks (see installApiHooks); log after it ends.
+// Pauses the other threads once for a batch of hooks (see HookPause); log after it ends.
 struct HookBatch {
-    std::optional<ll::thread::GlobalThreadPauser> pauser;
-    std::vector<std::string>                      failures;
-    HookBatch() {
-        if (ll::memory::shouldHookSuspendThreads()) pauser.emplace();
-    }
+    HookPause                pause;
+    std::vector<std::string> failures;
     void finish() {
-        pauser.reset();
+        pause.end();
         for (auto const& f : failures) log().error("GameInput: hooking {} failed", f);
         failures.clear();
     }
@@ -158,20 +168,13 @@ uint32_t STDMETHODCALLTYPE d_GetKeyState(void* self, uint32_t count, GiKeyState*
     return n;
 }
 
-bool STDMETHODCALLTYPE d_GetMouseState(void* self, GiMouseState* state) {
-    gMouseReads.fetch_add(1, std::memory_order_relaxed);
-    bool ok = o_GetMouseState(self, state);
-    if (!bg() || !state) return ok;
-
-    void* device = nullptr;
-    reinterpret_cast<GetDeviceFn>(vtableOf(self)[5])(self, &device);
-    if (device) reinterpret_cast<ReleaseFn>(vtableOf(device)[2])(device); // only used as a key
-
+// Overwrites a mouse state of `device` with the virtual one; `real` = it holds the device's real state.
+void virtualMouseState(void* device, bool real, GiMouseState* state) {
     std::lock_guard lock(gMouseMutex);
     auto         now   = std::chrono::steady_clock::now();
     auto [it, isNew]   = gDevices.try_emplace(device);
     DeviceMouse& d     = it->second;
-    if (isNew && ok) {
+    if (isNew && real) {
         d.baseX      = state->positionX;
         d.baseY      = state->positionY;
         d.baseWheelX = state->wheelX;
@@ -209,6 +212,97 @@ bool STDMETHODCALLTYPE d_GetMouseState(void* self, GiMouseState* state) {
         state->absolutePositionX = p.x;
         state->absolutePositionY = p.y;
     }
+}
+
+bool STDMETHODCALLTYPE d_GetMouseState(void* self, GiMouseState* state) {
+    gMouseReads.fetch_add(1, std::memory_order_relaxed);
+    bool ok = o_GetMouseState(self, state);
+    if (!bg() || !state) return ok;
+
+    void* device = nullptr;
+    reinterpret_cast<GetDeviceFn>(vtableOf(self)[5])(self, &device);
+    if (device) reinterpret_cast<ReleaseFn>(vtableOf(device)[2])(device); // only used as a key
+    virtualMouseState(device, ok, state);
+    return true;
+}
+
+// A mouse reading of our own (an IGameInputReading as far as the game is concerned): the virtual
+// mouse state of one device. Every slot not set below reports "nothing" (0 / false).
+struct VirtualReading {
+    void* const*       vtable;
+    std::atomic<ULONG> refs;
+    void*              device; // holds a reference
+    uint64_t           timestamp;
+};
+
+uint64_t STDMETHODCALLTYPE vrNothing(void*) { return 0; }
+
+HRESULT STDMETHODCALLTYPE vrQueryInterface(void* self, GUID const& iid, void** out) {
+    if (!out) return E_POINTER;
+    *out = nullptr;
+    if (iid != kIID_IUnknown) return E_NOINTERFACE;
+    static_cast<VirtualReading*>(self)->refs.fetch_add(1);
+    *out = self;
+    return S_OK;
+}
+
+ULONG STDMETHODCALLTYPE vrAddRef(void* self) { return static_cast<VirtualReading*>(self)->refs.fetch_add(1) + 1; }
+
+ULONG STDMETHODCALLTYPE vrRelease(void* self) {
+    auto* r = static_cast<VirtualReading*>(self);
+    ULONG n = r->refs.fetch_sub(1) - 1;
+    if (n == 0) {
+        reinterpret_cast<ReleaseFn>(vtableOf(r->device)[2])(r->device);
+        delete r;
+    }
+    return n;
+}
+
+uint32_t STDMETHODCALLTYPE vrGetInputKind(void*) { return kKindMouse; }
+
+uint64_t STDMETHODCALLTYPE vrGetTimestamp(void* self) { return static_cast<VirtualReading*>(self)->timestamp; }
+
+void STDMETHODCALLTYPE vrGetDevice(void* self, void** device) {
+    auto* r = static_cast<VirtualReading*>(self);
+    reinterpret_cast<ReleaseFn>(vtableOf(r->device)[1])(r->device); // AddRef
+    *device = r->device;
+}
+
+bool STDMETHODCALLTYPE vrGetMouseState(void* self, GiMouseState* state) {
+    gMouseReads.fetch_add(1, std::memory_order_relaxed);
+    if (!state) return false;
+    *state = {};
+    virtualMouseState(static_cast<VirtualReading*>(self)->device, false, state);
+    return true;
+}
+
+auto const gVirtualReadingVtable = [] {
+    std::array<void*, 32> vt;
+    vt.fill(reinterpret_cast<void*>(&vrNothing));
+    vt[0]  = reinterpret_cast<void*>(&vrQueryInterface);
+    vt[1]  = reinterpret_cast<void*>(&vrAddRef);
+    vt[2]  = reinterpret_cast<void*>(&vrRelease);
+    vt[3]  = reinterpret_cast<void*>(&vrGetInputKind);
+    vt[4]  = reinterpret_cast<void*>(&vrGetTimestamp);
+    vt[5]  = reinterpret_cast<void*>(&vrGetDevice);
+    vt[14] = reinterpret_cast<void*>(&vrGetMouseState);
+    return vt;
+}();
+
+bool isVirtualReading(void* reading) { return reading && *static_cast<void**>(reading) == gVirtualReadingVtable.data(); }
+
+// The game asked for a mouse reading GameInput does not have: hand it a virtual one.
+bool virtualReadingFor(HRESULT hr, uint32_t kind, void* device, void** reading) {
+    if (SUCCEEDED(hr) || hr == kDeviceDisconnected || kind != kKindMouse || !device || !reading || !bg()) return false;
+    if (gVirtualReadings.fetch_add(1) == 0) {
+        log().info(
+            "GameInput: no mouse reading yet (0x{:08X}); the game reads the virtual mouse until the real one reports",
+            static_cast<uint32_t>(hr)
+        );
+    }
+    reinterpret_cast<ReleaseFn>(vtableOf(device)[1])(device); // AddRef
+    uint64_t now = gGameInput ? reinterpret_cast<TimestampFn>(vtableOf(gGameInput)[3])(gGameInput) : 0;
+    *reading     = new VirtualReading{gVirtualReadingVtable.data(), 1, device, now};
     return true;
 }
 
@@ -231,16 +325,26 @@ void hookReadingVtable(void* reading) {
 HRESULT STDMETHODCALLTYPE d_GetCurrentReading(void* self, uint32_t kind, void* device, void** reading) {
     HRESULT hr = o_GetCurrentReading(self, kind, device, reading);
     if (SUCCEEDED(hr) && reading && *reading) hookReadingVtable(*reading);
+    else if (virtualReadingFor(hr, kind, device, reading)) hr = S_OK;
     return hr;
 }
 
+// A virtual reading is the only one there is: GameInput cannot step from it.
 HRESULT STDMETHODCALLTYPE d_GetNextReading(void* self, void* ref, uint32_t kind, void* device, void** reading) {
+    if (isVirtualReading(ref)) {
+        if (reading) *reading = nullptr;
+        return kReadingNotFound;
+    }
     HRESULT hr = o_GetNextReading(self, ref, kind, device, reading);
     if (SUCCEEDED(hr) && reading && *reading) hookReadingVtable(*reading);
     return hr;
 }
 
 HRESULT STDMETHODCALLTYPE d_GetPreviousReading(void* self, void* ref, uint32_t kind, void* device, void** reading) {
+    if (isVirtualReading(ref)) {
+        if (reading) *reading = nullptr;
+        return kReadingNotFound;
+    }
     HRESULT hr = o_GetPreviousReading(self, ref, kind, device, reading);
     if (SUCCEEDED(hr) && reading && *reading) hookReadingVtable(*reading);
     return hr;
@@ -275,6 +379,7 @@ void installGameInputHooks() {
         log().warn("GameInput: no v2 IGameInput (0x{:08X}); GameInput is not shielded", static_cast<uint32_t>(hr));
         return;
     }
+    gGameInput           = gi;
     void** vt            = vtableOf(gi);
     t_GetCurrentReading  = vt[4];
     t_GetNextReading     = vt[5];
@@ -301,8 +406,7 @@ void installGameInputHooks() {
 }
 
 void uninstallGameInputHooks() {
-    std::optional<ll::thread::GlobalThreadPauser> pauser;
-    if (ll::memory::shouldHookSuspendThreads()) pauser.emplace();
+    HookPause pause;
     unhookIf(t_GetCurrentReading, reinterpret_cast<void*>(&d_GetCurrentReading));
     unhookIf(t_GetNextReading, reinterpret_cast<void*>(&d_GetNextReading));
     unhookIf(t_GetPreviousReading, reinterpret_cast<void*>(&d_GetPreviousReading));
@@ -331,11 +435,12 @@ std::string gameInputStats() {
         devices = gDevices.size();
     }
     return std::format(
-        "mouseReads={} keyReads={} mouseDevices={} hooked={}",
+        "mouseReads={} keyReads={} mouseDevices={} hooked={} virtualReadings={}",
         gMouseReads.load(),
         gKeyReads.load(),
         devices,
-        o_GetMouseState != nullptr
+        o_GetMouseState != nullptr,
+        gVirtualReadings.load()
     );
 }
 

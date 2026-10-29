@@ -228,6 +228,7 @@ json handle(json const& j) {
             {"api",                apiHookStats()             },
             {"gameInput",          gameInputStats()           },
             {"loopbackRebinds",    loopbackRebinds()          },
+            {"serverQueriesRefused", serverQueriesRefused()     },
         };
     } else if (op == "background") {
         bool on = j.value("on", true);

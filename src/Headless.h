@@ -5,9 +5,11 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "ll/api/io/Logger.h"
+#include "ll/api/thread/GlobalThreadPauser.h"
 
 // LeviHeadlessInput: drive a LeviLamina Minecraft Bedrock client without touching the real
 // mouse, keyboard or foreground window.
@@ -36,7 +38,8 @@ struct Options {
     bool trace = false;
     /// Control pipe name (\\.\pipe\<name>); one per game instance when several run in parallel.
     std::string pipeName = "LeviHeadlessInput";
-    /// In background mode, turn wildcard bind()s into loopback ones (no firewall prompts).
+    /// In background mode, keep the game on the PC: wildcard bind()s become loopback ones (no
+    /// firewall prompts) and servers off the PC are not queried (no bogus "LAN worlds").
     bool loopbackOnly = true;
 };
 
@@ -68,6 +71,20 @@ BOOL GetCursorPos(LPPOINT p);
 SHORT GetAsyncKeyState(int vk);
 BOOL  SetWindowPos(HWND h, HWND after, int x, int y, int cx, int cy, UINT flags);
 } // namespace real
+
+/// Pauses every other thread while a batch of hooks is (un)installed, as LeviLamina's HookRegistrar
+/// does (one pause per batch; nothing may be logged while it lasts). The process heap stays locked
+/// while the threads stop, so none of them is frozen inside it: the hooking code allocates, and a
+/// thread stopped holding the heap lock hung enable() for good.
+class HookPause {
+public:
+    HookPause();
+    /// Resume the threads now (before logging what the batch did).
+    void end() { mPauser.reset(); }
+
+private:
+    std::optional<ll::thread::GlobalThreadPauser> mPauser;
+};
 
 void installApiHooks();
 void uninstallApiHooks();
@@ -136,10 +153,11 @@ void gameInputMouse(int64_t dx, int64_t dy, int wheelNotches, int buttonMask, bo
 [[nodiscard]] uint32_t    gameInputButtons();
 [[nodiscard]] std::string gameInputStats();
 
-// NetHooks.cpp: loopback-only sockets in background mode (no Windows Firewall prompts).
+// NetHooks.cpp: loopback-only network in background mode (no Windows Firewall prompts).
 void                   installNetHooks();
 void                   uninstallNetHooks();
 [[nodiscard]] uint64_t loopbackRebinds();
+[[nodiscard]] uint64_t serverQueriesRefused();
 
 /// Trace.cpp: log the game's input events (trace mode only).
 void startInputTrace();

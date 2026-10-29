@@ -22,7 +22,7 @@ See [Development](#development) below. The code is small:
 | `src/Window.cpp` | window discovery, subclassing, synthetic event dispatch, focus shield, placement |
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
-| `src/NetHooks.cpp` | loopback-only sockets in background mode (`loopbackOnly`, no firewall prompt) |
+| `src/NetHooks.cpp` | loopback-only network in background mode (`loopbackOnly`: no firewall prompt, no queries to servers off the PC) |
 | `src/Pipe.cpp` | control pipe and protocol |
 | `src/Trace.cpp` | trace-mode input logging |
 | `src/MemoryOperators.cpp` | routes `new`/`delete` through LeviLamina's allocator (required by LeviLamina) |
@@ -107,7 +107,9 @@ ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and
    device: window messages such as `WM_LBUTTONDOWN` are ignored, and without the mod your real
    mouse would still click and turn the camera in a background game. The mod hooks
    `IGameInputReading::GetMouseState` (and `GetKeyCount`/`GetKeyState`): in background mode the game
-   reads virtual buttons, relative position (camera), wheel and absolute position instead.
+   reads virtual buttons, relative position (camera), wheel and absolute position instead. GameInput
+   has no reading for a mouse until the device reports input, so on an untouched PC the game's
+   `GetCurrentReading` gets a virtual reading of that device from the mod.
 3. **The game never takes the foreground or loses focus.** Focus-loss messages are swallowed, so
    the game does not pause or release its keys. `Start-HeadlessGame.ps1` starts the exe with
    `SW_SHOWNOACTIVATE`; the hooked `ShowWindow`/`SetWindowPos`/`SetActiveWindow`/
