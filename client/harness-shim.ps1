@@ -27,15 +27,17 @@ if (-not (Get-Variable -Name WindowH -Scope Script -ErrorAction SilentlyContinue
 # --- deployment ---------------------------------------------------------------------------------
 
 # Copies the mod into <ModsDir>\LeviHeadlessInput with a config.json that turns background mode
-# on. Call it after the harness has deployed its own mod and moved other mods aside.
+# on. Call it after the harness has deployed its own mod and moved other mods aside. -NoManager:
+# the game keeps a window of its own instead of showing up in the session's manager window.
 function Install-HeadlessInputMod([Parameter(Mandatory)][string]$ModsDir, [switch]$Trace, [string]$PipeName = 'LeviHeadlessInput',
-        [ValidateSet('back', 'offscreen', 'none')][string]$Placement = 'back') {
+        [ValidateSet('back', 'offscreen', 'none')][string]$Placement = 'back', [switch]$NoManager) {
     $dest = Join-Path $ModsDir 'LeviHeadlessInput'
     if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
     New-Item -ItemType Directory -Force (Join-Path $dest 'config') | Out-Null
     foreach ($f in 'LeviHeadlessInput.dll', 'manifest.json') { Copy-Item (Join-Path $script:HeadlessDir $f) $dest }
-    @{ background = $true; placement = $Placement; clientWidth = $script:WindowW; clientHeight = $script:WindowH; trace = [bool]$Trace; pipeName = $PipeName } |
+    @{ background = $true; placement = $Placement; clientWidth = $script:WindowW; clientHeight = $script:WindowH; trace = [bool]$Trace; pipeName = $PipeName; manager = -not $NoManager } |
         ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $dest 'config\config.json')
+    $script:HeadlessNoManager = [bool]$NoManager
     Set-HeadlessPipe $PipeName
     Write-Host "[e2e] headless input: deployed LeviHeadlessInput (the game will not take the mouse, keyboard or foreground)"
 }
@@ -207,13 +209,15 @@ function Exit-SignalingLock {
 }
 
 # Start-Game: take the signaling lock (shared, or exclusive with $script:ExclusiveSignaling) for
-# the game's lifetime, and remember where the user was so the mod hands the foreground back there.
-# Stop-Game: release it once the game is closed.
+# the game's lifetime, start the session's manager window unless it runs (HeadlessManager.ps1; also
+# for harnesses that start the game through the launcher), and remember where the user was so the
+# mod hands the foreground back there. Stop-Game: release the lock once the game is closed.
 if (Get-Command Start-Game -CommandType Function -ErrorAction SilentlyContinue) {
     $script:HeadlessOriginalStartGame = ${function:Start-Game}
     function Start-Game {
         Enter-SignalingLock -Exclusive:([bool]$script:ExclusiveSignaling)
         Set-RecentWorldsSinglePlayer
+        if (-not $script:HeadlessNoManager -and $env:LEVI_HEADLESS_MANAGER -ne '0') { & (Join-Path $script:HeadlessDir 'HeadlessManager.ps1') -Ensure | Out-Null }
         $env:LEVI_HEADLESS_RETURN_FOCUS = [string][int64][HeadlessInput.Foreground]::Get()
         & $script:HeadlessOriginalStartGame @args
     }

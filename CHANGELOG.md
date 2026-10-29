@@ -9,10 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The manager window (`HeadlessManager.ps1`): one per logon session, started by the first `Start-HeadlessGame.ps1` (or the shim's `Start-Game`) and reused by every later run. Every headless game shows up there as a live picture instead of as a window of its own (off screen, no taskbar button, not in Alt+Tab), labelled with the project and worktree that started it. Closing the manager closes all its games (also when it is killed); right-click a game to take it over with the real mouse and keyboard, hand it back, open its log or close it. `-List`, `-Game <pid> -Action show|hide|close` and `-Shutdown` do the same from scripts. Config `manager` (default `true`), `Start-HeadlessGame.ps1 -Label/-NoManager`, `Install-HeadlessInputMod -NoManager`, `LEVI_HEADLESS_MANAGER=0`.
+- `ping` and `state` report `managed` and `takenOver`.
 - `state` reports `serverQueriesRefused`, and GameInput statistics report `virtualReadings`.
 
 ### Fixed
 
+- A game could take the foreground for a moment when it started (with background mode on): the "focus gained" messages the mod sends activated the window when the game had been started from the user's foreground app (a terminal, an agent). They no longer activate it, and the user32 hooks are in place before the game creates its window.
 - `enable()` could still hang for good while installing the hooks, most often with several games starting at once: a thread stopped by the hook pause while holding the process heap lock blocked the hooking code. The heap stays locked while the threads are paused now.
 - Virtual clicks, wheel and camera were lost while nobody touched the real mouse (unattended runs stayed on the title screen with Play highlighted): GameInput has no mouse reading until the device reports input. The game now gets a virtual reading of the device instead.
 - With `loopbackOnly`, a game could join a "LAN world" instead of the test world and hang at "Connecting to multiplayer game" (~97%): game servers queried through a proxy on the PC were listed as LAN worlds ahead of the test world. Game servers outside the PC are no longer queried.

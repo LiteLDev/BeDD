@@ -196,6 +196,8 @@ json windowInfo() {
     json j{
         {"hwnd",       reinterpret_cast<uintptr_t>(h)},
         {"background", backgroundMode().load()     },
+        {"managed",    managed()                   },
+        {"takenOver",  takenOver()                 },
     };
     if (h) {
         POINT s     = clientSize();
@@ -318,7 +320,9 @@ json handle(json const& j) {
     return r;
 }
 
-std::string handleLine(std::string const& line) {
+} // namespace
+
+std::string handleControlLine(std::string const& line) {
     json req = json::parse(line, nullptr, false);
     json resp;
     if (req.is_discarded() || !req.is_object()) {
@@ -340,6 +344,8 @@ std::string handleLine(std::string const& line) {
     return resp.dump() + "\n";
 }
 
+namespace {
+
 void serveClient(HANDLE pipe) {
     std::string buf;
     char        chunk[4096];
@@ -353,7 +359,7 @@ void serveClient(HANDLE pipe) {
             buf.erase(0, nl + 1);
             if (!line.empty() && line.back() == '\r') line.pop_back();
             if (line.empty()) continue;
-            std::string out = handleLine(line);
+            std::string out = handleControlLine(line);
             DWORD       written = 0;
             if (!WriteFile(pipe, out.data(), static_cast<DWORD>(out.size()), &written, nullptr)) return;
         }

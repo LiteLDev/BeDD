@@ -15,6 +15,8 @@ namespace {
 
 bool bg() { return backgroundMode().load(std::memory_order_relaxed); }
 
+bool gInstalled = false;
+
 struct HookSlot {
     char const*           name;
     void*                 detour;
@@ -43,6 +45,8 @@ HI_ORIG(ShowWindow);
 HI_ORIG(SetWindowPos);
 HI_ORIG(SetActiveWindow);
 HI_ORIG(BringWindowToTop);
+HI_ORIG(CreateWindowExW);
+HI_ORIG(DefWindowProcW);
 
 #undef HI_ORIG
 
@@ -157,6 +161,7 @@ BOOL WINAPI d_SetForegroundWindow(HWND h) {
 BOOL WINAPI d_ShowWindow(HWND h, int cmd) {
     HI_COUNT("ShowWindow");
     if (bg() && ownTopLevel(h)) {
+        if (cmd != SW_HIDE && cmd != SW_MINIMIZE) prepareFirstShow(h);
         // Show without activating (the start-up show would otherwise take the foreground).
         switch (cmd) {
         case SW_SHOWNORMAL:
@@ -174,8 +179,10 @@ BOOL WINAPI d_ShowWindow(HWND h, int cmd) {
 BOOL WINAPI d_SetWindowPos(HWND h, HWND after, int x, int y, int cx, int cy, UINT flags) {
     HI_COUNT("SetWindowPos");
     if (bg() && ownTopLevel(h)) {
+        if (flags & SWP_SHOWWINDOW) prepareFirstShow(h);
         flags |= SWP_NOACTIVATE;
         if (after == HWND_TOP || after == HWND_TOPMOST) flags |= SWP_NOZORDER; // stay behind the user's windows
+        if (keepOffScreen(h)) flags |= SWP_NOMOVE;                              // the manager shows it
     }
     return o_SetWindowPos(h, after, x, y, cx, cy, flags);
 }
@@ -190,6 +197,48 @@ BOOL WINAPI d_BringWindowToTop(HWND h) {
     HI_COUNT("BringWindowToTop");
     if (bg() && ownTopLevel(h)) return TRUE;
     return o_BringWindowToTop(h);
+}
+
+HWND WINAPI d_CreateWindowExW(
+    DWORD     ex,
+    LPCWSTR   cls,
+    LPCWSTR   name,
+    DWORD     style,
+    int       x,
+    int       y,
+    int       w,
+    int       h,
+    HWND      parent,
+    HMENU     menu,
+    HINSTANCE instance,
+    LPVOID    param
+) {
+    // A managed game's main window (class "Bedrock"; other windows, e.g. of other mods, are left
+    // alone): a tool window (no taskbar button, not in Alt+Tab) created off screen, so it never
+    // shows up on the user's desktop while the game loads.
+    bool game = IS_INTRESOURCE(cls) || wcscmp(cls, L"Bedrock") == 0;
+    bool hide = !parent && game && (style & WS_CAPTION) == WS_CAPTION && hideNewWindows();
+    if (hide) {
+        ex = (ex | WS_EX_TOOLWINDOW) & ~static_cast<DWORD>(WS_EX_APPWINDOW);
+        // With x = CW_USEDEFAULT, y is a show command: a real position needs a real y too.
+        if (x == CW_USEDEFAULT || y == CW_USEDEFAULT) y = 40;
+        x = offScreenLeft(w > 0 && w != CW_USEDEFAULT ? w : 4000);
+    }
+    HWND created = o_CreateWindowExW(ex, cls, name, style, x, y, w, h, parent, menu, instance, param);
+    if (hide && created) {
+        markHidden(created);
+        log().info("game window {} created hidden (manager)", static_cast<void*>(created));
+    }
+    return created;
+}
+
+LRESULT WINAPI d_DefWindowProcW(HWND h, UINT m, WPARAM w, LPARAM l) {
+    // The "focus gained" messages the mod sends (fakeFocusGained) must not really activate the
+    // window: the default WM_ACTIVATE handling sets the focus, which activates the window, and a
+    // game started from the user's foreground app (a terminal, an agent) may then take the
+    // foreground. The game's own WM_ACTIVATE handling still runs; WM_SETFOCUS follows.
+    if (m == WM_ACTIVATE && inSyntheticDispatch()) return 0;
+    return o_DefWindowProcW(h, m, w, l);
 }
 
 UINT WINAPI d_GetRawInputData(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size, UINT headerSize) {
@@ -230,7 +279,7 @@ UINT WINAPI d_GetRawInputBuffer(PRAWINPUT data, PUINT size, UINT headerSize) {
 
 #define HI_SLOT(fn) HookSlot{#fn, reinterpret_cast<void*>(&d_##fn), reinterpret_cast<void**>(&o_##fn)}
 
-std::array<HookSlot, 17> gSlots{
+std::array<HookSlot, 19> gSlots{
     HI_SLOT(ClipCursor),
     HI_SLOT(SetCursorPos),
     HI_SLOT(GetCursorPos),
@@ -248,6 +297,8 @@ std::array<HookSlot, 17> gSlots{
     HI_SLOT(SetWindowPos),
     HI_SLOT(SetActiveWindow),
     HI_SLOT(BringWindowToTop),
+    HI_SLOT(CreateWindowExW),
+    HI_SLOT(DefWindowProcW),
 };
 
 #undef HI_SLOT
@@ -269,6 +320,8 @@ HookPause::HookPause() {
 }
 
 void installApiHooks() {
+    if (gInstalled) return;
+    gInstalled     = true;
     HMODULE user32 = GetModuleHandleW(L"user32.dll");
     if (!user32) user32 = LoadLibraryW(L"user32.dll");
     int                      installed = 0;
@@ -303,6 +356,8 @@ void installApiHooks() {
 }
 
 void uninstallApiHooks() {
+    if (!gInstalled) return;
+    gInstalled = false;
     HookPause pause;
     for (auto& s : gSlots) {
         if (!s.target) continue;

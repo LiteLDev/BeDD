@@ -20,6 +20,7 @@
 
 - **测试时照常用电脑。** 游戏不抢前台、不锁鼠标、不吃你的按键，你点哪儿都不会点进游戏里。
 - **多开一起测。** 每个游戏实例一条自己的管道；克隆一个实例只要几秒钟。
+- **一个窗口看全部。** 电脑上所有测试的游戏都实时显示在同一个管理窗口里，不会在桌面上弹来弹去；关掉它就关掉全部游戏。
 - **跟真人玩一样。** 按键、聊天、键位绑定、菜单、悬停提示、点击、转视角都和真鼠标键盘一样生效。
 - **结果确定。** 每个调用都等游戏处理完输入才返回，不用靠猜的 `sleep`。
 - **窗口被挡住也能截图。** 游戏可以躲在你其他窗口后面。
@@ -88,6 +89,21 @@ Connect-HeadlessInput -PipeName LeviHeadlessInput-1.26.51.01-hi2   # 该实例�
   多个多人存档同时打开会报"发生错误"（代码 "Blaze"）。
 - 需要在线加入服务器的测试，在 `Start-Game` 之前设 `$script:ExclusiveSignaling = $true`，等其他游戏关掉后独占整台电脑。
 
+### 管理窗口
+
+本次登录后第一次运行 `Start-HeadlessGame.ps1` 时会打开**管理窗口**，之后的运行（不管来自哪个终端、测试框架或 agent）都复用它。
+每个后台游戏都以实时画面显示在里面，不再有自己的窗口：任务栏上没有按钮，Alt+Tab 里也没有，多个测试同时启动、关闭游戏时
+桌面上不会有窗口弹出又消失。它也从不抢焦点。
+
+- 每个游戏标注启动它的脚本所在的项目（和 worktree）、实例名、pid，以及是否正在收到输入。`Start-HeadlessGame.ps1 -Label` 可以自己起名。
+- **关掉管理窗口会关掉里面所有的游戏**（会先确认）。管理窗口被强制结束时游戏也会一起退出，不会在后台留下游戏。
+- 双击某个游戏只看它一个。右键可以用自己的鼠标键盘接管它（以及交还给脚本）、打开它的 `latest.log` 或实例目录、或者关掉它。
+- 脚本里：`HeadlessManager.ps1 -List` 列出游戏，`-Game <pid> -Action show|hide|close` 做右键菜单的事，
+  `-Shutdown` 不经确认关掉管理窗口和所有游戏。
+
+需要 PowerShell 7（`pwsh`）。`Start-HeadlessGame.ps1 -NoManager`（或 `LEVI_HEADLESS_MANAGER=0`）启动游戏时不启动管理窗口；
+`Install-HeadlessInputMod -NoManager`（配置 `"manager": false`）让游戏不进已经开着的管理窗口，比如要录制真实屏幕的时候。
+
 ### 接入测试框架
 
 `harness-shim.ps1` 原地替换 LeviLauncher 测试框架的常用函数（`Focus-Game`、`Assert-GameForeground`、
@@ -140,6 +156,7 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 | `clientWidth`、`clientHeight` | 游戏窗口大小（0 表示不改），每次运行点击位置都一样 |
 | `pipeName` | 多开时每个实例一个 |
 | `loopbackOnly` | 默认 `true`：游戏只在本机通信，新实例不会弹 Windows 防火墙提示，也不会去查询本机以外的游戏服务器（否则它们可能以"局域网世界"出现在测试存档前面）。测试框架自己启动的专用服务器每个服务器目录还是会问一次，点**取消**即可 |
+| `manager` | 默认 `true`：后台模式下，有管理窗口时游戏显示在管理窗口里，自己的窗口留在屏幕外、不进任务栏 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
 
 ## 更多

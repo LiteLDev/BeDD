@@ -53,6 +53,7 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.trace        = j.value("trace", gOptions.trace);
     gOptions.pipeName     = j.value("pipeName", gOptions.pipeName);
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
+    gOptions.manager      = j.value("manager", gOptions.manager);
 }
 
 bool Mod::load() {
@@ -62,14 +63,18 @@ bool Mod::load() {
     gBackground = gOptions.background;
     // Before the game sets up its network (load() runs before enable()).
     if (gOptions.background && gOptions.loopbackOnly) installNetHooks();
+    // Also before the game window exists: a managed game's window never shows on the taskbar.
+    startManagerLink();
+    if (gOptions.background) installApiHooks();
     log().info(
-        "LeviHeadlessInput loaded: background={} placement={} client={}x{} trace={} pipe={}",
+        "LeviHeadlessInput loaded: background={} placement={} client={}x{} trace={} pipe={} manager={}",
         gOptions.background,
         gOptions.placement,
         gOptions.clientWidth,
         gOptions.clientHeight,
         gOptions.trace,
-        gOptions.pipeName
+        gOptions.pipeName,
+        gOptions.manager
     );
     return true;
 }
@@ -86,6 +91,7 @@ bool Mod::enable() {
 
 bool Mod::disable() {
     stopInputTrace();
+    stopManagerLink();
     stopPipeServer();
     stopWindowWatcher();
     uninstallGameInputHooks();

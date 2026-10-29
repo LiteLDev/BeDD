@@ -22,6 +22,8 @@
 //     real devices (ClipCursor, SetCursorPos, GetCursorPos, GetAsyncKeyState, ...): they see the
 //     virtual state below instead.
 //   * Pipe.cpp serves a JSON-lines control protocol on \\.\pipe\LeviHeadlessInput.
+//   * Manager.cpp links the game to the session's manager window (client/HeadlessManager.ps1),
+//     which shows every headless game and closes them all when it is closed.
 namespace headless {
 
 [[nodiscard]] ll::io::Logger& log();
@@ -41,6 +43,9 @@ struct Options {
     /// In background mode, keep the game on the PC: wildcard bind()s become loopback ones (no
     /// firewall prompts) and servers off the PC are not queried (no bogus "LAN worlds").
     bool loopbackOnly = true;
+    /// In background mode, register with the session's manager window when one runs: the game
+    /// window then stays off screen and off the taskbar, and the manager shows it instead.
+    bool manager = true;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -86,6 +91,9 @@ private:
     std::optional<ll::thread::GlobalThreadPauser> mPauser;
 };
 
+/// In background mode already in load(): the game creates and shows its window before enable(),
+/// and a managed game's window must be created hidden (CreateWindowExW) since the game does not
+/// pump messages until then. Idempotent.
 void installApiHooks();
 void uninstallApiHooks();
 /// "Name=calls ..." of the hooked user32 functions the game has called (trace / "state" op).
@@ -132,6 +140,23 @@ std::string applyWindowLayout(int clientW, int clientH, std::string const& place
 /// Pretend the game just got the focus (WM_ACTIVATEAPP/WM_ACTIVATE/WM_SETFOCUS).
 void fakeFocusGained();
 
+/// Linked to the manager window: the game window stays off screen, off the taskbar and out of Alt+Tab.
+void setManaged(bool on);
+[[nodiscard]] bool managed();
+/// A human took the game over from the manager (background off, window on screen and active).
+[[nodiscard]] bool takenOver();
+/// Hooked ShowWindow, before the game first shows a top-level window: hide it right away when managed.
+void prepareFirstShow(HWND h);
+/// True while the manager keeps this window off screen (moves by the game are dropped).
+[[nodiscard]] bool keepOffScreen(HWND h);
+/// Hooked CreateWindowExW: managed games create their windows as hidden tool windows off screen.
+[[nodiscard]] bool hideNewWindows();
+void               markHidden(HWND h);
+[[nodiscard]] int  offScreenLeft(int windowWidth);
+/// Manager ops: hand the game to the user's real mouse and keyboard, and take it back.
+std::string takeOver();
+std::string handBack();
+
 struct Stats {
     std::atomic<uint64_t> synthetic{};
     std::atomic<uint64_t> swallowedInput{};
@@ -168,5 +193,13 @@ void stopInputTrace();
 // ---------------------------------------------------------------------------------------------
 void startPipeServer();
 void stopPipeServer();
+/// One request line of the control protocol -> one reply line (with the newline).
+[[nodiscard]] std::string handleControlLine(std::string const& line);
+
+// ---------------------------------------------------------------------------------------------
+// Manager link (Manager.cpp): \\.\pipe\LeviHeadlessInput-Manager-<session id>
+// ---------------------------------------------------------------------------------------------
+void startManagerLink();
+void stopManagerLink();
 
 } // namespace headless

@@ -187,7 +187,8 @@ function Initialize-Instance($g) {
         Move-Item $d.FullName (Join-Path $aside $d.Name)
     }
     $script:WindowW = 1600; $script:WindowH = 900
-    Install-HeadlessInputMod -ModsDir (Join-Path $g.Dir 'mods') -PipeName $g.Pipe -Placement offscreen
+    # Recorded on the real screen: the games keep their own windows (no manager window).
+    Install-HeadlessInputMod -ModsDir (Join-Path $g.Dir 'mods') -PipeName $g.Pipe -Placement offscreen -NoManager
 
     $worlds = Get-WorldsDir $g
     if (-not $worlds) { throw "No worlds folder in $($g.Dir) (start the instance once)" }
@@ -380,7 +381,7 @@ try {
     Enter-SignalingLock
 
     foreach ($g in $Games) {
-        & (Join-Path $Bin 'Start-HeadlessGame.ps1') -Instance $g.Version | Out-Null
+        & (Join-Path $Bin 'Start-HeadlessGame.ps1') -Instance $g.Version -NoManager | Out-Null
         Write-Show "started $($g.Version)"
         Start-Sleep -Seconds 3
     }

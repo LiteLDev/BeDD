@@ -24,6 +24,8 @@ your own mouse, keyboard and windows stay yours, and several games can play at o
   your clicks never land in it.
 - **Several games at once.** Each game instance has its own pipe; a cheap clone of an instance
   takes a few seconds.
+- **One window for all of them.** The games of every test run on the PC show up live in one
+  manager window instead of popping up on your desktop; closing it closes them all.
 - **Plays like a player.** Keys, chat, key bindings, menus, hover tooltips, clicks and the camera
   all work as with a real mouse and keyboard.
 - **Deterministic.** Every call returns once the game has handled the input, so no guessing sleeps.
@@ -103,6 +105,26 @@ tripping over each other:
 - A run that joins a server online sets `$script:ExclusiveSignaling = $true` before `Start-Game`
   and gets the PC to itself while the other games close.
 
+### The manager window
+
+The first `Start-HeadlessGame.ps1` of your logon session opens the **manager window**, and every
+later run (from any terminal, harness or agent) reuses it. Each headless game then shows up there as
+a live picture instead of as a window of its own: no taskbar buttons, nothing in Alt+Tab, no windows
+popping up and vanishing while several runs start and close games. It never takes the focus.
+
+- Each game is labelled with the project (and worktree) of the script that started it, its
+  instance and pid, and whether input is arriving. `-Label` on `Start-HeadlessGame.ps1` names it.
+- **Closing the manager window closes every game in it** (it asks first). The games also go if the
+  manager is killed, so nothing is left running in the background.
+- Double-click a game to show only that one. Right-click it to take it over with your own mouse and
+  keyboard (and hand it back to the script), open its `latest.log` or instance folder, or close it.
+- From a script: `HeadlessManager.ps1 -List` lists the games, `-Game <pid> -Action show|hide|close`
+  does what the right-click menu does, `-Shutdown` closes the manager and every game without asking.
+
+It needs PowerShell 7 (`pwsh`). `Start-HeadlessGame.ps1 -NoManager` (or `LEVI_HEADLESS_MANAGER=0`)
+starts a game without starting the manager, and `Install-HeadlessInputMod -NoManager` (config
+`"manager": false`) keeps a game out of a running one, for example to record the real screen.
+
 ### Plug it into a harness
 
 `harness-shim.ps1` replaces the usual helpers of LeviLauncher harnesses (`Focus-Game`,
@@ -159,6 +181,7 @@ pipe still answers.
 | `clientWidth`, `clientHeight` | game window size (0 = leave it), so clicks land in the same place every run |
 | `pipeName` | one per game instance when several run at once |
 | `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new instance, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). Dedicated servers your harness starts still ask once per server folder; **Cancel** is fine |
+| `manager` | default `true`: in background mode the game shows up in the manager window when one runs, and its own window stays off screen and off the taskbar |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
 
 ## More

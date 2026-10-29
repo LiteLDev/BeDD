@@ -89,7 +89,8 @@ try {
         if (Test-Path $ModDest) { Remove-Item -Recurse -Force $ModDest }
         Copy-Item -Recurse $bin $ModDest
         New-Item -ItemType Directory -Force (Join-Path $ModDest 'config') | Out-Null
-        @{ background = -not $NoBackground; placement = $Placement; clientWidth = 1600; clientHeight = 900; trace = [bool]$Trace } |
+        # A window of its own (not the manager window): this script watches it on the desktop.
+        @{ background = -not $NoBackground; placement = $Placement; clientWidth = 1600; clientHeight = 900; trace = [bool]$Trace; manager = $false } |
             ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ModDest 'config\config.json')
         Write-Dev "deployed $bin -> $ModDest"
         # The window that has the foreground now gets it back when the game window appears.

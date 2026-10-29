@@ -24,9 +24,10 @@ See [Development](#development) below. The code is small:
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
 | `src/NetHooks.cpp` | loopback-only network in background mode (`loopbackOnly`: no firewall prompt, no queries to servers off the PC) |
 | `src/Pipe.cpp` | control pipe and protocol |
+| `src/Manager.cpp` | link to the session's manager window |
 | `src/Trace.cpp` | trace-mode input logging |
 | `src/MemoryOperators.cpp` | routes `new`/`delete` through LeviLamina's allocator (required by LeviLamina) |
-| `client/` | PowerShell client, harness shim, game start (`Start-HeadlessGame.ps1`) and clone scripts (shipped next to the DLL) |
+| `client/` | PowerShell client, harness shim, game start (`Start-HeadlessGame.ps1`), manager window (`HeadlessManager.ps1`) and clone scripts (shipped next to the DLL) |
 
 When you hook a game or LeviLamina symbol, check the SDK headers under
 `%LOCALAPPDATA%\.xmake\packages\l\levilamina\<version>\<hash>\include` first. Only call `MCAPI`,
@@ -56,7 +57,7 @@ You need Windows x64, [xmake](https://xmake.io), Visual Studio Build Tools with 
 
 ```powershell
 xmake f -a x64 -m release -p windows --target_type=client -y
-xmake -y        # -> bin\LeviHeadlessInput\ (DLL, manifest, HeadlessInput.psm1, harness-shim.ps1, Start-HeadlessGame.ps1, clone-instance.ps1)
+xmake -y        # -> bin\LeviHeadlessInput\ (DLL, manifest, HeadlessInput.psm1, harness-shim.ps1, Start-HeadlessGame.ps1, HeadlessManager.ps1, clone-instance.ps1)
 ```
 
 The mod packer reads the version from `git describe`, so the repository needs at least one commit.
@@ -114,7 +115,11 @@ ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and
    the game does not pause or release its keys. `Start-HeadlessGame.ps1` starts the exe with
    `SW_SHOWNOACTIVATE`; the hooked `ShowWindow`/`SetWindowPos`/`SetActiveWindow`/
    `BringWindowToTop`/`SetForegroundWindow` never activate the game's windows, and the window is
-   kept at the bottom of the Z order.
+   kept at the bottom of the Z order. In background mode the user32 hooks are installed in `load()`
+   already: the game creates and shows its window before `enable()`. The "focus gained" messages
+   the mod sends skip the default `WM_ACTIVATE` handling (hooked `DefWindowProcW`), which would set
+   the focus and so activate the window: a game started from the user's foreground app (a terminal,
+   an agent) is allowed to take the foreground.
 4. **Your real input never reaches the game.** Real client-area input messages are swallowed, and
    the user32 calls through which the game reads or grabs the devices see a *virtual* state:
    `ClipCursor` (no-op: your cursor is never confined), `SetCursorPos` (moves the virtual cursor
@@ -122,6 +127,17 @@ ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and
    `GetKeyboardState`, `GetForegroundWindow`/`GetActiveWindow`/`GetFocus` (report the game window),
    `GetRawInputData`/`GetRawInputBuffer` (real raw input is dropped).
 5. **Screenshots** use `PrintWindow(PW_RENDERFULLCONTENT)`, which works while the window is covered.
+6. **The manager window** (`client/HeadlessManager.ps1`, WinForms in C# compiled by `Add-Type`, one
+   per logon session) shows every headless game through a DWM thumbnail, which stays live while
+   the game window is off screen. `Start-HeadlessGame.ps1` starts it through WMI
+   (`Win32_Process.Create` inside `conhost --headless`), so it is not part of the caller's process
+   tree or job and survives the agent or harness that happened to start it. The mod links to it in
+   `load()`; a linked game creates its window as a tool window off screen (hooked
+   `CreateWindowExW`: the game does not pump messages before `enable()`, so the window cannot be
+   changed from outside its thread until then) and keeps it there (`SetWindowPos` moves are
+   dropped, a watcher puts it back). The manager puts each linked game into a kill-on-close job of
+   its own (once linked, so the start-up is left alone; a game that never links joins after a
+   minute): closing or killing the manager closes the games.
 
 The environment variable `LEVI_HEADLESS_RETURN_FOCUS` (a window handle, set by
 `Start-HeadlessGame.ps1` and the shim's `Start-Game`) tells the mod which window gets the foreground
@@ -146,6 +162,24 @@ ops reply after the game thread has dispatched the input (`timeoutMs`, default 5
 | `window` | `clientWidth`, `clientHeight`, `placement` back\|offscreen\|none | never activates the window |
 | `background` | `on` | background mode on/off |
 | `flush` | | waits until everything posted was dispatched |
+
+`ping` and `state` also report `managed` (linked to the manager window) and `takenOver`.
+
+### Manager pipe
+
+`\\.\pipe\LeviHeadlessInput-Manager-<session id>` (current user only), served by
+`HeadlessManager.ps1`, JSON lines like the control pipe.
+
+- **Clients** (one request per connection): `ping` (`games`; `ok` is false while it closes),
+  `adopt` `{pid, instance, label}` (`Start-HeadlessGame.ps1` right after starting a game), `list`
+  (`games[]`: `pid`, `instance`, `label`, `pipe`, `hwnd`, `linked`, `background`, `managed`,
+  `takenOver`, `job`, `thumbnail`), `game` `{pid, action: show|hide|close}`, `shutdown`.
+- **Games** (the mod): the first line is `hello` `{protocol, pid, hwnd, pipe, instance, label,
+  background}` (`label` from `LEVI_HEADLESS_LABEL`), answered with `{"ok":true}` (a manager that
+  is closing hangs up instead; the game is linked only once welcomed). The connection stays open
+  and the manager sends requests on it: every control-pipe op (it polls `state` every second), plus `show` (take over:
+  background off, a normal window on screen and in front; the manager calls
+  `AllowSetForegroundWindow` first), `hide` (hand back) and `close` (`WM_CLOSE` to the game window).
 
 ## License
 
