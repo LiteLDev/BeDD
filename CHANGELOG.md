@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-29
+
 ### Added
 
 - The manager window (`HeadlessManager.ps1`): one per logon session, started by the first `Start-HeadlessGame.ps1` (or the shim's `Start-Game`) and reused by every later run. Every headless game shows up there as a live picture instead of as a window of its own (off screen, no taskbar button, not in Alt+Tab), labelled with the project and worktree that started it. Closing the manager closes all its games (also when it is killed); right-click a game to take it over with the real mouse and keyboard, hand it back, open its log or close it. `-List`, `-Game <pid> -Action show|hide|close` and `-Shutdown` do the same from scripts. Config `manager` (default `true`), `Start-HeadlessGame.ps1 -Label/-NoManager`, `Install-HeadlessInputMod -NoManager`, `LEVI_HEADLESS_MANAGER=0`.
@@ -65,7 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Start-HeadlessGame.ps1` (start an instance without activating it) and `clone-instance.ps1` (cheap clone instances for parallel games).
 - Trace mode: message, API-hook and GameInput statistics, and every input event that reaches the game, marked synthetic or real.
 
-[Unreleased]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.0...v0.1.1
