@@ -52,6 +52,8 @@ struct Options {
     bool mute = true;
     /// Game-side ops that read or drive the client from its own thread (world, look, ...).
     bool gameHooks = false;
+    /// Serve \\.\pipe\<pipeName>-tap: the game packets the client receives and sends (Tap.cpp).
+    bool tap = false;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -236,5 +238,13 @@ void startLook();
 void stopLook();
 /// The client left its world: a pending look fails with not_in_level.
 void lookLevelExited();
+// Tap (Tap.cpp, NetTap.cpp): \\.\pipe\<pipeName>-tap, only with config "tap"
+// ---------------------------------------------------------------------------------------------
+void startTap();
+void stopTap();
+/// The "tap" op reply fields (JSON object).
+[[nodiscard]] std::string tapInfo();
+/// {hook name: installed} of the tap's hooks (JSON object, for "state").
+[[nodiscard]] std::string tapHooks();
 
 } // namespace bedd

@@ -233,6 +233,8 @@ json handle(json const& j) {
             {"serverQueriesRefused", serverQueriesRefused()     },
             {"audio",              audioStats()               },
         };
+        json tap = json::parse(tapHooks());
+        for (auto& [name, on] : tap.items()) r["hooks"][name] = on;
     } else if (op == "background") {
         bool on = j.value("on", true);
         backgroundMode() = on;
@@ -320,6 +322,9 @@ json handle(json const& j) {
         r = worldOp(j);
     } else if (op == "look") {
         r = lookOp(j);
+    } else if (op == "tap") {
+        if (!options().tap) return {{"ok", false}, {"code", "disabled"}, {"error", "the tap is off (config.json \"tap\")"}};
+        r.update(json::parse(tapInfo()));
     } else {
         throw OpError("unknown op '" + op + "'");
     }

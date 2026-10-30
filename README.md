@@ -229,6 +229,7 @@ console window would flash on the desktop at every game start.
 | `mute` | default `true`: in background mode the game makes no sound (it is audible again while you take it over) |
 | `gameHooks` | default `false`: the `world` and `look` ops (`Get-BeDDWorld`, `Set-BeDDLook`), which read the client and turn the player from the game's own thread |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
+| `tap` | default `false`: serve `\\.\pipe\<pipeName>-tap`, a binary stream of the game packets the client receives and sends on a server, for [bedboo](https://github.com/LiteLDev/bedboo)'s transport `bedd` (see CONTRIBUTING.md, Tap protocol). It carries the whole session of the signed-in player, so only your user can open it |
 
 ## More
 
