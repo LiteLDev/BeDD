@@ -55,6 +55,7 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
     gOptions.manager      = j.value("manager", gOptions.manager);
     gOptions.mute         = j.value("mute", gOptions.mute);
+    gOptions.tap          = j.value("tap", gOptions.tap);
 }
 
 bool Mod::load() {
@@ -89,6 +90,7 @@ bool Mod::enable() {
     startWindowWatcher();
     startPipeServer();
     startInputTrace();
+    startTap();
     log().info("BeDD enabled");
     return true;
 }
@@ -102,6 +104,7 @@ bool Mod::disable() {
     uninstallApiHooks();
     uninstallNetHooks();
     uninstallAudioHooks();
+    stopTap();
     return true;
 }
 

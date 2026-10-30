@@ -48,6 +48,8 @@ struct Options {
     bool manager = true;
     /// In background mode, mute the game (FMOD master channel group): headless games stay silent.
     bool mute = true;
+    /// Serve \\.\pipe\<pipeName>-tap: the game packets the client receives and sends (Tap.cpp).
+    bool tap = false;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -210,5 +212,15 @@ void stopPipeServer();
 // ---------------------------------------------------------------------------------------------
 void startManagerLink();
 void stopManagerLink();
+
+// ---------------------------------------------------------------------------------------------
+// Tap (Tap.cpp, NetTap.cpp): \\.\pipe\<pipeName>-tap, only with config "tap"
+// ---------------------------------------------------------------------------------------------
+void startTap();
+void stopTap();
+/// The "tap" op reply fields (JSON object).
+[[nodiscard]] std::string tapInfo();
+/// {hook name: installed} of the tap's hooks (JSON object, for "state").
+[[nodiscard]] std::string tapHooks();
 
 } // namespace bedd
