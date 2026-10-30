@@ -226,6 +226,8 @@ console window would flash on the desktop at every game start.
 | `manager` | default `true`: in background mode the game shows up in the manager window when one runs, and its own window stays off screen and off the taskbar |
 | `mute` | default `true`: in background mode the game makes no sound (it is audible again while you take it over) |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
+| `tap` | default `false`: serve the tap pipe for tools such as bedboo, and keep a join journal so they can attach in the middle of a session |
+| `tapJournalMiB` | default `128`: size cap of the tap's join journal; past it a late attach is incomplete (`complete:false`) |
 
 ## More
 

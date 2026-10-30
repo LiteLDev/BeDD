@@ -233,6 +233,20 @@ json handle(json const& j) {
             {"serverQueriesRefused", serverQueriesRefused()     },
             {"audio",              audioStats()               },
         };
+        auto jn               = tapJournalStats();
+        r["stats"]["journal"] = {
+            {"enabled",   jn.enabled  },
+            {"frames",    jn.frames   },
+            {"bytes",     jn.bytes    },
+            {"complete",  jn.complete },
+            {"seen",      jn.seen     },
+            {"compacted", jn.compacted},
+            {"pruned",    jn.pruned   },
+            {"transient", jn.transient},
+            {"overCap",   jn.overCap  },
+            {"resets",    jn.resets   },
+            {"replays",   jn.replays  },
+        };
     } else if (op == "background") {
         bool on = j.value("on", true);
         backgroundMode() = on;
