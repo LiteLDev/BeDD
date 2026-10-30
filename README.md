@@ -226,6 +226,8 @@ console window would flash on the desktop at every game start.
 | `manager` | default `true`: in background mode the game shows up in the manager window when one runs, and its own window stays off screen and off the taskbar |
 | `mute` | default `true`: in background mode the game makes no sound (it is audible again while you take it over) |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
+| `allowSend` | default `false`: allow the `send` pipe op, with which a script such as bedboo makes the client send chat and commands it serialized (any local program of yours could then do so as your player) |
+| `sendAllow` | packet ids `send` may send, default `[9, 77]` (text, command_request); login, inventory_transaction, player_auth_input and item_stack_request are always refused |
 
 ## More
 

@@ -232,6 +232,7 @@ json handle(json const& j) {
             {"loopbackRebinds",    loopbackRebinds()          },
             {"serverQueriesRefused", serverQueriesRefused()     },
             {"audio",              audioStats()               },
+            {"send",               sendStats()                },
         };
     } else if (op == "background") {
         bool on = j.value("on", true);
@@ -316,6 +317,8 @@ json handle(json const& j) {
         flushOrThrow(j);
     } else if (op == "flush") {
         flushOrThrow(j);
+    } else if (op == "send") {
+        r = sendOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }

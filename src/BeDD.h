@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "ll/api/io/Logger.h"
 #include "ll/api/thread/GlobalThreadPauser.h"
@@ -48,6 +49,10 @@ struct Options {
     bool manager = true;
     /// In background mode, mute the game (FMOD master channel group): headless games stay silent.
     bool mute = true;
+    /// Allow the `send` op: the local client sends serverbound packets a caller serialized (Send.cpp).
+    bool allowSend = false;
+    /// Packet ids `send` may send (text, command_request). 1, 30, 144 and 147 are always refused.
+    std::vector<int> sendAllow{9, 77};
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -211,4 +216,19 @@ void stopPipeServer();
 void startManagerLink();
 void stopManagerLink();
 
+} // namespace bedd
+
+// ---------------------------------------------------------------------------------------------
+// Send (Send.cpp): allowlisted serverbound packets from the control pipe (allowSend).
+// ---------------------------------------------------------------------------------------------
+#include <nlohmann/json_fwd.hpp>
+
+namespace bedd {
+/// Client level tick listener that sends queued packets on the client thread.
+void installSend();
+void uninstallSend();
+/// The `send` op: the whole reply (`ok`, `code` on errors).
+[[nodiscard]] nlohmann::json sendOp(nlohmann::json const& req);
+/// `sent`, `refused`, `failed`, `lastError` for the "state" op.
+[[nodiscard]] nlohmann::json sendStats();
 } // namespace bedd

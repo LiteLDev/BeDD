@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Setup for a new PC: `Initialize-BeDD.ps1` and `BeDDSetup.psm1` (`Initialize-BeDDInstance`, `Get-BeDDInstance`, …) find the LeviLauncher instance of Minecraft 1.26.51 and set up whatever is missing: LeviLauncher (downloaded from its releases when not installed), LeviLamina (installed with lip, which is downloaded with its .NET runtime), LeviLauncher's loader in the game exe, and clones. Only the game install itself is left to a person: LeviLauncher opens and the script waits for it. `Start-BeDDGame.ps1`, `clone-instance.ps1` and `tools/dev.ps1` run the same setup, and the harness shim exports it. Overrides: `BEDD_INSTANCE`, `BEDD_VERSIONS_DIR`, `BEDD_LAUNCHER_DATA`, `BEDD_LEVILAUNCHER`, `BEDD_LIP`.
 - `Start-BeDDGame.ps1 -Slot N`; `-Instance` is optional (the instance BeDD finds).
 - `tools/build.ps1`: builds with xmake, installing xmake, LLVM and the Visual Studio C++ build tools with winget when missing.
+- `send` pipe op (config `allowSend`, off by default): the local client sends a serverbound packet a script serialized (base64 `buf`), rebuilt and sent by the local player on the client thread, on a server and in singleplayer. Only ids in `sendAllow` (default text and command_request) go out; login, inventory_transaction, player_auth_input and item_stack_request are always refused. `Send-BeDDPacket` in `BeDD.psm1`.
 
 ### Fixed
 
