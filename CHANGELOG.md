@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-30
+
 ### Changed
 
 - **Renamed to Be.D.D. (Bedrock Deep Dive), after the H.D.D. of Zenless Zone Zero.** The repository is `LiteLDev/BeDD` and the lip package `github.com/LiteLDev/BeDD`; everything else follows, with no aliases for the old names:
@@ -84,7 +86,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Start-HeadlessGame.ps1` (start an instance without activating it) and `clone-instance.ps1` (cheap clone instances for parallel games).
 - Trace mode: message, API-hook and GameInput statistics, and every input event that reaches the game, marked synthetic or real.
 
-[Unreleased]: https://github.com/LiteLDev/BeDD/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/LiteLDev/BeDD/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/LiteLDev/BeDD/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/LiteLDev/BeDD/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/LiteLDev/BeDD/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/LiteLDev/BeDD/compare/v0.1.1...v0.1.2
