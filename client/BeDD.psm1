@@ -201,6 +201,16 @@ function Set-BeDDInput([double]$X = 0, [double]$Z = 0, [switch]$Jump, [switch]$S
 }
 Export-ModuleMember -Function Set-BeDDInput
 
+# The local client sends one serverbound packet (needs allowSend; ids in sendAllow only): -Base64 or
+# -Bytes is the varint header + body, as bedrock-protocol serializes it. Without either, returns the
+# allowed ids. Returns the reply (packetId, name); with -NoThrow also a failed one (code, error).
+function Send-BeDDPacket([string]$Base64, [byte[]]$Bytes, [int]$TimeoutMs = 2000, [switch]$NoThrow) {
+    $r = @{ op = 'send'; timeoutMs = $TimeoutMs }
+    if ($PSBoundParameters.ContainsKey('Bytes')) { $r.buf = [Convert]::ToBase64String($Bytes) }
+    elseif ($PSBoundParameters.ContainsKey('Base64')) { $r.buf = $Base64 }
+    Invoke-BeDD $r -NoThrow:$NoThrow
+}
+
 Add-Type -AssemblyName System.Drawing
 if (-not ('BeDD.Win' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -254,4 +264,4 @@ Export-ModuleMember -Function Connect-BeDD, Set-BeDDPipe, Disconnect-BeDD, Test-
     Set-BeDDCrashLogger, Get-BeDDState, Set-BeDDBackground, Set-BeDDWindow, Send-BeDDKey, Send-BeDDText,
     Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot,
     Get-BeDDWorld, Set-BeDDLook,
-    Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton
+    Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton, Send-BeDDPacket

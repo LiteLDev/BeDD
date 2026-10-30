@@ -266,6 +266,7 @@ json handle(json const& j) {
                  return json{{"enabled", t.enabled}, {"hooks", t.hooks}, {"link", t.link}, {"clientbound", t.clientbound}, {"echo", t.echo},
                              {"bytes", t.bytes}, {"unpublished", t.unpublished}, {"guest", t.guest}};
              }()},
+            {"send",               sendStats()                },
         };
         json tap = json::parse(tapHooks());
         for (auto& [name, on] : tap.items()) r["hooks"][name] = on;
@@ -383,6 +384,8 @@ json handle(json const& j) {
         r = gameActionOp(op, j);
     } else if (op == "input") {
         return moveInputOp(j);
+    } else if (op == "send") {
+        r = sendOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }

@@ -8,6 +8,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <nlohmann/json_fwd.hpp>
 
@@ -66,6 +67,10 @@ struct Options {
     int tapJournalMiB = 128;
     /// Hook the client's own game systems (input, look, actions) for the bedboo ops. Off: those ops answer code:'disabled'.
     bool gameHooks = false;
+    /// Allow the `send` op: the local client sends serverbound packets a caller serialized (Send.cpp).
+    bool allowSend = false;
+    /// Packet ids `send` may send (text, command_request). 1, 30, 144 and 147 are always refused.
+    std::vector<int> sendAllow{9, 77};
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -314,4 +319,19 @@ void clearMoveInput();
 /// The "input" op: the reply object (ok:false with a code on refusal).
 [[nodiscard]] nlohmann::json moveInputOp(nlohmann::json const& request);
 
+} // namespace bedd
+
+// ---------------------------------------------------------------------------------------------
+// Send (Send.cpp): allowlisted serverbound packets from the control pipe (allowSend).
+// ---------------------------------------------------------------------------------------------
+#include <nlohmann/json_fwd.hpp>
+
+namespace bedd {
+/// Client level tick listener that sends queued packets on the client thread.
+void installSend();
+void uninstallSend();
+/// The `send` op: the whole reply (`ok`, `code` on errors).
+[[nodiscard]] nlohmann::json sendOp(nlohmann::json const& req);
+/// `sent`, `refused`, `failed`, `lastError` for the "state" op.
+[[nodiscard]] nlohmann::json sendStats();
 } // namespace bedd

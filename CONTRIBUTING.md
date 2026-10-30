@@ -28,6 +28,7 @@ See [Development](#development) below. The code is small:
 | `src/Manager.cpp` | link to the session's manager window |
 | `src/Trace.cpp` | trace-mode input logging |
 | `src/MoveInput.cpp` | `input` op: move override in the client's `ClientInputUpdateSystem` with a dead-man TTL (`gameHooks`) |
+| `src/Send.cpp` | `send` op (`allowSend`): allowlisted serverbound packets, sent by the local player on the client thread |
 | `src/MemoryOperators.cpp` | routes `new`/`delete` through LeviLamina's allocator (required by LeviLamina) |
 | `client/` | PowerShell client, harness shim, game start (`Start-BeDDGame.ps1`), manager window (`BeDDManager.ps1`), clone script and setup (`BeDDSetup.psm1`, `Initialize-BeDD.ps1`: finds the game instance and sets up what a new PC lacks), all shipped next to the DLL |
 
@@ -331,6 +332,16 @@ game's own input pipeline, so the client builds every `player_auth_input` itself
 - `via:"keys"` (a hook did not install): the virtual keys of the default keymap (W/A/S/D, SPACE,
   LSHIFT, LCTRL) are held until the deadline. These go through the window like `key`, so they also
   reach an open screen, and a rebound key breaks them.
+| `send` | `buf` (base64: varint header + body, the game's wire format); `timeoutMs` (default 2000, at most 10000) | needs `allowSend`. Without `buf`: `{allow}`. Rebuilds the packet on the client thread (`MinecraftPackets::createPacket` + `readNoHeader`) and sends it through the local player (`sendNetworkPacket`), on a remote server and in singleplayer alike; replies `{packetId, name}` once sent (bytes the game does not read are `bad_args`, nothing sent). Errors carry `code`: `disabled`, `refused` (id not in `sendAllow`), `not_in_level`, `bad_args`, `timeout`. `state` reports `stats.send{sent, refused, failed, lastError}` |
+
+`ping` and `state` also report `managed` (linked to the manager window) and `takenOver`.
+
+**Security note on `send`.** It lets any process of the current user that can open the pipe make
+the client send packets as the signed-in player, so it is off by default (`allowSend`) and limited
+to `sendAllow` (default text 9 and command_request 77: chat and commands, as the player could type
+them). Ids 1 (login), 30 (inventory_transaction), 144 (player_auth_input) and 147
+(item_stack_request) are always refused, even when listed: the client owns them, and forged ones
+would fight its prediction and bookkeeping. Widen `sendAllow` only for a server you control.
 
 ### Manager pipe
 

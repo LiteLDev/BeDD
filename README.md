@@ -236,6 +236,8 @@ console window would flash on the desktop at every game start.
 | `tap` | default `false`: serve the tap pipe for tools such as bedboo, and keep a join journal so they can attach in the middle of a session |
 | `tapJournalMiB` | default `128`: size cap of the tap's join journal; past it a late attach is incomplete (`complete:false`) |
 | `gameHooks` | default `false`: enables the in-game control ops `slot`, `action` and `button` (hotbar slot, drop/inventory/perspective/pause, attack/use/pick held for a number of game ticks or until the targeted block breaks; see CONTRIBUTING.md) |
+| `allowSend` | default `false`: allow the `send` pipe op, with which a script such as bedboo makes the client send chat and commands it serialized (any local program of yours could then do so as your player) |
+| `sendAllow` | packet ids `send` may send, default `[9, 77]` (text, command_request); login, inventory_transaction, player_auth_input and item_stack_request are always refused |
 
 ## More
 

@@ -200,6 +200,8 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 | `mute` | 默认 `true`：后台模式下游戏不出声（你接管游戏时恢复声音） |
 | `gameHooks` | 默认 `false`：启用 `world` 与 `look` 操作（`Get-BeDDWorld`、`Set-BeDDLook`），在游戏自己的线程上读取客户端状态并转动玩家视角 |
 | `gameHooks` | 默认 `false`：挂钩游戏自身的系统，供 bedboo 的操作使用；开启后 `input`（`Set-BeDDInput`）可让玩家行走、跳跃、潜行和疾跑，与按键绑定无关 |
+| `allowSend` | 默认 `false`：允许管道操作 `send`，bedboo 等脚本借此让客户端发送它序列化好的聊天和命令（你电脑上的任何程序都能以你的玩家身份这样做） |
+| `sendAllow` | `send` 可发送的数据包 id，默认 `[9, 77]`（text、command_request）；login、inventory_transaction、player_auth_input 和 item_stack_request 始终被拒绝 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
 | `tapLoopback` | 默认 `true`，只在 `tap` 打开时生效：单人世界和本游戏开的局域网世界也接到 tap 管道上（数据包重新序列化；局域网访客的流量不包括在内） |
 

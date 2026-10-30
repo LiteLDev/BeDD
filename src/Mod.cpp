@@ -61,6 +61,13 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.tapLoopback  = j.value("tap", false) && j.value("tapLoopback", gOptions.tapLoopback);
     gOptions.tap          = j.value("tap", gOptions.tap);
     gOptions.tapJournalMiB = j.value("tapJournalMiB", gOptions.tapJournalMiB);
+    gOptions.allowSend    = j.value("allowSend", gOptions.allowSend);
+    if (auto it = j.find("sendAllow"); it != j.end() && it->is_array()) {
+        gOptions.sendAllow.clear();
+        for (auto const& id : *it)
+            if (id.is_number_integer() && id.get<int64_t>() >= 0 && id.get<int64_t>() <= 0x3ff) gOptions.sendAllow.push_back(id.get<int>());
+            else log().warn("sendAllow: {} is not a packet id (0..1023); ignored", id.dump());
+    }
 }
 
 bool Mod::load() {
@@ -102,6 +109,7 @@ bool Mod::enable() {
     if (gOptions.tapLoopback) installTapLoopback();
     if (gOptions.tap) installTapJournal();
     installGameActions();
+    if (gOptions.allowSend) installSend();
     log().info("BeDD enabled");
     return true;
 }
@@ -111,6 +119,7 @@ bool Mod::disable() {
     stopLook();
     stopGameState();
     uninstallGameActions(); // first: its tick listener drives the virtual mouse
+    uninstallSend(); // first: answers a send the pipe thread waits on, so stopPipeServer() can join it
     stopInputTrace();
     stopManagerLink();
     stopPipeServer();
