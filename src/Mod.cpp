@@ -93,6 +93,7 @@ bool Mod::enable() {
     installApiHooks();
     installGameInputHooks();
     startWindowWatcher();
+    installMoveInputHooks(); // before the pipe: an early "input" must not take the key fallback
     startPipeServer();
     startInputTrace();
     startGameState();
@@ -121,6 +122,7 @@ bool Mod::disable() {
     stopTap();
     uninstallTapLoopback();
     uninstallTapJournal();
+    uninstallMoveInputHooks();
     return true;
 }
 

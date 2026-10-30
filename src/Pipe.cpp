@@ -355,6 +355,7 @@ json handle(json const& j) {
         }
         sleepMs(j.value("afterMs", kPollMs));
     } else if (op == "release") {
+        clearMoveInput();
         for (int vk = 1; vk < 256; ++vk) {
             if (!vstate::keyDown(vk)) continue;
             if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON) {
@@ -380,6 +381,8 @@ json handle(json const& j) {
         r = gameActionOp(op, j);
     } else if (op == "button") {
         r = gameActionOp(op, j);
+    } else if (op == "input") {
+        return moveInputOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }

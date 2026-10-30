@@ -64,6 +64,7 @@ struct Options {
     bool tap = false;
     /// Size cap of the tap's join journal (late attach); past it the replay reports complete:false.
     int tapJournalMiB = 128;
+    /// Hook the client's own game systems (input, look, actions) for the bedboo ops. Off: those ops answer code:'disabled'.
     bool gameHooks = false;
 };
 
@@ -303,5 +304,14 @@ void uninstallGameActions();
 void releaseGameButtons();
 /// Reply of a `slot`, `action` or `button` request.
 [[nodiscard]] nlohmann::json gameActionOp(std::string const& op, nlohmann::json const& req);
+// Move input (MoveInput.cpp): the "input" op, ClientInputUpdateSystem hooks with a dead-man TTL.
+// ---------------------------------------------------------------------------------------------
+/// When gameHooks is on; falls back to the default keymap's keys if the hooks do not install.
+void installMoveInputHooks();
+void uninstallMoveInputHooks();
+/// Drop the move override now ("release", a control client disconnecting).
+void clearMoveInput();
+/// The "input" op: the reply object (ok:false with a code on refusal).
+[[nodiscard]] nlohmann::json moveInputOp(nlohmann::json const& request);
 
 } // namespace bedd

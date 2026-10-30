@@ -199,6 +199,7 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 | `manager` | 默认 `true`：后台模式下，有管理窗口时游戏显示在管理窗口里，自己的窗口留在屏幕外、不进任务栏 |
 | `mute` | 默认 `true`：后台模式下游戏不出声（你接管游戏时恢复声音） |
 | `gameHooks` | 默认 `false`：启用 `world` 与 `look` 操作（`Get-BeDDWorld`、`Set-BeDDLook`），在游戏自己的线程上读取客户端状态并转动玩家视角 |
+| `gameHooks` | 默认 `false`：挂钩游戏自身的系统，供 bedboo 的操作使用；开启后 `input`（`Set-BeDDInput`）可让玩家行走、跳跃、潜行和疾跑，与按键绑定无关 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
 | `tapLoopback` | 默认 `true`，只在 `tap` 打开时生效：单人世界和本游戏开的局域网世界也接到 tap 管道上（数据包重新序列化；局域网访客的流量不包括在内） |
 

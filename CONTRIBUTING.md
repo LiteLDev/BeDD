@@ -27,6 +27,7 @@ See [Development](#development) below. The code is small:
 | `src/Pipe.cpp` | control pipe and protocol |
 | `src/Manager.cpp` | link to the session's manager window |
 | `src/Trace.cpp` | trace-mode input logging |
+| `src/MoveInput.cpp` | `input` op: move override in the client's `ClientInputUpdateSystem` with a dead-man TTL (`gameHooks`) |
 | `src/MemoryOperators.cpp` | routes `new`/`delete` through LeviLamina's allocator (required by LeviLamina) |
 | `client/` | PowerShell client, harness shim, game start (`Start-BeDDGame.ps1`), manager window (`BeDDManager.ps1`), clone script and setup (`BeDDSetup.psm1`, `Initialize-BeDD.ps1`: finds the game instance and sets up what a new PC lacks), all shipped next to the DLL |
 
@@ -166,7 +167,7 @@ ops reply after the game thread has dispatched the input (`timeoutMs`, default 5
 | `text` | `text`; `delayMs` | one `WM_CHAR` per UTF-16 unit |
 | `mouse` | `action` move\|down\|up\|click\|wheel; `x`,`y` (client px) or `rx`,`ry` (fractions); `button` left\|right\|middle; `notches`; `holdMs` | moves the virtual cursor (if a point is given), then buttons/wheel on the virtual GameInput mouse |
 | `raw` | `action` move\|down\|up\|click\|wheel; `dx`,`dy` (mouse counts); `steps`; `button`; `notches`; `holdMs` | virtual GameInput mouse: camera while the mouse is grabbed |
-| `release` | | releases every held key/button |
+| `release` | | releases every held key/button (and the `input` move override) |
 | `focus` | | re-sends the "focus gained" messages |
 | `window` | `clientWidth`, `clientHeight`, `placement` back\|offscreen\|none | never activates the window |
 | `background` | `on` | background mode on/off |
@@ -305,6 +306,31 @@ with the `key` op (ESC). Without their main field they are read-only queries.
 | `slot` | `slot` 0..8 | `ClientInputCallbacks::handleSlotSelectButtonPress`, and when that leaves the slot alone (it does for a keyboard player) the hotbar key `1`..`9` of the default key map; the client sends `mob_equipment` itself. Replies `slot` (the selected slot after it) and `via` callback\|keys. Query: `{slot}` (null outside a world) |
 | `action` | `name` drop\|dropAll\|inventory\|perspective\|pause | the matching `ClientInputCallbacks::handle*ButtonPress`. Query: `{names}` |
 | `button` | `button` attack\|use\|pick; `action` down\|up\|click (default click); `holdTicks`; `releaseOn` blockChange | left/right/middle on the virtual GameInput mouse (needs background mode), released by the tick listener after `holdTicks` (click: default 2) or, with `releaseOn:"blockChange"`, once the block the client's hit result pointed at when it went down changes, turns to air or is no longer targeted (`refused` when no block is targeted). Never blocks the pipe. Replies `held`, and `block{x,y,z}`. Query: `{held}`. Buttons held through this op are released when the control client disconnects |
+`input` (config `gameHooks`; off: `{"ok":false,"code":"disabled"}`) moves the local player inside the
+game's own input pipeline, so the client builds every `player_auth_input` itself:
+
+| request | reply |
+|---|---|
+| `{"op":"input"}` | `active`, `via` hooks\|keys, `hooks{raw,state}`, `tick`, `applied` |
+| `{"op":"input","move":{"x":0,"z":1},"jump":false,"sneak":false,"sprint":true,"ttlMs":300}` | `via`, `tick` |
+
+- `move` is `player_auth_input`'s move vector: `x` = left − right, `z` = forward − back, each clamped
+  to [-1, 1]. Missing fields are 0/false. A bad value answers `code:"bad_args"`.
+- Dead-man switch: the override ends `ttlMs` (default 300, at most 60000) after the request, so a controller
+  refreshes it while it wants to keep moving. `ttlMs:0` ends it at once, and so do `release` and
+  the control client disconnecting.
+- `via:"hooks"`: post-hooks on `ClientInputUpdateSystem::extractRawHIDInput` (writes
+  `RawMoveInputComponent::mRawInput`/`mRawMove`) and `inputHandlerUpdatePlayerState` (writes
+  `MoveInputComponent::mInputState`/`mRawInputState` before and after the original:
+  `MoveInputState` flags `SneakDown`=0, `JumpDown`=7, `SprintDown`=8, `Up`..`Right`=13..16 and the
+  jump/sneak input edges 21..26, plus `mAnalogMoveVector`). Applied only while the mouse is grabbed
+  and no screen shows (`ClientInstance::getMouseGrabbed`, `isShowingMenu`); the key bindings do not
+  matter. The keyboard handler changes those flags only on key events, so on the first tick
+  without the override they are cleared once (otherwise the player keeps running). `tick` counts `inputHandlerUpdatePlayerState` calls, `applied` the ticks the override was
+  written.
+- `via:"keys"` (a hook did not install): the virtual keys of the default keymap (W/A/S/D, SPACE,
+  LSHIFT, LCTRL) are held until the deadline. These go through the window like `key`, so they also
+  reach an open screen, and a rebound key breaks them.
 
 ### Manager pipe
 
