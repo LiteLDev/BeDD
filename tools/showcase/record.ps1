@@ -28,7 +28,7 @@
 #>
 param(
     [int[]]$Slots = @(2, 3, 4),
-    [string]$BaseVersion = '1.26.51.01',
+    [string]$BaseVersion,           # default: the instance BeDD finds (BeDDSetup.psm1)
     [int]$TakeSeconds = 24,
     [switch]$KeepOpen,
     [int]$MaxMinutes = 60
@@ -38,12 +38,9 @@ $ErrorActionPreference = 'Stop'
 $Root      = (Resolve-Path "$PSScriptRoot/../..").Path
 $Bin       = Join-Path $Root 'bin\BeDD'
 $Out       = Join-Path $PSScriptRoot 'out'
-$Data      = Join-Path $env:APPDATA 'levilauncher.exe'
 $WorldZip  = Join-Path $PSScriptRoot 'fixtures\Showcase.zip'
 $WorldName = 'LHI-Showcase'
 $Aside     = 'mods.lhi-showcase-aside'
-$FFmpeg    = if ($env:FFMPEG) { $env:FFMPEG } else {
-    'C:\Users\futri\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.2-full_build\bin\ffmpeg.exe' }
 # Game client size in the grid (16:9) and the recorded region (physical pixels).
 $ClientW = 848; $ClientH = 477
 $RegionW = 1920; $RegionH = 1080
@@ -55,6 +52,11 @@ Remove-Item (Join-Path $Out 'take'), (Join-Path $Out 'stop'), (Join-Path $Out 'g
 # Set-WorldSinglePlayer, Install-/Uninstall-BeDDMod, Enter-/Exit-SignalingLock and the
 # BeDD.psm1 client (per-monitor DPI aware: all coordinates below are physical pixels).
 . (Join-Path $Bin 'harness-shim.ps1')
+. (Join-Path $PSScriptRoot 'ffmpeg.ps1')
+$FFmpeg      = Find-FFmpeg
+$Data        = Get-LeviLauncherData
+$VersionsDir = Get-BeDDVersionsDir
+if (-not $BaseVersion) { $BaseVersion = (Initialize-BeDDInstance).Name }
 
 if (-not ('LhiShow.Win' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -118,7 +120,7 @@ $Games = @(for ($i = 0; $i -lt $Slots.Count; $i++) {
     $ver = "$BaseVersion-hi$($Slots[$i])"
     [pscustomobject]@{
         N = $i + 1; Slot = $Slots[$i]; Version = $ver
-        Dir = Join-Path $Data "versions\$ver"
+        Dir = Join-Path $VersionsDir $ver
         Pipe = "BeDD-$ver"
         Lock = Join-Path $Data "hi$($Slots[$i])-e2e.lock"
         Options = $null; Hwnd = [IntPtr]::Zero

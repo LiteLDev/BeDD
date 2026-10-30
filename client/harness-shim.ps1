@@ -10,7 +10,8 @@
 # real keys or takes the foreground: the user can keep working while scenarios run. Scenarios do
 # not change. The harness additionally has to deploy the mod (Install-BeDDMod after its
 # own deploy, Uninstall-BeDDMod in its cleanup) and keep 'BeDD' out of the
-# "move other mods aside" step.
+# "move other mods aside" step. Initialize-BeDDInstance [-Slot N] (BeDDSetup.psm1) returns the game
+# instance to use (Dir, ModsDir, PipeName) and sets up whatever a new PC still lacks.
 #
 # Functions replaced (same parameters and waits as the harness versions):
 #   Focus-Game, Assert-GameForeground, Set-GameWindowSize, Move-Mouse, Click, Scroll, Press-Key,
@@ -19,6 +20,8 @@
 
 $script:BeDDDir = $PSScriptRoot
 Import-Module (Join-Path $PSScriptRoot 'BeDD.psm1') -Force -DisableNameChecking -Global
+# Initialize-BeDDInstance and friends: finds the game instance and sets up what this PC lacks.
+Import-Module (Join-Path $PSScriptRoot 'BeDDSetup.psm1') -Force -DisableNameChecking -Global
 $script:Headless = $true
 
 if (-not (Get-Variable -Name WindowW -Scope Script -ErrorAction SilentlyContinue)) { $script:WindowW = 1600 }
@@ -147,7 +150,7 @@ function Register-BeDDNative([Parameter(Mandatory)][type]$Type) {
 #     EXCLUSIVE instead: new games wait, then it waits for the running ones to close.
 # Files: <dir>\e2e-signaling.lock (the lock) and e2e-signaling.lock.wait (held by a waiting or
 # holding exclusive run, so new shared holders queue behind it instead of starving it).
-$script:SignalingLockDir = Join-Path $env:APPDATA 'levilauncher.exe'
+$script:SignalingLockDir = Get-LeviLauncherData
 $script:SignalingLock = $null
 $script:SignalingWait = $null
 

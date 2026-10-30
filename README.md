@@ -57,6 +57,40 @@ instance installed with LeviLauncher. Tests start that instance with `Start-BeDD
 rather than through the launcher ([see below](#several-games-at-once)). Only the test PC's game
 needs it; servers and players do not.
 
+### On a new PC
+
+Nothing needs preparing by hand except the game itself. `Initialize-BeDD.ps1` (also run by
+`Start-BeDDGame.ps1` and `clone-instance.ps1`) finds the instance and sets up whatever the PC
+lacks, each step only once:
+
+| Missing | What happens |
+|---|---|
+| LeviLauncher | the installed one is used; otherwise the latest release is downloaded to `%LOCALAPPDATA%\BeDD\tools` |
+| the game | LeviLauncher opens and the script waits while you sign in with a Microsoft account that owns Minecraft and install 1.26.51 (a script cannot do this step; with `CI` set it fails with these instructions instead) |
+| LeviLamina | installed into the instance with [lip](https://github.com/LiteLDev/lip), which is downloaded with the .NET runtime it needs (per user, no admin) |
+| LeviLauncher's loader in the game exe | the instance is started once through LeviLauncher, which adds it, and the game is closed again. Without the loader the game would use your normal Minecraft data instead of the instance's |
+| a clone (`-Slot 2` and up) | made from the base instance, and refreshed when the base instance has changed since |
+
+```powershell
+$i = & .\Initialize-BeDD.ps1 -Slot 2    # Name, Dir, ModsDir, PipeName of versions\<base>-hi2
+```
+
+BeDD finds LeviLauncher's data in `%APPDATA%\levilauncher.exe`, follows its "data folder" setting
+(`base_root`), and picks the instance of 1.26.51 there (one with LeviLamina first). To point it
+elsewhere, set `BEDD_INSTANCE` (instance name), `BEDD_VERSIONS_DIR`, `BEDD_LAUNCHER_DATA`,
+`BEDD_LEVILAUNCHER` (LeviLauncher.exe) or `BEDD_LIP` (lip.exe).
+
+A harness can fetch BeDD itself the same way instead of expecting a checkout somewhere:
+
+```powershell
+$bedd = if ($env:BEDD_DIR) { $env:BEDD_DIR } else { Join-Path $env:LOCALAPPDATA 'BeDD\client' }
+if (-not (Test-Path "$bedd\harness-shim.ps1")) {
+    $zip = Join-Path $env:TEMP 'bedd.zip'
+    Invoke-WebRequest https://github.com/LiteLDev/BeDD/releases/latest/download/bedd-client-windows-x64.zip -OutFile $zip
+    Expand-Archive $zip (Split-Path $bedd) -Force; Rename-Item (Join-Path (Split-Path $bedd) 'BeDD') $bedd
+}
+```
+
 ## How to use
 
 The PowerShell module ships next to the mod:
@@ -94,6 +128,8 @@ pwsh -NoProfile -File clone-instance.ps1 -Slot 2                  # versions\1.2
 & .\Start-BeDDGame.ps1 -Instance 1.26.51.01-hi2                # starts it without bringing it forward
 Connect-BeDD -PipeName BeDD-1.26.51.01-hi2   # the pipeName in that instance's config
 ```
+
+`Start-BeDDGame.ps1 -Slot 2` (or `-Instance <base>-hi2`) makes the clone itself when it is missing.
 
 A clone has its own `mods\`, logs, worlds and options. A few rules keep parallel runs from
 tripping over each other:

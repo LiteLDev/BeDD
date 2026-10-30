@@ -25,11 +25,13 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $Root         = (Resolve-Path "$PSScriptRoot/..").Path
-$Launcher     = Join-Path $env:USERPROFILE 'Desktop\LeviLauncher.exe'
-$LauncherData = Join-Path $env:APPDATA 'levilauncher.exe'
-$VersionName  = '1.26.51.01'
-$ModsDir      = Join-Path $LauncherData "versions\$VersionName\mods"
-$LockFile     = Join-Path $LauncherData 'bei-e2e.lock'
+# The game instance (set up first if this PC lacks something) and LeviLauncher.
+Import-Module (Join-Path $Root 'client\BeDDSetup.psm1') -DisableNameChecking
+$Instance     = Initialize-BeDDInstance
+$Launcher     = Find-LeviLauncher -Download
+$VersionName  = $Instance.Name
+$ModsDir      = $Instance.ModsDir
+$LockFile     = Join-Path (Get-LeviLauncherData) 'bei-e2e.lock'
 $OutDir       = Join-Path $Root 'tools\out'
 $StopFile     = Join-Path $OutDir 'dev.stop'
 $RestartFile  = Join-Path $OutDir 'dev.restart'
@@ -70,6 +72,13 @@ public static class Native {
 
 function Write-Dev([string]$m) { Write-Host "[dev] $m" }
 
+# The games of this instance only: other runs may have games of their own instances going.
+function Get-DevGame {
+    $prefix = $Instance.Dir.TrimEnd('\') + '\'
+    Get-Process -Name 'Minecraft.Windows' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) }
+}
+
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 Remove-Item $StopFile -ErrorAction SilentlyContinue
 $bin = Join-Path $Root 'bin\BeDD'
@@ -84,7 +93,7 @@ $bytes = [Text.Encoding]::UTF8.GetBytes("pid=$PID repo=$Root at=$(Get-Date -Form
 $lock.SetLength(0); $lock.Write($bytes, 0, $bytes.Length); $lock.Flush()
 Write-Dev 'lock acquired'
 try {
-    if (Get-Process -Name 'Minecraft.Windows' -ErrorAction SilentlyContinue) { throw 'Minecraft is already running' }
+    if (Get-DevGame) { throw "$VersionName is already running" }
     function Start-DevGame {
         if (Test-Path $ModDest) { Remove-Item -Recurse -Force $ModDest }
         Copy-Item -Recurse $bin $ModDest
@@ -100,7 +109,7 @@ try {
         Write-Dev "launched $VersionName"
     }
     function Stop-DevGame {
-        Get-Process -Name 'Minecraft.Windows' -ErrorAction SilentlyContinue | ForEach-Object {
+        Get-DevGame | ForEach-Object {
             $_.CloseMainWindow() | Out-Null
             if (-not $_.WaitForExit(10000)) { $_.Kill() }
         }
@@ -122,7 +131,7 @@ try {
             $seenGame = $false
             Start-DevGame
         }
-        $game = Get-Process -Name 'Minecraft.Windows' -ErrorAction SilentlyContinue
+        $game = Get-DevGame
         if ($game) { $seenGame = $true } elseif ($seenGame) { Write-Dev 'game exited'; break }
         $fg = [BeDDDev.Native]::Describe([BeDDDev.Native]::GetForegroundWindow())
         $clip = [BeDDDev.Native]::Clip()
@@ -131,7 +140,7 @@ try {
         Start-Sleep -Milliseconds 100
     }
 } finally {
-    Get-Process -Name 'Minecraft.Windows' -ErrorAction SilentlyContinue | ForEach-Object {
+    Get-DevGame | ForEach-Object {
         $_.CloseMainWindow() | Out-Null
         if (-not $_.WaitForExit(10000)) { $_.Kill() }
     }

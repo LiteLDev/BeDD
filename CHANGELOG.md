@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Setup for a new PC: `Initialize-BeDD.ps1` and `BeDDSetup.psm1` (`Initialize-BeDDInstance`, `Get-BeDDInstance`, …) find the LeviLauncher instance of Minecraft 1.26.51 and set up whatever is missing: LeviLauncher (downloaded from its releases when not installed), LeviLamina (installed with lip, which is downloaded with its .NET runtime), LeviLauncher's loader in the game exe, and clones. Only the game install itself is left to a person: LeviLauncher opens and the script waits for it. `Start-BeDDGame.ps1`, `clone-instance.ps1` and `tools/dev.ps1` run the same setup, and the harness shim exports it. Overrides: `BEDD_INSTANCE`, `BEDD_VERSIONS_DIR`, `BEDD_LAUNCHER_DATA`, `BEDD_LEVILAUNCHER`, `BEDD_LIP`.
+- `Start-BeDDGame.ps1 -Slot N`; `-Instance` is optional (the instance BeDD finds).
+- `tools/build.ps1`: builds with xmake, installing xmake, LLVM and the Visual Studio C++ build tools with winget when missing.
+
+### Fixed
+
+- Nothing worked on a PC that differs from the author's: the scripts expected LeviLauncher at `Desktop\LeviLauncher.exe`, its instances in `%APPDATA%\levilauncher.exe\versions` (LeviLauncher's data folder setting was ignored), an instance named `1.26.51.01`, and ffmpeg in one user's winget folder. An instance never started from LeviLauncher also silently ran without its data isolation, since only LeviLauncher adds its loader to the game exe.
+- An existing clone kept stale game files after its base instance was updated (`clone-instance.ps1` now refreshes them).
+- `tools/dev.ps1` closed every Minecraft on the PC, including other runs' games; it only closes its own instance's now.
+
 ## [0.3.1] - 2026-10-30
 
 ### Changed

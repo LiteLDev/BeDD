@@ -13,8 +13,8 @@ param(
     [double]$SideStill = 6       # seconds into the cut for the script-and-game poster
 )
 $ErrorActionPreference = 'Stop'
-$FFmpeg = if ($env:FFMPEG) { $env:FFMPEG } else {
-    'C:\Users\futri\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.2-full_build\bin\ffmpeg.exe' }
+. (Join-Path $PSScriptRoot 'ffmpeg.ps1')
+$FFmpeg = Find-FFmpeg
 $src = Join-Path $PSScriptRoot "out\take-$Take.mkv"
 $dst = (Resolve-Path (Join-Path $PSScriptRoot '..\..\docs\showcase')).Path
 function ff { & $FFmpeg -hide_banner -loglevel error -y @args; if ($LASTEXITCODE) { throw "ffmpeg failed: $args" } }

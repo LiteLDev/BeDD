@@ -13,12 +13,20 @@
   names the game there (default: the project and worktree of the calling script).
   -NoManager, or BEDD_MANAGER=0, starts the game without it.
 
+  The instance is made ready first when this PC lacks something (BeDDSetup.psm1): a clone
+  (<base>-hi<N>, or -Slot N) is created from its base instance, LeviLamina is installed with lip,
+  LeviLauncher adds its loader, and with no Minecraft 1.26.51 instance at all LeviLauncher is
+  opened (downloaded if needed) for you to install the game. Without -Instance it starts the base
+  instance BeDD finds (or its clone for -Slot 2 and up).
+
 .EXAMPLE
   & bin\BeDD\Start-BeDDGame.ps1 -Instance 1.26.51.01-hi2
+  & bin\BeDD\Start-BeDDGame.ps1 -Slot 2
 #>
 param(
-    [Parameter(Mandatory)][string]$Instance,
-    [string]$VersionsDir = (Join-Path $env:APPDATA 'levilauncher.exe\versions'),
+    [string]$Instance,
+    [int]$Slot = 1,
+    [string]$VersionsDir,
     [string]$Label,
     [switch]$NoManager
 )
@@ -72,11 +80,13 @@ public static class Launch {
 '@
 }
 
-$dir = Join-Path $VersionsDir $Instance
+Import-Module (Join-Path $PSScriptRoot 'BeDDSetup.psm1') -DisableNameChecking
+$ready = Initialize-BeDDInstance -Name $Instance -Slot $Slot -VersionsDir $VersionsDir
+$Instance = $ready.Name
+$dir = $ready.Dir
 # Always this exact name: LeviLauncher.dll's data isolation keys on it (under another name the game
 # would use the default %APPDATA%\Minecraft Bedrock profile instead of the instance's data).
 $exe = Join-Path $dir 'Minecraft.Windows.exe'
-if (-not (Test-Path $exe)) { throw "No game instance at $dir" }
 # Only a game whose mod links to the manager (background mode, "manager" not false) goes there.
 $config = $null
 try { $config = Get-Content (Join-Path $dir 'mods\BeDD\config\config.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch { }

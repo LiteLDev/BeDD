@@ -28,7 +28,7 @@ See [Development](#development) below. The code is small:
 | `src/Manager.cpp` | link to the session's manager window |
 | `src/Trace.cpp` | trace-mode input logging |
 | `src/MemoryOperators.cpp` | routes `new`/`delete` through LeviLamina's allocator (required by LeviLamina) |
-| `client/` | PowerShell client, harness shim, game start (`Start-BeDDGame.ps1`), manager window (`BeDDManager.ps1`) and clone scripts (shipped next to the DLL) |
+| `client/` | PowerShell client, harness shim, game start (`Start-BeDDGame.ps1`), manager window (`BeDDManager.ps1`), clone script and setup (`BeDDSetup.psm1`, `Initialize-BeDD.ps1`: finds the game instance and sets up what a new PC lacks), all shipped next to the DLL |
 
 When you hook a game or LeviLamina symbol, check the SDK headers under
 `%LOCALAPPDATA%\.xmake\packages\l\levilamina\<version>\<hash>\include` first. Only call `MCAPI`,
@@ -55,16 +55,24 @@ other than `BeDD.psm1`. Script authors find everything they need in the [README]
 ### Building
 
 You need Windows x64, [xmake](https://xmake.io), Visual Studio Build Tools with MSVC 14.4x or newer, and LLVM (`clang-cl`).
+`tools/build.ps1` finds them, installs what is missing with winget, and builds:
+
+```powershell
+pwsh -NoProfile -File tools/build.ps1   # [-Mode debug]
+```
+
+By hand:
 
 ```powershell
 xmake f -a x64 -m release -p windows --target_type=client -y
-xmake -y        # -> bin\BeDD\ (DLL, manifest, BeDD.psm1, harness-shim.ps1, Start-BeDDGame.ps1, BeDDManager.ps1, clone-instance.ps1)
+xmake -y        # -> bin\BeDD\ (DLL, manifest and everything in client\)
 ```
 
 The mod packer reads the version from `git describe`, so the repository needs at least one commit.
 
 `tools\dev.ps1 [-Trace]` is a playground: it takes the shared e2e lock
-(`%APPDATA%\levilauncher.exe\bei-e2e.lock`), deploys the mod, launches the game and logs every
+(`%APPDATA%\levilauncher.exe\bei-e2e.lock`), deploys the mod into the instance BeDD finds (set up
+first on a new PC, see the README), launches it through LeviLauncher and logs every
 foreground and cursor-clip change to `tools\out\desktop-watch.log` until the game exits or
 `tools\out\dev.stop` exists (`tools\out\dev.restart` redeploys and relaunches without giving up the
 lock). It always closes the game, removes the mod and releases the lock.

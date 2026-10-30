@@ -48,6 +48,15 @@ jobs:
           }
           if ($bad) { throw "$bad PowerShell parse error(s)" }
 
+      - name: Check BeDDSetup.psm1 sets up the LeviLamina of the build
+        shell: pwsh
+        run: |
+          $ll = [regex]::Match((Get-Content xmake.lua -Raw), 'add_requires\("levilamina ([0-9.]+)"').Groups[1].Value
+          $game = '1.' + ($ll -replace '\.\d+$', '')
+          $setup = Get-Content client/BeDDSetup.psm1 -Raw
+          if ($setup -notmatch "LeviLaminaVersion = '$([regex]::Escape($ll))'") { throw "client/BeDDSetup.psm1: LeviLaminaVersion is not xmake.lua's $ll" }
+          if ($setup -notmatch "GameVersion\s+= '$([regex]::Escape($game))'") { throw "client/BeDDSetup.psm1: GameVersion is not $game" }
+
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ github.event.repository.name }}-${{ github.sha }}-client-windows-x64
