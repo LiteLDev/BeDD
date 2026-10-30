@@ -57,6 +57,7 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.mute         = j.value("mute", gOptions.mute);
     gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
     gOptions.tap          = j.value("tap", gOptions.tap);
+    gOptions.pipeInstances = j.value("pipeInstances", gOptions.pipeInstances);
 }
 
 bool Mod::load() {

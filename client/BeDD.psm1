@@ -8,6 +8,8 @@
 #
 # Every input call returns once the game thread has processed the input (or throws).
 # Nothing here moves the real cursor, presses real keys or changes the foreground window.
+# Other scripts may use the same game's pipe at the same time (config pipeInstances); the keys and
+# buttons a session still holds are released when it disconnects or its process exits.
 
 # One pipe per game instance; $env:BEDD_PIPE or Connect-BeDD -PipeName picks it.
 $script:PipeName = if ($env:BEDD_PIPE) { $env:BEDD_PIPE } else { 'BeDD' }

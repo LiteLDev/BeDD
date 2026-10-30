@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -54,6 +55,8 @@ struct Options {
     bool gameHooks = false;
     /// Serve \\.\pipe\<pipeName>-tap: the game packets the client receives and sends (Tap.cpp).
     bool tap = false;
+    /// Control-pipe clients served at once (nMaxInstances); 1 = one client at a time.
+    int pipeInstances = 4;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -210,6 +213,15 @@ void startPipeServer();
 void stopPipeServer();
 /// One request line of the control protocol -> one reply line (with the newline).
 [[nodiscard]] std::string handleControlLine(std::string const& line);
+/// The control-pipe client whose request the current thread handles (ids start at 1 and are never
+/// reused); 0 off a client thread (the manager link, the game thread). Tag per-client state with it.
+[[nodiscard]] uint64_t currentPipeClient();
+/// Control-pipe clients connected now.
+[[nodiscard]] int pipeClients();
+/// Called with the client's id once a control-pipe client has disconnected, after its keys and
+/// buttons are released: release what it owns. Runs on the departing client's thread with input
+/// ops serialized; not called at shutdown. Register once, e.g. in enable().
+void onPipeClientGone(std::function<void(uint64_t)> fn);
 
 // ---------------------------------------------------------------------------------------------
 // Manager link (Manager.cpp): \\.\pipe\BeDD-Manager-<session id>
