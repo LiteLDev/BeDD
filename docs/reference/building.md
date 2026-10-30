@@ -35,11 +35,13 @@ gallery and the README pictures.
 (plus the `hi<N>-e2e.lock` of each clone) it prepares three clone instances (`-hi2`..`-hi4`, other
 mods moved aside), restores the `tools/showcase/fixtures/Showcase.zip` world, starts the games in
 a manager window of its own (`BEDD_MANAGER_PIPE`, so other runs' games stay out of the take),
-enters the world, moves that manager window onto the left two thirds of a region over a backdrop
-(`stage.ps1`) with Windows Terminal running `demo.ps1` on the right third, and records that region
-of the real screen with ffmpeg's Desktop Duplication grabber to `tools/showcase/out/take-<n>.mkv`. With
+enters the world, runs `demo.ps1` in a console window off the screen and without the focus, and
+records the manager window and that console with ffmpeg's `gfxcapture` (Windows.Graphics.Capture:
+each window's own picture, whatever covers it) to `tools/showcase/out/take-<n>-manager.mkv` and
+`take-<n>-terminal.mkv`. Nothing is moved in front of you and nothing takes the focus. With
 `-KeepOpen`, creating `tools/showcase/out/take` starts another take and `tools/showcase/out/stop`
-ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and poster files.
+ends the session. `tools/showcase/encode.ps1` puts a take together, the manager on the left and the
+terminal on the right, into the MP4, WebP and poster files.
 
 ## Source layout
 

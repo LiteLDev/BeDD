@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Records the showcase video: three game instances driven in the background while a terminal on
-  the same desktop keeps the focus.
+  Records the showcase video: three headless games driven from a terminal, as the manager window
+  shows them.
 
 .DESCRIPTION
   Takes the machine-wide e2e lock (bei-e2e.lock, shared with the other LiteLDev harnesses) and the
@@ -12,18 +12,18 @@
 
   The games run as every BeDD game does: headless, shown only in a manager window. The recording
   has a manager window of its own (BEDD_MANAGER_PIPE), so other runs' games stay out of the take. A
-  take shows a backdrop over a 1920x1080 (physical pixels) region in the middle of the primary
-  screen, moves that manager window onto its left two thirds and opens Windows Terminal in the right
-  third running demo.ps1 (the script viewers read), records the region with ffmpeg (Desktop
-  Duplication, i.e. what is really on the screen) and puts the manager back. The two windows are
-  topmost only while a take runs.
+  take sizes that manager's client area to the left part of a 1920x1080 picture (physical pixels),
+  opens a console window off the screen and without the focus running demo.ps1 (the script viewers
+  read) for the right part, and records both windows with ffmpeg's gfxcapture
+  (Windows.Graphics.Capture: the windows' own pictures, whatever covers them). Nothing is moved in
+  front of you and nothing takes the focus; the manager gets its size back afterwards.
 
   -KeepOpen keeps the games running after the first take: create tools\showcase\out\take for
   another take (demo.ps1 is re-read), tools\showcase\out\stop to end. Cleanup always closes the
   games, removes the mod, restores the other mods and options and releases the locks.
 
-  Output: tools\showcase\out\take-<n>.mkv (near-lossless) and setup screenshots; encode.ps1 turns
-  a take into the files in docs\public\showcase\.
+  Output: tools\showcase\out\take-<n>-manager.mkv and take-<n>-terminal.mkv (near-lossless) and
+  setup screenshots; encode.ps1 puts a take together into the files in docs\public\showcase\.
 
 .EXAMPLE
   pwsh -NoProfile -File tools/showcase/record.ps1 -KeepOpen
@@ -43,9 +43,11 @@ $Out       = Join-Path $PSScriptRoot 'out'
 $WorldZip  = Join-Path $PSScriptRoot 'fixtures\Showcase.zip'
 $WorldName = 'LHI-Showcase'
 $Aside     = 'mods.lhi-showcase-aside'
-# Game client size (16:9, as the manager window shows it) and the recorded region (physical pixels).
+# Game client size (16:9, as the manager window shows it), the picture (physical pixels) and the
+# manager's share of its width (the terminal gets the rest).
 $ClientW = 848; $ClientH = 477
 $RegionW = 1920; $RegionH = 1080
+$ManagerW = 1248
 
 if (-not (Test-Path (Join-Path $Bin 'BeDD.dll'))) { throw "Build first (xmake): $Bin" }
 New-Item -ItemType Directory -Force $Out | Out-Null
@@ -73,19 +75,13 @@ public static class Win {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool SetWindowText(IntPtr h, string s);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hh, uint f);
-    [DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);
-    [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT r, int size);
-    // Visible frame (without the invisible resize borders DWM adds around a window).
-    public static RECT Frame(IntPtr h) {
-        RECT r;
-        if (DwmGetWindowAttribute(h, 9, out r, Marshal.SizeOf(typeof(RECT))) != 0) GetWindowRect(h, out r);
-        return r;
-    }
-    public static IntPtr FindByTitle(string title) {
+    public static IntPtr FindByTitle(string title, bool visibleOnly) {
         IntPtr found = IntPtr.Zero;
         EnumWindows((h, l) => {
-            if (!IsWindowVisible(h)) return true;
+            if (visibleOnly && !IsWindowVisible(h)) return true;
             var s = new System.Text.StringBuilder(256); GetWindowText(h, s, 256);
             if (s.ToString() == title) { found = h; return false; }
             return true;
@@ -96,25 +92,10 @@ public static class Win {
 }
 '@
 }
-$HWND_TOPMOST = [IntPtr]::new(-1); $HWND_NOTOPMOST = [IntPtr]::new(-2)
-$SWP_NOSIZE = 0x1; $SWP_NOMOVE = 0x2; $SWP_NOACTIVATE = 0x10
+Add-Type -AssemblyName System.Windows.Forms
+$SWP_NOMOVE = 0x2; $SWP_NOZORDER = 0x4; $SWP_NOACTIVATE = 0x10
 
 function Write-Show([string]$m) { Write-Host "[showcase] $m" }
-
-# Desktop Duplication delivers no frames while the display is off or a system prompt (UAC,
-# Windows Firewall) dims the screen: wait until one frame can be grabbed.
-function Wait-ScreenCapture([int]$TimeoutMinutes = 120) {
-    $deadline = (Get-Date).AddMinutes($TimeoutMinutes); $told = $false
-    while ($true) {
-        $p = Start-Process $FFmpeg -PassThru -WindowStyle Hidden -ArgumentList @('-hide_banner', '-loglevel', 'error', '-y',
-            '-f', 'lavfi', '-i', 'ddagrab=output_idx=0:framerate=10,hwdownload,format=bgra', '-frames:v', '1', '-f', 'null', '-')
-        if ($p.WaitForExit(8000)) { return }
-        $p.Kill()
-        if ((Get-Date) -gt $deadline) { throw 'The screen cannot be captured (display off or a system prompt open)' }
-        if (-not $told) { Write-Show 'waiting for the screen to become capturable (display off or a system prompt open?)'; $told = $true }
-        Start-Sleep -Seconds 10
-    }
-}
 
 # --- instances ----------------------------------------------------------------------------------
 
@@ -301,58 +282,54 @@ function Get-ManagerWindow {
 }
 
 function Show-Take([int]$Take) {
-    $x0 = [int](([LhiShow.Win]::GetSystemMetrics(0) - $RegionW) / 2)
-    $y0 = [int](([LhiShow.Win]::GetSystemMetrics(1) - $RegionH) / 2)
-    $managerW = [int]($RegionW * 2 / 3)
-
     if (Test-Path $sceneFile) { . $sceneFile }
     Write-Show "take ${Take}: staging the scene"
     foreach ($g in $Games) { Set-Scene $g }
     Start-Sleep -Seconds 12   # chat fades
 
-    Wait-ScreenCapture
-    $stage = Start-Process pwsh -PassThru -WindowStyle Hidden -ArgumentList @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'stage.ps1'),
-        '-X', $x0, '-Y', $y0, '-W', $RegionW, '-H', $RegionH)
-    $wt = $null
     $mh = Get-ManagerWindow
     $saved = New-Object LhiShow.Win+RECT; [LhiShow.Win]::GetWindowRect($mh, [ref]$saved) | Out-Null
+    $proc = $null
     try {
-        Start-Sleep -Seconds 2
-        # Its visible frame on the left two thirds of the region.
-        $f = [LhiShow.Win]::Frame($mh)
-        $padL = $f.Left - $saved.Left; $padT = $f.Top - $saved.Top; $padR = $saved.Right - $f.Right; $padB = $saved.Bottom - $f.Bottom
-        [LhiShow.Win]::SetWindowPos($mh, $HWND_TOPMOST, $x0 - $padL, $y0 - $padT, $managerW + $padL + $padR, $RegionH + $padT + $padB, $SWP_NOACTIVATE) | Out-Null
+        # The manager's client area at its share of the picture; it stays where it is.
+        $cr = New-Object LhiShow.Win+RECT; [LhiShow.Win]::GetClientRect($mh, [ref]$cr) | Out-Null
+        [LhiShow.Win]::SetWindowPos($mh, [IntPtr]::Zero, 0, 0, $ManagerW + ($saved.Right - $saved.Left) - $cr.Right,
+            $RegionH + ($saved.Bottom - $saved.Top) - $cr.Bottom, $SWP_NOMOVE -bor $SWP_NOZORDER -bor $SWP_NOACTIVATE) | Out-Null
 
-        # The terminal: the window the "user" works in; it takes the focus like any app you open.
+        # The terminal the script runs in: a console window off the screen, shown without the focus.
         Remove-Item (Join-Path $Out 'go') -ErrorAction SilentlyContinue
         $title = 'e2e - my-client-mod'
         $pipes = ($Games | ForEach-Object Pipe) -join ','
-        $wt = Start-Process wt.exe -PassThru -ArgumentList @('-w', 'new', '--title', "`"$title`"", '--suppressApplicationTitle',
-            'pwsh', '-NoLogo', '-NoProfile', '-File', "`"$(Join-Path $PSScriptRoot 'demo.ps1')`"", '-Pipes', $pipes, '-GoFile', "`"$(Join-Path $Out 'go')`"")
+        $proc = Start-Process "$env:WINDIR\System32\conhost.exe" -PassThru -WindowStyle Hidden -ArgumentList @(
+            "`"$((Get-Command pwsh).Source)`"", '-NoLogo', '-NoProfile', '-File', "`"$(Join-Path $PSScriptRoot 'demo.ps1')`"",
+            '-Pipes', $pipes, '-GoFile', "`"$(Join-Path $Out 'go')`"", '-LingerSeconds', $TakeSeconds)
         $th = [IntPtr]::Zero
-        for ($i = 0; $i -lt 60 -and $th -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 250; $th = [LhiShow.Win]::FindByTitle($title) }
-        if ($th -eq [IntPtr]::Zero) { throw 'Windows Terminal window not found' }
+        for ($i = 0; $i -lt 60 -and $th -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 250; $th = [LhiShow.Win]::FindByTitle($title, $false) }
+        if ($th -eq [IntPtr]::Zero) { throw 'terminal window not found' }
+        $left = [System.Windows.Forms.SystemInformation]::VirtualScreen.Left - ($RegionW - $ManagerW) - 200   # left of every monitor
+        [LhiShow.Win]::SetWindowPos($th, [IntPtr]::Zero, $left, 0, $RegionW - $ManagerW, $RegionH, $SWP_NOZORDER -bor $SWP_NOACTIVATE) | Out-Null
+        [LhiShow.Win]::ShowWindow($th, 4) | Out-Null   # SW_SHOWNOACTIVATE
         Start-Sleep -Seconds 1
-        $f = [LhiShow.Win]::Frame($th); $wr = New-Object LhiShow.Win+RECT; [LhiShow.Win]::GetWindowRect($th, [ref]$wr) | Out-Null
-        $padL = $f.Left - $wr.Left; $padT = $f.Top - $wr.Top; $padR = $wr.Right - $f.Right; $padB = $wr.Bottom - $f.Bottom
-        # The right third of the region.
-        [LhiShow.Win]::SetWindowPos($th, $HWND_TOPMOST, $x0 + $managerW - $padL, $y0 - $padT,
-            $RegionW - $managerW + $padL + $padR, $RegionH + $padT + $padB, 0) | Out-Null
-        Start-Sleep -Seconds 2
 
-        $file = Join-Path $Out "take-$Take.mkv"
-        $ff = Start-Process $FFmpeg -PassThru -WindowStyle Hidden -ArgumentList @('-hide_banner', '-loglevel', 'error', '-y',
-            '-f', 'lavfi', '-i', "ddagrab=output_idx=0:framerate=30:draw_mouse=0:offset_x=${x0}:offset_y=${y0}:video_size=${RegionW}x${RegionH},hwdownload,format=bgra",
-            '-t', $TakeSeconds, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '10', '-pix_fmt', 'yuv444p', "`"$file`"")
+        # Both windows straight from the compositor (Windows.Graphics.Capture), whatever covers them.
+        $cap = { param($h) "gfxcapture=hwnd=$($h.ToInt64()):capture_cursor=0:max_framerate=30,hwdownload,format=bgra,fps=30" }
+        $enc = @('-t', $TakeSeconds, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '10', '-pix_fmt', 'yuv444p')
+        $files = @((Join-Path $Out "take-$Take-manager.mkv"), (Join-Path $Out "take-$Take-terminal.mkv"))
+        $ff = Start-Process $FFmpeg -PassThru -WindowStyle Hidden -ArgumentList (@('-hide_banner', '-loglevel', 'error', '-y',
+            '-filter_complex', "$(& $cap $mh)[m];$(& $cap $th)[t]",
+            '-map', '[m]') + $enc + "`"$($files[0])`"" + @('-map', '[t]') + $enc + "`"$($files[1])`"")
         Start-Sleep -Seconds 2
         New-Item -ItemType File (Join-Path $Out 'go') | Out-Null
-        Write-Show "take ${Take}: recording $TakeSeconds s -> $file"
-        if (-not $ff.WaitForExit(($TakeSeconds + 30) * 1000)) { $ff.Kill(); throw "ffmpeg did not finish the take" }
+        Write-Show "take ${Take}: recording $TakeSeconds s -> $($files -join ', ')"
+        # A window capture delivers frames only when the window changes: once the script is done the
+        # terminal is still, so closing it is what ends its recording.
+        Start-Sleep -Seconds ($TakeSeconds + 1)
+        if (-not $proc.HasExited) { $proc.Kill($true) }
+        if (-not $ff.WaitForExit(30000)) { $ff.Kill(); throw "ffmpeg did not finish the take" }
     } finally {
-        [LhiShow.Win]::SetWindowPos($mh, $HWND_NOTOPMOST, $saved.Left, $saved.Top, $saved.Right - $saved.Left, $saved.Bottom - $saved.Top, $SWP_NOACTIVATE) | Out-Null
-        if ($stage -and -not $stage.HasExited) { $stage.Kill() }
-        $th = [LhiShow.Win]::FindByTitle('e2e - my-client-mod')
-        if ($th -ne [IntPtr]::Zero) { [LhiShow.Win]::SetWindowPos($th, $HWND_NOTOPMOST, 0, 0, 0, 0, $SWP_NOSIZE -bor $SWP_NOMOVE -bor $SWP_NOACTIVATE) | Out-Null }
+        [LhiShow.Win]::SetWindowPos($mh, [IntPtr]::Zero, $saved.Left, $saved.Top, $saved.Right - $saved.Left, $saved.Bottom - $saved.Top,
+            $SWP_NOZORDER -bor $SWP_NOACTIVATE) | Out-Null
+        if ($proc -and -not $proc.HasExited) { $proc.Kill($true) }
         foreach ($g in $Games) { Use-Game $g; try { Clear-BeDDInput } catch {} }
     }
 }
@@ -376,7 +353,6 @@ function Enter-Lock([string]$Path) {
 }
 
 try {
-    Wait-ScreenCapture
     $locks += Enter-Lock (Join-Path $Data 'bei-e2e.lock')
     foreach ($g in $Games) { $locks += Enter-Lock $g.Lock }
     Write-Show 'locks acquired'

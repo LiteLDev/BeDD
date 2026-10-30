@@ -15,7 +15,7 @@ Be.D.D.（Bedrock Deep Dive）得名自《绝区零》的 H.D.D.：绳匠在远�
 
 Be.D.D. 是一套测试工具，不是给玩家装的模组：测试框架在每次运行时放进游戏实例的客户端 LeviLamina 模块、驱动它的 PowerShell 客户端，以及准备、克隆、启动游戏的脚本。**文档：<https://docs.levimc.org/BeDD/zh/>**
 
-<p align="center"><img src="docs/public/showcase/desktop.webp" alt="三个 Minecraft 窗口跟着测试脚本动，前面的终端一直保持焦点" width="100%"></p>
+<p align="center"><img src="docs/public/showcase/desktop.webp" alt="管理窗口里的三个无头 Minecraft 游戏跟着测试脚本动" width="100%"></p>
 
 > [!WARNING]
 > 这是**测试工具**。`mods\` 目录里有 Be.D.D. 的游戏不理会你真实的鼠标和键盘，而且只显示在管理窗口里。

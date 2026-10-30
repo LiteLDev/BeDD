@@ -40,7 +40,7 @@ features:
     link: /guide/harness
 ---
 
-![Three Minecraft windows react to a test script while the terminal in front keeps the focus](/showcase/desktop.webp)
+![Three headless Minecraft games react to a test script in the manager window](/showcase/desktop.webp)
 
 Be.D.D. (Bedrock Deep Dive) is named after the H.D.D. of Zenless Zone Zero: a Proxy guides agents through the
 Hollows from afar, your script guides Minecraft from the background.
