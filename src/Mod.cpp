@@ -58,8 +58,7 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
     gOptions.tap          = j.value("tap", gOptions.tap);
     gOptions.pipeInstances = j.value("pipeInstances", gOptions.pipeInstances);
-    gOptions.tapLoopback  = j.value("tap", false) && j.value("tapLoopback", gOptions.tapLoopback);
-    gOptions.tap          = j.value("tap", gOptions.tap);
+    gOptions.tapLoopback  = gOptions.tap && j.value("tapLoopback", gOptions.tapLoopback);
     gOptions.tapJournalMiB = j.value("tapJournalMiB", gOptions.tapJournalMiB);
     gOptions.allowSend    = j.value("allowSend", gOptions.allowSend);
     if (auto it = j.find("sendAllow"); it != j.end() && it->is_array()) {

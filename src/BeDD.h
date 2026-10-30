@@ -52,21 +52,19 @@ struct Options {
     bool manager = true;
     /// In background mode, mute the game (FMOD master channel group): headless games stay silent.
     bool mute = true;
-    /// Game-side ops that read or drive the client from its own thread (world, look, ...).
+    /// Hook the client's own game systems for the world, look, input, slot, action and button ops.
+    /// Off: those ops answer code:"disabled" and nothing is hooked.
     bool gameHooks = false;
-    /// Serve \\.\pipe\<pipeName>-tap: the game packets the client receives and sends (Tap.cpp).
+    /// Serve \\.\pipe\<pipeName>-tap (Tap.cpp): the game packets the client receives and sends,
+    /// with a join journal (TapJournal.cpp) so a reader can attach in the middle of a session.
     bool tap = false;
     /// Control-pipe clients served at once (nMaxInstances); 1 = one client at a time.
     int pipeInstances = 4;
     /// With "tap": also tap singleplayer worlds and LAN worlds this client hosts (TapLoopback.cpp).
     /// Read as tap && tapLoopback, so it is off unless the tap is on.
     bool tapLoopback = true;
-    /// Serve the tap (clientbound packets and the client's own packets) and keep its join journal.
-    bool tap = false;
     /// Size cap of the tap's join journal (late attach); past it the replay reports complete:false.
     int tapJournalMiB = 128;
-    /// Hook the client's own game systems (input, look, actions) for the bedboo ops. Off: those ops answer code:'disabled'.
-    bool gameHooks = false;
     /// Allow the `send` op: the local client sends serverbound packets a caller serialized (Send.cpp).
     bool allowSend = false;
     /// Packet ids `send` may send (text, command_request). 1, 30, 144 and 147 are always refused.
