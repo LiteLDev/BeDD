@@ -316,6 +316,8 @@ json handle(json const& j) {
         flushOrThrow(j);
     } else if (op == "flush") {
         flushOrThrow(j);
+    } else if (op == "stack") {
+        r = stackOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }

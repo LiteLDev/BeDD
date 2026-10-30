@@ -197,6 +197,7 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 | `manager` | 默认 `true`：后台模式下，有管理窗口时游戏显示在管理窗口里，自己的窗口留在屏幕外、不进任务栏 |
 | `mute` | 默认 `true`：后台模式下游戏不出声（你接管游戏时恢复声音） |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
+| `allowStack` | 默认 `false`：`stack` 操作（`Send-BeDDStack`）让管道客户端以登录玩家的身份发出物品堆请求（背包移动、合成、箱子存取），bedboo 的 bedd 模式用它。只在需要的测试里打开 |
 
 ## 更多
 

@@ -48,6 +48,8 @@ struct Options {
     bool manager = true;
     /// In background mode, mute the game (FMOD master channel group): headless games stay silent.
     bool mute = true;
+    /// Allow the `stack` op: the local client sends item stack requests a caller serialized (Stack.cpp).
+    bool allowStack = false;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -211,4 +213,17 @@ void stopPipeServer();
 void startManagerLink();
 void stopManagerLink();
 
+} // namespace bedd
+
+// ---------------------------------------------------------------------------------------------
+// Stack (Stack.cpp): item stack requests from the control pipe (allowStack).
+// ---------------------------------------------------------------------------------------------
+#include <nlohmann/json_fwd.hpp>
+
+namespace bedd {
+/// Client level tick listener and item stack response hook of the `stack` op.
+void installStack();
+void uninstallStack();
+/// The `stack` op: the whole reply (`ok`, `code` on errors).
+[[nodiscard]] nlohmann::json stackOp(nlohmann::json const& req);
 } // namespace bedd

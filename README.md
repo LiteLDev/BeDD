@@ -226,6 +226,7 @@ console window would flash on the desktop at every game start.
 | `manager` | default `true`: in background mode the game shows up in the manager window when one runs, and its own window stays off screen and off the taskbar |
 | `mute` | default `true`: in background mode the game makes no sound (it is audible again while you take it over) |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
+| `allowStack` | default `false`: the `stack` op (`Send-BeDDStack`) lets a pipe client make the game send item stack requests (inventory moves, crafting, chest moves) for the signed-in player, as bedboo does in bedd mode. Turn it on only for such harnesses |
 
 ## More
 
