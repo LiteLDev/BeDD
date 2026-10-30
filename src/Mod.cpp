@@ -121,6 +121,7 @@ bool Mod::disable() {
     stopGameState();
     uninstallGameActions(); // first: its tick listener drives the virtual mouse
     uninstallSend(); // first: answers a send the pipe thread waits on, so stopPipeServer() can join it
+    uninstallStack(); // likewise for a waiting stack request
     stopInputTrace();
     stopManagerLink();
     stopPipeServer();
@@ -133,7 +134,6 @@ bool Mod::disable() {
     uninstallTapLoopback();
     uninstallTapJournal();
     uninstallMoveInputHooks();
-    uninstallStack();
     return true;
 }
 
