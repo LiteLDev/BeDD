@@ -9,7 +9,9 @@
 // * Compaction reads the packet header and leading fields, never a full decode: a frame with a key
 //   replaces the previous frame with that key (last write wins). Packets that carry only what
 //   changed (set_entity_data, update_attributes, move_entity_delta) are keyed by the entity *and*
-//   the set of fields they carry, so the last value of every field survives. remove_entity (14)
+//   the set of fields they carry, so the last value of every field survives. A subchunk packet
+//   holds many sub-chunks around one origin: it is dropped once newer frames carry every one of
+//   them (keyed per sub-chunk, not per packet). remove_entity (14)
 //   deletes the entity's add_* frame and every frame of its runtime id. Sounds, particles, animate,
 //   text and network_stack_latency are not kept at all.
 // * Past tapJournalMiB the journal stops growing and reports complete:false until the next reset.
@@ -201,6 +203,7 @@ struct KeyHash {
 struct Parsed {
     uint32_t                id = 0;
     std::optional<Key>      key;
+    std::vector<Key>        parts; // subchunk: one key per sub-chunk it carries (dimension, x, y, z)
     std::optional<uint64_t> entity; // runtime id the frame belongs to (dropped with the entity)
     int64_t                 unique = 0; // remove_entity
 };
@@ -221,10 +224,27 @@ Parsed parse(std::string_view bytes) {
         break;
     }
     case kSubChunk: {
-        r.skip(1); // cache_enabled
-        int64_t dim = r.zigzag();
-        int64_t x = r.le(4), y = r.le(4), z = r.le(4); // origin: vec3li
-        key(dim, x, y, z);
+        // The client asks for many sub-chunks relative to one origin (its own sub-chunk), so the
+        // origin is no key: every subchunk packet would replace the one before. Each entry is a
+        // sub-chunk at origin + (dx, dy, dz); a frame is dropped once newer frames carry all of its
+        // sub-chunks.
+        r.u8(); // cache_enabled
+        int64_t dim    = r.zigzag();
+        int64_t ox = r.le(4), oy = r.le(4), oz = r.le(4); // origin: vec3li
+        uint64_t n = r.uvarint();
+        for (uint64_t k = 0; k < n && r.ok; ++k) {
+            auto dx = static_cast<int8_t>(r.u8()), dy = static_cast<int8_t>(r.u8()), dz = static_cast<int8_t>(r.u8());
+            r.u8(); // result
+            if (r.u8()) r.str(); // payload
+            for (int map = 0; map < 2 && r.ok; ++map) { // heightmap, render heightmap
+                r.u8(); // type
+                if (r.u8())
+                    for (int row = 0; row < 16 && r.ok; ++row) r.skip(static_cast<size_t>(r.uvarint()));
+            }
+            if (r.u8()) r.skip(8); // blob id
+            p.parts.push_back(Key{kSubChunk, dim, ox + dx, oy + dy, oz + dz});
+        }
+        if (!r.ok) p.parts.clear();
         break;
     }
     case kUpdateBlock: {
@@ -311,6 +331,7 @@ struct Entry {
     std::optional<Key>                key;
     std::optional<uint64_t>           entity;
     uint32_t                          id = 0;
+    std::vector<Key>                  parts;
 };
 
 std::atomic<bool>        gInstalled{false};
@@ -322,6 +343,8 @@ std::map<uint64_t, Entry>                            gFrames;   // by seq
 std::unordered_map<Key, uint64_t, KeyHash>           gKeyed;    // key -> seq
 std::unordered_map<uint64_t, std::set<uint64_t>>     gEntities; // runtime id -> seqs
 std::set<uint64_t>                                   gPlayers;  // seqs of add_player frames
+std::unordered_map<Key, uint64_t, KeyHash>           gParts;    // sub-chunk -> seq of the subchunk frame that has it last
+std::unordered_map<uint64_t, size_t>                 gLiveParts; // subchunk seq -> sub-chunks no newer frame carries
 uint64_t                                             gBytes    = 0;
 bool                                                 gComplete = true;
 int                                                  gLastLink = 0;
@@ -338,6 +361,9 @@ void eraseLocked(std::map<uint64_t, Entry>::iterator it) {
         }
     }
     if (e.id == kAddPlayer) gPlayers.erase(it->first);
+    for (Key const& part : e.parts)
+        if (auto pit = gParts.find(part); pit != gParts.end() && pit->second == it->first) gParts.erase(pit);
+    gLiveParts.erase(it->first);
     gFrames.erase(it);
 }
 
@@ -346,6 +372,8 @@ void clearLocked() {
     gKeyed.clear();
     gEntities.clear();
     gPlayers.clear();
+    gParts.clear();
+    gLiveParts.clear();
     gBytes    = 0;
     gComplete = true;
 }
@@ -433,7 +461,22 @@ void recordLocked(std::shared_ptr<tap::Frame const> const& f, Parsed const& p) {
     if (p.key) gKeyed[*p.key] = f->seq;
     if (p.entity) gEntities[*p.entity].insert(f->seq);
     if (p.id == kAddPlayer) gPlayers.insert(f->seq);
-    gFrames[f->seq] = Entry{f, p.key, p.entity, p.id};
+    gFrames[f->seq] = Entry{f, p.key, p.entity, p.id, p.parts};
+    if (!p.parts.empty()) {
+        gLiveParts[f->seq] = p.parts.size();
+        for (Key const& part : p.parts) {
+            auto [pit, added] = gParts.try_emplace(part, f->seq);
+            if (added || pit->second == f->seq) continue;
+            uint64_t older = pit->second;
+            pit->second    = f->seq;
+            auto live      = gLiveParts.find(older);
+            if (live == gLiveParts.end() || --live->second > 0) continue;
+            if (auto oit = gFrames.find(older); oit != gFrames.end()) {
+                eraseLocked(oit);
+                ++gStats.compacted;
+            }
+        }
+    }
 }
 
 void journalEmit(tap::Frame&& f) {
