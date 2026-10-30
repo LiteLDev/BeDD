@@ -232,6 +232,11 @@ json handle(json const& j) {
             {"loopbackRebinds",    loopbackRebinds()          },
             {"serverQueriesRefused", serverQueriesRefused()     },
             {"audio",              audioStats()               },
+            {"tapLoopback",        [] {
+                 auto t = tapLoopbackStats();
+                 return json{{"enabled", t.enabled}, {"hooks", t.hooks}, {"link", t.link}, {"clientbound", t.clientbound}, {"echo", t.echo},
+                             {"bytes", t.bytes}, {"unpublished", t.unpublished}, {"guest", t.guest}};
+             }()},
         };
     } else if (op == "background") {
         bool on = j.value("on", true);

@@ -190,6 +190,33 @@ ops reply after the game thread has dispatched the input (`timeoutMs`, default 5
   background off, a normal window on screen and in front; the manager calls
   `AllowSetForegroundWindow` first), `hide` (hand back) and `close` (`WM_CLOSE` to the game window).
 
+### Loopback tap
+
+`tapLoopback` (default `true`, effective only with `tap`; `TapLoopback.cpp`) puts singleplayer worlds
+and LAN worlds the client hosts on the tap pipe. The client then talks to its in-process server
+through the LocalConnector, so the remote capture sees nothing; `LoopbackPacketSender` is hooked
+instead, and each packet is re-serialized (varint header `id | senderSub << 10 | targetSub << 12`,
+then `Packet::write` with the sending `NetworkSystem`'s `ReflectionCtx`). Frames carry the flags
+`reserialized` (2) and `local` (4).
+
+- **CLIENTBOUND**: the server's sender (`$sendToClient` both overloads, `$sendToClients`,
+  `$sendBroadcast` both overloads, `$sendTo`), only for a `NetworkIdentifier` whose connection on
+  the server is of type `Local`. LAN guests are remote connections and are never published
+  (counted as `guest`). Broadcasts are published once the local player got `start_game`.
+- **SERVERBOUND_ECHO**: the client's sender (`$sendToServer`, `$send`, `$sendTo`), never ids 1, 3, 4
+  or 193.
+- Only while the client's link (`tap::gLinkType`) is local. `$onNewOutgoingConnection` /
+  `$onConnectionClosed` on the client `NetworkSystem` set it from the connection type, as the tap
+  core does, so the loopback tap works without it. While no link is known yet (the in-process
+  server already sends before the client's connect call returns), a `Local` connection of the
+  client counts; that check never writes `gLinkType`. The remote capture only publishes on a
+  `Remote` link, so no packet is published twice. A sender method that calls another publishes a
+  packet once.
+- Without a tap pipe (`tap::gEmit` null) frames are only counted. `state` reports
+  `stats.tapLoopback{enabled, hooks, link, clientbound, echo, bytes, unpublished, guest}`.
+- With `trace`, the first 50 frames are logged (`trace tap loopback: in|out id= len=`) and the first
+  4000 are written to `mods\BeDD\data\tap-loopback.bin` in the tap pipe's framing (seq and tUs 0).
+
 ## License
 
 By contributing you agree that your contributions are licensed under the [LGPL-3.0-or-later](COPYING.LESSER), the license of this project.
