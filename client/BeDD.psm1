@@ -88,6 +88,16 @@ function Invoke-BeDD([Parameter(Mandatory)][hashtable]$Request, [switch]$NoThrow
 
 function Get-BeDDState { Invoke-BeDD @{ op = 'state' } }
 
+# What the client shows (topScreen, mouseGrabbed, showingMenu, ...) and the local player's pose
+# (config gameHooks).
+function Get-BeDDWorld { Invoke-BeDD @{ op = 'world' } }
+
+# Turns the player to an absolute yaw/pitch in degrees (player_auth_input convention: yaw 0 = +Z,
+# 90 = -X; pitch -90 = up) and returns once it is within 0.5 degrees (config gameHooks).
+function Set-BeDDLook([Parameter(Mandatory)][double]$Yaw, [Parameter(Mandatory)][double]$Pitch, [int]$TimeoutMs = 1000) {
+    Invoke-BeDD @{ op = 'look'; yaw = $Yaw; pitch = $Pitch; timeoutMs = $TimeoutMs }
+}
+
 # Background mode on/off at runtime (off = the game sees real input and focus again, e.g. to let a
 # human take over a -KeepOpen session; Ctrl+Shift+F12 on the real keyboard does the same).
 function Set-BeDDBackground([bool]$On = $true) { Invoke-BeDD @{ op = 'background'; on = $On } }
@@ -207,4 +217,5 @@ function Save-BeDDScreenshot([Parameter(Mandatory)][string]$Path) {
 
 Export-ModuleMember -Function Connect-BeDD, Set-BeDDPipe, Disconnect-BeDD, Test-BeDD, Invoke-BeDD,
     Set-BeDDCrashLogger, Get-BeDDState, Set-BeDDBackground, Set-BeDDWindow, Send-BeDDKey, Send-BeDDText,
-    Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot
+    Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot,
+    Get-BeDDWorld, Set-BeDDLook

@@ -8,6 +8,8 @@
 #include <optional>
 #include <string>
 
+#include <nlohmann/json_fwd.hpp>
+
 #include "ll/api/io/Logger.h"
 #include "ll/api/thread/GlobalThreadPauser.h"
 
@@ -48,6 +50,8 @@ struct Options {
     bool manager = true;
     /// In background mode, mute the game (FMOD master channel group): headless games stay silent.
     bool mute = true;
+    /// Game-side ops that read or drive the client from its own thread (world, look, ...).
+    bool gameHooks = false;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -210,5 +214,27 @@ void stopPipeServer();
 // ---------------------------------------------------------------------------------------------
 void startManagerLink();
 void stopManagerLink();
+
+// ---------------------------------------------------------------------------------------------
+// World snapshot and absolute look (GameState.cpp, Look.cpp; config gameHooks)
+// ---------------------------------------------------------------------------------------------
+void startGameState();
+void stopGameState();
+struct WorldPose {
+    bool     inLevel = false; // and the local player exists
+    float    yaw{}, pitch{};  // degrees, as in player_auth_input
+    uint64_t tick{};
+};
+/// The last client-tick snapshot (any thread).
+[[nodiscard]] WorldPose worldPose();
+/// Replies of the `world` and `look` ops (pipe thread).
+[[nodiscard]] nlohmann::json worldOp(nlohmann::json const& req);
+[[nodiscard]] nlohmann::json lookOp(nlohmann::json const& req);
+/// {ok:false, code:"disabled"} naming the gameHooks key.
+[[nodiscard]] nlohmann::json disabledReply(char const* op);
+void startLook();
+void stopLook();
+/// The client left its world: a pending look fails with not_in_level.
+void lookLevelExited();
 
 } // namespace bedd
