@@ -116,6 +116,8 @@ Save-BeDDScreenshot C:\temp\shot.png       # works while the window is covered
 | `Set-BeDDWindow 1600 900` | resize the game window without bringing it forward |
 | `Set-BeDDBackground $false` | hand the game back to your real mouse and keyboard |
 | `Get-BeDDState` | is the game up, how much input arrived, did it ever get the foreground |
+| `Get-BeDDWorld` | in a world? which screen, mouse grabbed, menu open, the player's position and rotation (`gameHooks`) |
+| `Set-BeDDLook 90 -30` | turn the player to a yaw and pitch in degrees (`gameHooks`) |
 
 Key names: letters, digits, `ESC`, `ENTER`, `BACK`, `TAB`, `SPACE`, `SHIFT`, `CTRL`, `ALT`, arrows
 (`LEFT`...), `HOME`, `END`, `PGUP`, `PGDN`, `INSERT`, `DELETE`, `F1`..`F24`, `SLASH`, `GRAVE`,
@@ -225,6 +227,7 @@ console window would flash on the desktop at every game start.
 | `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new instance, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). Dedicated servers your harness starts still ask once per server folder; **Cancel** is fine |
 | `manager` | default `true`: in background mode the game shows up in the manager window when one runs, and its own window stays off screen and off the taskbar |
 | `mute` | default `true`: in background mode the game makes no sound (it is audible again while you take it over) |
+| `gameHooks` | default `false`: the `world` and `look` ops (`Get-BeDDWorld`, `Set-BeDDLook`), which read the client and turn the player from the game's own thread |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
 
 ## More

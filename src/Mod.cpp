@@ -55,6 +55,7 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
     gOptions.manager      = j.value("manager", gOptions.manager);
     gOptions.mute         = j.value("mute", gOptions.mute);
+    gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
 }
 
 bool Mod::load() {
@@ -89,11 +90,16 @@ bool Mod::enable() {
     startWindowWatcher();
     startPipeServer();
     startInputTrace();
+    startGameState();
+    startLook();
     log().info("BeDD enabled");
     return true;
 }
 
 bool Mod::disable() {
+    // First: wakes a pipe thread waiting for a look, so stopPipeServer can join it.
+    stopLook();
+    stopGameState();
     stopInputTrace();
     stopManagerLink();
     stopPipeServer();

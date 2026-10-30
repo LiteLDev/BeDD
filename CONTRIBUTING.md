@@ -171,8 +171,12 @@ ops reply after the game thread has dispatched the input (`timeoutMs`, default 5
 | `window` | `clientWidth`, `clientHeight`, `placement` back\|offscreen\|none | never activates the window |
 | `background` | `on` | background mode on/off |
 | `flush` | | waits until everything posted was dispatched |
+| `world` | | config `gameHooks`. `inLevel`, `levelEpoch` (+1 per world joined), `topScreen` (e.g. `hud_screen`, `pause_screen`), `mouseGrabbed`, `showingMenu`, `inputMode` mouse\|touch\|gamepad\|undefined, `player{runtimeId, eye{x,y,z}, rot{yaw,pitch}, slot}` (null outside a world), `tick` (client ticks seen). A snapshot the client thread takes: the screen fields every frame, the player every client tick |
+| `look` | `yaw`, `pitch` (degrees, as in player_auth_input: yaw 0 = +Z, 90 = -X; pitch -90 = up, clamped to +-89.9 like the game does); `timeoutMs` (default 1000, at most 60000) | config `gameHooks`. Turns the player with `LocalPlayer::localPlayerTurn` on client ticks and replies `yaw`, `pitch`, `tick`, `turns` once both are within 0.5 degrees. Without `yaw`/`pitch`: `{inLevel, yaw, pitch, tick}`. Errors carry `code`: `not_in_level`, `timeout` (with the current `yaw`/`pitch`), `busy` (a newer `look` replaced it), `bad_args` |
 
 `ping` and `state` also report `managed` (linked to the manager window) and `takenOver`.
+
+Ops behind a config key reply `{"ok":false,"code":"disabled","key":"<key>"}` while it is off.
 
 ### Manager pipe
 

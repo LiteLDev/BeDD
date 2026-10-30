@@ -316,6 +316,10 @@ json handle(json const& j) {
         flushOrThrow(j);
     } else if (op == "flush") {
         flushOrThrow(j);
+    } else if (op == "world") {
+        r = worldOp(j);
+    } else if (op == "look") {
+        r = lookOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
