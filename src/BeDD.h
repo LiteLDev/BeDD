@@ -307,6 +307,8 @@ void installGameActions();
 void uninstallGameActions();
 /// Releases every button a `button` op holds (a control client disconnected).
 void releaseGameButtons();
+/// Releases the buttons control-pipe client `client` pressed through `button` (it disconnected).
+void releaseGameButtonsOf(uint64_t client);
 /// Reply of a `slot`, `action` or `button` request.
 [[nodiscard]] nlohmann::json gameActionOp(std::string const& op, nlohmann::json const& req);
 // Move input (MoveInput.cpp): the "input" op, ClientInputUpdateSystem hooks with a dead-man TTL.
@@ -316,6 +318,8 @@ void installMoveInputHooks();
 void uninstallMoveInputHooks();
 /// Drop the move override now ("release", a control client disconnecting).
 void clearMoveInput();
+/// Drop the move override if control-pipe client `client` set it (it disconnected).
+void clearMoveInputOf(uint64_t client);
 /// The "input" op: the reply object (ok:false with a code on refusal).
 [[nodiscard]] nlohmann::json moveInputOp(nlohmann::json const& request);
 

@@ -445,13 +445,15 @@ std::mutex gInputMutex;
 
 int maxInstances() { return std::clamp(options().pipeInstances, 1, PIPE_UNLIMITED_INSTANCES - 1); }
 
-// Read-only ops that run without gInputMutex (they post no input; `tap` and `world` are the
-// read-only probes other units add).
+// Ops that run without gInputMutex: they post no window input. `tap` and `world` only read;
+// `look`, `input`, `send` and `stack` hand their work to the client thread (and may wait for it,
+// up to their timeoutMs), so serializing them would only stall the other clients.
 bool concurrentOp(std::string const& line) {
     json req = json::parse(line, nullptr, false);
     if (!req.is_object()) return true;
     std::string op = req.value("op", "");
-    return op == "ping" || op == "state" || op == "tap" || op == "world";
+    return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
+        || op == "stack";
 }
 
 std::string handleClientLine(std::string const& line) {
@@ -489,6 +491,8 @@ void releaseClientInput(uint64_t id) {
 void clientGone(uint64_t id) {
     std::lock_guard input(gInputMutex);
     releaseClientInput(id);
+    clearMoveInputOf(id);      // the `input` override, if this client set it (MoveInput.cpp)
+    releaseGameButtonsOf(id);  // `button` holds of this client (GameActions.cpp)
     std::vector<std::function<void(uint64_t)>> callbacks;
     {
         std::lock_guard lock(gGoneMutex);

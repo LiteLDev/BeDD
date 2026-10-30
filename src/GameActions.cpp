@@ -60,6 +60,7 @@ struct Held {
     bool        onBlockChange = false;
     BlockPos    pos{};
     Block const* block = nullptr;
+    uint64_t    owner = 0; // the control-pipe client that pressed it (currentPipeClient(); 0 = manager)
 };
 
 // One queued op, applied by the tick listener.
@@ -71,6 +72,7 @@ struct Command {
     json        reply;
     int         waitSlot  = -1; // slot: replied once the player holds it (hotbar key fallback)
     int64_t     waitUntil = 0;
+    uint64_t    owner     = 0; // currentPipeClient() of the request
 };
 
 std::mutex                            gMutex; // everything below
@@ -176,7 +178,8 @@ json apply(Command& c, ClientInstance& client, LocalPlayer& player) {
         Held&       h      = gHeld[b];
         if (!inWorld) return fail("busy", "a screen is open (" + client.getTopScreenName() + ")");
         Held next;
-        next.down = true;
+        next.down  = true;
+        next.owner = c.owner;
         bool onBlock = c.req.value("releaseOn", "") == "blockChange";
         int  ticks   = c.req.value("holdTicks", action == "click" && !onBlock ? 2 : 0);
         if (ticks > 0) next.releaseTick = gTick + ticks;
@@ -262,6 +265,7 @@ json disabled(std::string const& op) {
 json run(std::string const& op, json const& req) {
     auto timeout = std::chrono::milliseconds(std::clamp(req.value("timeoutMs", 1000), 50, 60000));
     auto c       = std::make_shared<Command>(Command{op, req});
+    c->owner     = currentPipeClient();
     std::unique_lock lock(gMutex);
     if (!inLevel()) return fail("not_in_level", "not in a world");
     gQueue.push_back(c);
@@ -286,6 +290,15 @@ void uninstallGameActions() {
     if (gTickListener) ll::event::EventBus::getInstance().removeListener(gTickListener);
     gTickListener = nullptr;
     releaseGameButtons();
+}
+
+void releaseGameButtonsOf(uint64_t client) {
+    std::lock_guard lock(gMutex);
+    for (size_t b = 0; b < kButtons.size(); ++b) {
+        if (!gHeld[b].down || gHeld[b].owner != client) continue;
+        log().info("control pipe client {} left holding button {}: released", client, kButtons[b].name);
+        releaseHeld(b);
+    }
 }
 
 void releaseGameButtons() {

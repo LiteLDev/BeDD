@@ -53,6 +53,7 @@ struct Override {
     bool              jump = false, sneak = false, sprint = false;
     Clock::time_point deadline{};
     bool              active = false;
+    uint64_t          owner  = 0; // the control-pipe client that set it (currentPipeClient(); 0 = manager)
 };
 
 std::mutex gMutex;
@@ -317,6 +318,15 @@ void clearMoveInput() {
     }
 }
 
+void clearMoveInputOf(uint64_t client) {
+    {
+        std::lock_guard lock(gMutex);
+        if (!gOverride.active || gOverride.owner != client) return;
+    }
+    if (options().trace) log().info("input: control pipe client {} left: its move override is cleared", client);
+    clearMoveInput();
+}
+
 json moveInputOp(json const& j) {
     if (!options().gameHooks || !gInstalled) return disabled();
     json r{
@@ -350,6 +360,7 @@ json moveInputOp(json const& j) {
         ttl = std::min(ttl, kMaxTtlMs);
         o.active   = ttl > 0;
         o.deadline = Clock::now() + std::chrono::milliseconds(ttl);
+        o.owner    = currentPipeClient();
     } catch (json::exception const& e) {
         return badArgs(e.what());
     }
