@@ -100,6 +100,7 @@ bool Mod::enable() {
     startTap();
     if (gOptions.tapLoopback) installTapLoopback();
     if (gOptions.tap) installTapJournal();
+    installGameActions();
     log().info("BeDD enabled");
     return true;
 }
@@ -108,6 +109,7 @@ bool Mod::disable() {
     // First: wakes a pipe thread waiting for a look, so stopPipeServer can join it.
     stopLook();
     stopGameState();
+    uninstallGameActions(); // first: its tick listener drives the virtual mouse
     stopInputTrace();
     stopManagerLink();
     stopPipeServer();

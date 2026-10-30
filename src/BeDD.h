@@ -64,6 +64,7 @@ struct Options {
     bool tap = false;
     /// Size cap of the tap's join journal (late attach); past it the replay reports complete:false.
     int tapJournalMiB = 128;
+    bool gameHooks = false;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -294,5 +295,13 @@ struct TapLoopbackStats {
     uint64_t guest{};       // clientbound packets to LAN guests (never published)
 };
 [[nodiscard]] TapLoopbackStats tapLoopbackStats();
+// Game actions (GameActions.cpp): the `slot`, `action` and `button` ops (config gameHooks).
+// ---------------------------------------------------------------------------------------------
+void installGameActions();
+void uninstallGameActions();
+/// Releases every button a `button` op holds (a control client disconnected).
+void releaseGameButtons();
+/// Reply of a `slot`, `action` or `button` request.
+[[nodiscard]] nlohmann::json gameActionOp(std::string const& op, nlohmann::json const& req);
 
 } // namespace bedd

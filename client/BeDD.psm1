@@ -168,6 +168,31 @@ function Set-BeDDCrashLogger([Parameter(Mandatory)][string]$ModsDir) {
 # Releases every key and button the virtual state still holds down.
 function Clear-BeDDInput { Invoke-BeDD @{ op = 'release' } | Out-Null }
 
+# Hotbar slot 0..8 through the game's own slot-select callback (config gameHooks); no -Slot = query.
+function Set-BeDDSlot([ValidateRange(0, 8)][int]$Slot = -1) {
+    $r = @{ op = 'slot' }
+    if ($Slot -ge 0) { $r.slot = $Slot }
+    Invoke-BeDD $r
+}
+
+# The game's own button actions (config gameHooks): drop, dropAll, inventory, perspective, pause.
+function Invoke-BeDDAction([Parameter(Mandatory)][ValidateSet('drop', 'dropAll', 'inventory', 'perspective', 'pause')][string]$Name) {
+    Invoke-BeDD @{ op = 'action'; name = $Name }
+}
+
+# attack/use/pick on the virtual GameInput mouse, released by the game's ticks (config gameHooks):
+# after -HoldTicks, or with -ReleaseOnBlockChange once the targeted block breaks or is no longer targeted.
+function Set-BeDDButton(
+    [Parameter(Mandatory)][ValidateSet('attack', 'use', 'pick')][string]$Button,
+    [ValidateSet('down', 'up', 'click')][string]$Action = 'click',
+    [int]$HoldTicks = 0, [switch]$ReleaseOnBlockChange
+) {
+    $r = @{ op = 'button'; button = $Button; action = $Action }
+    if ($HoldTicks -gt 0) { $r.holdTicks = $HoldTicks }
+    if ($ReleaseOnBlockChange) { $r.releaseOn = 'blockChange' }
+    Invoke-BeDD $r
+}
+
 Add-Type -AssemblyName System.Drawing
 if (-not ('BeDD.Win' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -220,4 +245,5 @@ function Save-BeDDScreenshot([Parameter(Mandatory)][string]$Path) {
 Export-ModuleMember -Function Connect-BeDD, Set-BeDDPipe, Disconnect-BeDD, Test-BeDD, Invoke-BeDD,
     Set-BeDDCrashLogger, Get-BeDDState, Set-BeDDBackground, Set-BeDDWindow, Send-BeDDKey, Send-BeDDText,
     Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot,
-    Get-BeDDWorld, Set-BeDDLook
+    Get-BeDDWorld, Set-BeDDLook,
+    Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton

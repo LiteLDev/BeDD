@@ -234,6 +234,7 @@ console window would flash on the desktop at every game start.
 | `tapLoopback` | default `true`, used only with `tap`: also tap singleplayer worlds and LAN worlds this game hosts (packets re-serialized; LAN guests' traffic is left out) |
 | `tap` | default `false`: serve the tap pipe for tools such as bedboo, and keep a join journal so they can attach in the middle of a session |
 | `tapJournalMiB` | default `128`: size cap of the tap's join journal; past it a late attach is incomplete (`complete:false`) |
+| `gameHooks` | default `false`: enables the in-game control ops `slot`, `action` and `button` (hotbar slot, drop/inventory/perspective/pause, attack/use/pick held for a number of game ticks or until the targeted block breaks; see CONTRIBUTING.md) |
 
 ## More
 

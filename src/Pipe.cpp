@@ -374,6 +374,12 @@ json handle(json const& j) {
     } else if (op == "tap") {
         if (!options().tap) return {{"ok", false}, {"code", "disabled"}, {"error", "the tap is off (config.json \"tap\")"}};
         r.update(json::parse(tapInfo()));
+    } else if (op == "slot") {
+        r = gameActionOp(op, j);
+    } else if (op == "action") {
+        r = gameActionOp(op, j);
+    } else if (op == "button") {
+        r = gameActionOp(op, j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }

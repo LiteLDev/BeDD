@@ -293,6 +293,18 @@ install order) and sets `bedd::tap::gReplay`, which the tap pipe calls for each 
 - Past `tapJournalMiB` (default 128) frames are no longer kept and the journal reports
   `complete:false` until the next reset: a late tap client then misses chunks until the player
   re-enters them or the client rejoins.
+Game-action ops (config `gameHooks`, default off; otherwise `{"ok":false,"code":"disabled"}`). The
+pipe thread queues them and replies once the next client tick applied them (`timeoutMs`, default
+1000): `{"ok":true,"tick":n,...}`, or `code` `not_in_level`, `busy` (a screen is open; `action
+pause` still works), `timeout`, `bad_args`, `refused`. `button up` applies at once, also while the
+world does not tick. A paused singleplayer world does not tick: after `action pause` there, resume
+with the `key` op (ESC). Without their main field they are read-only queries.
+
+| op | fields | |
+|---|---|---|
+| `slot` | `slot` 0..8 | `ClientInputCallbacks::handleSlotSelectButtonPress`, and when that leaves the slot alone (it does for a keyboard player) the hotbar key `1`..`9` of the default key map; the client sends `mob_equipment` itself. Replies `slot` (the selected slot after it) and `via` callback\|keys. Query: `{slot}` (null outside a world) |
+| `action` | `name` drop\|dropAll\|inventory\|perspective\|pause | the matching `ClientInputCallbacks::handle*ButtonPress`. Query: `{names}` |
+| `button` | `button` attack\|use\|pick; `action` down\|up\|click (default click); `holdTicks`; `releaseOn` blockChange | left/right/middle on the virtual GameInput mouse (needs background mode), released by the tick listener after `holdTicks` (click: default 2) or, with `releaseOn:"blockChange"`, once the block the client's hit result pointed at when it went down changes, turns to air or is no longer targeted (`refused` when no block is targeted). Never blocks the pipe. Replies `held`, and `block{x,y,z}`. Query: `{held}`. Buttons held through this op are released when the control client disconnects |
 
 ### Manager pipe
 
