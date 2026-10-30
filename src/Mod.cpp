@@ -55,6 +55,7 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
     gOptions.manager      = j.value("manager", gOptions.manager);
     gOptions.mute         = j.value("mute", gOptions.mute);
+    gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
 }
 
 bool Mod::load() {
@@ -87,6 +88,7 @@ bool Mod::enable() {
     installApiHooks();
     installGameInputHooks();
     startWindowWatcher();
+    installMoveInputHooks(); // before the pipe: an early "input" must not take the key fallback
     startPipeServer();
     startInputTrace();
     log().info("BeDD enabled");
@@ -102,6 +104,7 @@ bool Mod::disable() {
     uninstallApiHooks();
     uninstallNetHooks();
     uninstallAudioHooks();
+    uninstallMoveInputHooks();
     return true;
 }
 

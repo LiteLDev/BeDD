@@ -8,6 +8,8 @@
 #include <optional>
 #include <string>
 
+#include <nlohmann/json_fwd.hpp>
+
 #include "ll/api/io/Logger.h"
 #include "ll/api/thread/GlobalThreadPauser.h"
 
@@ -48,6 +50,8 @@ struct Options {
     bool manager = true;
     /// In background mode, mute the game (FMOD master channel group): headless games stay silent.
     bool mute = true;
+    /// Hook the client's own game systems (input, look, actions) for the bedboo ops. Off: those ops answer code:'disabled'.
+    bool gameHooks = false;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -210,5 +214,16 @@ void stopPipeServer();
 // ---------------------------------------------------------------------------------------------
 void startManagerLink();
 void stopManagerLink();
+
+// ---------------------------------------------------------------------------------------------
+// Move input (MoveInput.cpp): the "input" op, ClientInputUpdateSystem hooks with a dead-man TTL.
+// ---------------------------------------------------------------------------------------------
+/// When gameHooks is on; falls back to the default keymap's keys if the hooks do not install.
+void installMoveInputHooks();
+void uninstallMoveInputHooks();
+/// Drop the move override now ("release", a control client disconnecting).
+void clearMoveInput();
+/// The "input" op: the reply object (ok:false with a code on refusal).
+[[nodiscard]] nlohmann::json moveInputOp(nlohmann::json const& request);
 
 } // namespace bedd

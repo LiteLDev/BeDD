@@ -196,6 +196,7 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 | `loopbackOnly` | 默认 `true`：游戏只在本机通信，新实例不会弹 Windows 防火墙提示，也不会去查询本机以外的游戏服务器（否则它们可能以"局域网世界"出现在测试存档前面）。测试框架自己启动的专用服务器每个服务器目录还是会问一次，点**取消**即可 |
 | `manager` | 默认 `true`：后台模式下，有管理窗口时游戏显示在管理窗口里，自己的窗口留在屏幕外、不进任务栏 |
 | `mute` | 默认 `true`：后台模式下游戏不出声（你接管游戏时恢复声音） |
+| `gameHooks` | 默认 `false`：挂钩游戏自身的系统，供 bedboo 的操作使用；开启后 `input`（`Set-BeDDInput`）可让玩家行走、跳跃、潜行和疾跑，与按键绑定无关 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
 
 ## 更多

@@ -304,6 +304,7 @@ json handle(json const& j) {
         }
         sleepMs(j.value("afterMs", kPollMs));
     } else if (op == "release") {
+        clearMoveInput();
         for (int vk = 1; vk < 256; ++vk) {
             if (!vstate::keyDown(vk)) continue;
             if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON) {
@@ -316,6 +317,8 @@ json handle(json const& j) {
         flushOrThrow(j);
     } else if (op == "flush") {
         flushOrThrow(j);
+    } else if (op == "input") {
+        return moveInputOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
@@ -387,6 +390,7 @@ void serve(std::stop_token) {
         }
         BOOL connected = ConnectNamedPipe(pipe, nullptr) || GetLastError() == ERROR_PIPE_CONNECTED;
         if (connected && !gStopping) serveClient(pipe);
+        if (connected) clearMoveInput(); // a controller that went away leaves no player running
         FlushFileBuffers(pipe);
         DisconnectNamedPipe(pipe);
         CloseHandle(pipe);

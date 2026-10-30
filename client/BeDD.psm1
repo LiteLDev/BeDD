@@ -156,6 +156,15 @@ function Set-BeDDCrashLogger([Parameter(Mandatory)][string]$ModsDir) {
 # Releases every key and button the virtual state still holds down.
 function Clear-BeDDInput { Invoke-BeDD @{ op = 'release' } | Out-Null }
 
+# Moves the local player through the game's own input pipeline (config "gameHooks": true) until
+# -TtlMs runs out: -X = left - right, -Z = forward - back, each in [-1, 1]. -TtlMs 0 stops at once.
+# -Query returns the op's state ({active, via, hooks}) instead.
+function Set-BeDDInput([double]$X = 0, [double]$Z = 0, [switch]$Jump, [switch]$Sneak, [switch]$Sprint, [int]$TtlMs = 300, [switch]$Query) {
+    if ($Query) { return Invoke-BeDD @{ op = 'input' } }
+    Invoke-BeDD @{ op = 'input'; move = @{ x = $X; z = $Z }; jump = [bool]$Jump; sneak = [bool]$Sneak; sprint = [bool]$Sprint; ttlMs = $TtlMs }
+}
+Export-ModuleMember -Function Set-BeDDInput
+
 Add-Type -AssemblyName System.Drawing
 if (-not ('BeDD.Win' -as [type])) {
     Add-Type -TypeDefinition @'
