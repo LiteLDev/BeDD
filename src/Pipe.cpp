@@ -316,6 +316,12 @@ json handle(json const& j) {
         flushOrThrow(j);
     } else if (op == "flush") {
         flushOrThrow(j);
+    } else if (op == "slot") {
+        r = gameActionOp(op, j);
+    } else if (op == "action") {
+        r = gameActionOp(op, j);
+    } else if (op == "button") {
+        r = gameActionOp(op, j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
@@ -387,6 +393,7 @@ void serve(std::stop_token) {
         }
         BOOL connected = ConnectNamedPipe(pipe, nullptr) || GetLastError() == ERROR_PIPE_CONNECTED;
         if (connected && !gStopping) serveClient(pipe);
+        releaseGameButtons(); // a control client's held buttons go with it
         FlushFileBuffers(pipe);
         DisconnectNamedPipe(pipe);
         CloseHandle(pipe);

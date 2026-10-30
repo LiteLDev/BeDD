@@ -8,6 +8,8 @@
 #include <optional>
 #include <string>
 
+#include <nlohmann/json_fwd.hpp>
+
 #include "ll/api/io/Logger.h"
 #include "ll/api/thread/GlobalThreadPauser.h"
 
@@ -48,6 +50,7 @@ struct Options {
     bool manager = true;
     /// In background mode, mute the game (FMOD master channel group): headless games stay silent.
     bool mute = true;
+    bool gameHooks = false;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -210,5 +213,15 @@ void stopPipeServer();
 // ---------------------------------------------------------------------------------------------
 void startManagerLink();
 void stopManagerLink();
+
+// ---------------------------------------------------------------------------------------------
+// Game actions (GameActions.cpp): the `slot`, `action` and `button` ops (config gameHooks).
+// ---------------------------------------------------------------------------------------------
+void installGameActions();
+void uninstallGameActions();
+/// Releases every button a `button` op holds (a control client disconnected).
+void releaseGameButtons();
+/// Reply of a `slot`, `action` or `button` request.
+[[nodiscard]] nlohmann::json gameActionOp(std::string const& op, nlohmann::json const& req);
 
 } // namespace bedd

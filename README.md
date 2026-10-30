@@ -226,6 +226,7 @@ console window would flash on the desktop at every game start.
 | `manager` | default `true`: in background mode the game shows up in the manager window when one runs, and its own window stays off screen and off the taskbar |
 | `mute` | default `true`: in background mode the game makes no sound (it is audible again while you take it over) |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
+| `gameHooks` | default `false`: enables the in-game control ops `slot`, `action` and `button` (hotbar slot, drop/inventory/perspective/pause, attack/use/pick held for a number of game ticks or until the targeted block breaks; see CONTRIBUTING.md) |
 
 ## More
 

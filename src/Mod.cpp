@@ -55,6 +55,7 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
     gOptions.manager      = j.value("manager", gOptions.manager);
     gOptions.mute         = j.value("mute", gOptions.mute);
+    gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
 }
 
 bool Mod::load() {
@@ -89,11 +90,13 @@ bool Mod::enable() {
     startWindowWatcher();
     startPipeServer();
     startInputTrace();
+    installGameActions();
     log().info("BeDD enabled");
     return true;
 }
 
 bool Mod::disable() {
+    uninstallGameActions(); // first: its tick listener drives the virtual mouse
     stopInputTrace();
     stopManagerLink();
     stopPipeServer();
