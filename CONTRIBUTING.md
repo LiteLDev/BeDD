@@ -264,6 +264,35 @@ current thread serves (from 1, never reused; 0 on the manager link and the game 
 `onPipeClientGone(fn)` calls `fn(id)` on the departing client's thread, after its keys and
 buttons are released and with input ops still serialized (not at shutdown). Register in
 `enable()`, or add the one-line release call to `clientGone()` in `src/Pipe.cpp`.
+`state` also reports `stats.journal` (the tap's join journal, `src/TapJournal.cpp`, config `tap`):
+`enabled`, `frames`, `bytes`, `complete` (what a tap client attaching now gets replayed), and the
+counters `seen` (clientbound frames), `compacted` (replaced by a later frame with the same key),
+`pruned` (entities whose add frame `remove_entity` deleted), `transient` (not kept), `overCap`
+(not kept past `tapJournalMiB`), `resets` and `replays`.
+
+#### Tap join journal
+
+With `tap` on, the journal chains onto `bedd::tap::gEmit` (`src/TapSink.h`: it keeps the sink that
+was there and forwards every frame to it, so it works with or without the tap pipe and in either
+install order) and sets `bedd::tap::gReplay`, which the tap pipe calls for each new client between
+`REPLAY_BEGIN` and `REPLAY_END`. Replayed frames keep their seq and order and carry flag `replay`.
+
+- Only CLIENTBOUND frames are kept. The journal resets on a new link (the `LINK_UP` marker or a
+  change of `gLinkType`) and on `start_game` (11), which becomes its first frame.
+- Compaction keys (read from the leading fields only; the last frame with a key wins):
+  `level_chunk` (x, z, dimension), `subchunk` (dimension, origin), `update_block` (position,
+  layer), `set_time`, `set_health`, `network_chunk_publisher_update`, `current_structure_feature`, `inventory_content` (window),
+  `inventory_slot` (window, slot), `level_event` (event id, so the weather keeps its last state),
+  `update_abilities` (unique id), the `add_*` packets (unique id; `add_player` by runtime id), and
+  per runtime id `update_attributes`, `set_entity_data`, `set_entity_motion`, `move_entity`,
+  `move_entity_delta`, `move_player` and `mob_armor_equipment`.
+- `remove_entity` (14) deletes the entity's `add_entity`/`add_item_entity`/`add_player` frame
+  (`add_player` is matched by its unique id's bytes) and everything keyed by its runtime id.
+- Not kept: `text`, `animate`, `network_stack_latency`, `play_sound`, `stop_sound`,
+  `level_sound_event` (and v2), `spawn_particle_effect`, `level_event_generic`.
+- Past `tapJournalMiB` (default 128) frames are no longer kept and the journal reports
+  `complete:false` until the next reset: a late tap client then misses chunks until the player
+  re-enters them or the client rejoins.
 
 ### Manager pipe
 

@@ -59,6 +59,8 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.tap          = j.value("tap", gOptions.tap);
     gOptions.pipeInstances = j.value("pipeInstances", gOptions.pipeInstances);
     gOptions.tapLoopback  = j.value("tap", false) && j.value("tapLoopback", gOptions.tapLoopback);
+    gOptions.tap          = j.value("tap", gOptions.tap);
+    gOptions.tapJournalMiB = j.value("tapJournalMiB", gOptions.tapJournalMiB);
 }
 
 bool Mod::load() {
@@ -97,6 +99,7 @@ bool Mod::enable() {
     startLook();
     startTap();
     if (gOptions.tapLoopback) installTapLoopback();
+    if (gOptions.tap) installTapJournal();
     log().info("BeDD enabled");
     return true;
 }
@@ -115,6 +118,7 @@ bool Mod::disable() {
     uninstallAudioHooks();
     stopTap();
     uninstallTapLoopback();
+    uninstallTapJournal();
     return true;
 }
 

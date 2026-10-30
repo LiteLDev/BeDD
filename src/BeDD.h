@@ -60,6 +60,10 @@ struct Options {
     /// With "tap": also tap singleplayer worlds and LAN worlds this client hosts (TapLoopback.cpp).
     /// Read as tap && tapLoopback, so it is off unless the tap is on.
     bool tapLoopback = true;
+    /// Serve the tap (clientbound packets and the client's own packets) and keep its join journal.
+    bool tap = false;
+    /// Size cap of the tap's join journal (late attach); past it the replay reports complete:false.
+    int tapJournalMiB = 128;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -225,6 +229,22 @@ void stopPipeServer();
 /// buttons are released: release what it owns. Runs on the departing client's thread with input
 /// ops serialized; not called at shutdown. Register once, e.g. in enable().
 void onPipeClientGone(std::function<void(uint64_t)> fn);
+
+// ---------------------------------------------------------------------------------------------
+// Tap join journal (TapJournal.cpp): compacted clientbound frames since start_game, replayed to
+// each new tap client (bedd::tap::gReplay).
+// ---------------------------------------------------------------------------------------------
+void installTapJournal();
+void uninstallTapJournal();
+struct TapJournalStats {
+    bool     enabled = false;
+    uint64_t frames = 0, bytes = 0;
+    bool     complete = true;
+    // Clientbound frames seen; replaced by a later frame with the same key; add_* frames pruned by
+    // remove_entity; transient frames not kept; frames not kept past the cap; resets; replays.
+    uint64_t seen = 0, compacted = 0, pruned = 0, transient = 0, overCap = 0, resets = 0, replays = 0;
+};
+[[nodiscard]] TapJournalStats tapJournalStats();
 
 // ---------------------------------------------------------------------------------------------
 // Manager link (Manager.cpp): \\.\pipe\BeDD-Manager-<session id>
