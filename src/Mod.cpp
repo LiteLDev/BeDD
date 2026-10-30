@@ -68,6 +68,7 @@ void readOptions(std::filesystem::path const& file) {
             if (id.is_number_integer() && id.get<int64_t>() >= 0 && id.get<int64_t>() <= 0x3ff) gOptions.sendAllow.push_back(id.get<int>());
             else log().warn("sendAllow: {} is not a packet id (0..1023); ignored", id.dump());
     }
+    gOptions.allowStack   = j.value("allowStack", gOptions.allowStack);
 }
 
 bool Mod::load() {
@@ -110,6 +111,7 @@ bool Mod::enable() {
     if (gOptions.tap) installTapJournal();
     installGameActions();
     if (gOptions.allowSend) installSend();
+    if (gOptions.allowStack) installStack();
     log().info("BeDD enabled");
     return true;
 }
@@ -132,6 +134,7 @@ bool Mod::disable() {
     uninstallTapLoopback();
     uninstallTapJournal();
     uninstallMoveInputHooks();
+    uninstallStack();
     return true;
 }
 

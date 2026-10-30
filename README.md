@@ -238,6 +238,7 @@ console window would flash on the desktop at every game start.
 | `gameHooks` | default `false`: enables the in-game control ops `slot`, `action` and `button` (hotbar slot, drop/inventory/perspective/pause, attack/use/pick held for a number of game ticks or until the targeted block breaks; see CONTRIBUTING.md) |
 | `allowSend` | default `false`: allow the `send` pipe op, with which a script such as bedboo makes the client send chat and commands it serialized (any local program of yours could then do so as your player) |
 | `sendAllow` | packet ids `send` may send, default `[9, 77]` (text, command_request); login, inventory_transaction, player_auth_input and item_stack_request are always refused |
+| `allowStack` | default `false`: the `stack` op (`Send-BeDDStack`) lets a pipe client make the game send item stack requests (inventory moves, crafting, chest moves) for the signed-in player, as bedboo does in bedd mode. Turn it on only for such harnesses |
 
 ## More
 

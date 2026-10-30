@@ -204,6 +204,7 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 | `sendAllow` | `send` 可发送的数据包 id，默认 `[9, 77]`（text、command_request）；login、inventory_transaction、player_auth_input 和 item_stack_request 始终被拒绝 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
 | `tapLoopback` | 默认 `true`，只在 `tap` 打开时生效：单人世界和本游戏开的局域网世界也接到 tap 管道上（数据包重新序列化；局域网访客的流量不包括在内） |
+| `allowStack` | 默认 `false`：`stack` 操作（`Send-BeDDStack`）让管道客户端以登录玩家的身份发出物品堆请求（背包移动、合成、箱子存取），bedboo 的 bedd 模式用它。只在需要的测试里打开 |
 
 ## 更多
 

@@ -265,3 +265,20 @@ Export-ModuleMember -Function Connect-BeDD, Set-BeDDPipe, Disconnect-BeDD, Test-
     Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot,
     Get-BeDDWorld, Set-BeDDLook,
     Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton, Send-BeDDPacket
+
+# Item stack request through the local client (`stack` op, config allowStack). -Buffer: the whole
+# item_stack_request packet (varint header + body) as base64 or bytes, as bedrock-protocol serializes
+# it; the reply maps its request ids to the client's (map, requestIds). Without -Buffer: the probe
+# ({enabled, via}; ok is false while allowStack is off). -View: the inventory as the client shows it.
+# Invoke-BeDD writes a request again after a broken pipe: check with -View before resending a buffer.
+function Send-BeDDStack($Buffer, [switch]$View, [int]$TimeoutMs = 2000) {
+    $r = @{ op = 'stack' }
+    if ($View) { $r.view = $true }
+    elseif ($null -ne $Buffer) {
+        $r.buf = if ($Buffer -is [byte[]]) { [Convert]::ToBase64String($Buffer) } else { [string]$Buffer }
+        $r.timeoutMs = $TimeoutMs
+    }
+    Invoke-BeDD $r -NoThrow:(-not $View -and $null -eq $Buffer)
+}
+
+Export-ModuleMember -Function Send-BeDDStack

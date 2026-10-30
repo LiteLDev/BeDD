@@ -342,6 +342,52 @@ to `sendAllow` (default text 9 and command_request 77: chat and commands, as the
 them). Ids 1 (login), 30 (inventory_transaction), 144 (player_auth_input) and 147
 (item_stack_request) are always refused, even when listed: the client owns them, and forged ones
 would fight its prediction and bookkeeping. Widen `sendAllow` only for a server you control.
+| `stack` | `buf` (base64 item_stack_request); `view`; `timeoutMs` | item stack requests sent by the local client (`allowStack`, see below) |
+
+`ping` and `state` also report `managed` (linked to the manager window) and `takenOver`.
+
+#### `stack`: item stack requests through the client (`allowStack`)
+
+Off by default. While `allowStack` is false every form answers
+`{"ok":false,"code":"disabled","key":"allowStack","enabled":false}`.
+
+| Form | Reply |
+|---|---|
+| `{op:"stack"}` (probe) | `{ok, enabled:true, via:"raw", stats:{sent, answered, rejected, failed, resyncs}}` |
+| `{op:"stack", buf, timeoutMs=2000}` | `{ok, via:"raw", requestIds:[client ids], map:{"<caller id>": client id}}` |
+| `{op:"stack", view:true}` | `{ok, inventory:[...], ui:[...], open?:{containerId, type, items:[...]}}`: what the client shows, each `{slot, item, count, stackId}` |
+
+- `buf` is the base64 of one whole item_stack_request packet (id 147), varint header plus body, as
+  bedrock-protocol serializes it. Any other packet id, and bytes the game does not read, are `bad_args`.
+- On the next client tick the packet is rebuilt with `MinecraftPackets::createPacket` and
+  `readNoHeader`, and the local player sends it.
+- Request ids: each request gets a new client id, and the reply comes back once the packet is sent. Ids
+  are odd, negative and counted down from `-0x40000001`, far below the client's own `-1, -3, ...`.
+  Every slot stack id that names a caller id is renamed too. That covers the request's own id (a
+  `consume`, or the crafted output) and an earlier request of the same packet or of an earlier one
+  (the last 256 ids are remembered). `map` keys are the caller's ids as strings.
+- The server answers with the client ids in item_stack_response, which bedboo sees on the tap. The
+  answer can only arrive after the packet is sent, but it can come before the reply to `stack` is
+  read, so the caller holds an unmatched response until the reply arrives.
+- `via:"raw"`: the request does not go through the client's `ItemStackNetManagerClient`. In this game version
+  the manager has no callable symbol (every member is MCNAPI in LeviLamina's headers), and its
+  predictions come from the screen controllers moving items, not from request actions. So the
+  client predicts nothing for these requests.
+- Resync: when the server accepts one of these requests (hooked
+  `ClientNetworkHandler::handle(ItemStackResponsePacket)`), the client sends
+  `inventory_transaction {type: inventory_mismatch}` on its next tick. That is the packet the client
+  itself sends when its inventory is out of step, and the server answers with the whole inventory.
+  The client then shows the server's state, open container included. A rejected request changes
+  nothing on either side, so it gets no resync.
+- The server checks every request (stack ids, open screen, recipe). A screen the request needs (the
+  inventory, a chest) must already be open in the game: open it with `key E` or by using the block.
+- Security: while `allowStack` is on, anything that can open the pipe (the current user, local only) can
+  move, craft, drop and destroy items of the signed-in player on whatever server the client is on.
+  Keep it off unless a harness needs it.
+
+Authority table (bedd transport): `item_stack_request` is **translated via `stack`** (it used to be unsupported).
+bedboo sends it through this op when the probe answers `ok`, and otherwise rejects it with
+`ERR_BEDD_UNSUPPORTED`.
 
 ### Manager pipe
 

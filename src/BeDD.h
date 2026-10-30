@@ -71,6 +71,8 @@ struct Options {
     bool allowSend = false;
     /// Packet ids `send` may send (text, command_request). 1, 30, 144 and 147 are always refused.
     std::vector<int> sendAllow{9, 77};
+    /// Allow the `stack` op: the local client sends item stack requests a caller serialized (Stack.cpp).
+    bool allowStack = false;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -334,4 +336,17 @@ void uninstallSend();
 [[nodiscard]] nlohmann::json sendOp(nlohmann::json const& req);
 /// `sent`, `refused`, `failed`, `lastError` for the "state" op.
 [[nodiscard]] nlohmann::json sendStats();
+} // namespace bedd
+
+// ---------------------------------------------------------------------------------------------
+// Stack (Stack.cpp): item stack requests from the control pipe (allowStack).
+// ---------------------------------------------------------------------------------------------
+#include <nlohmann/json_fwd.hpp>
+
+namespace bedd {
+/// Client level tick listener and item stack response hook of the `stack` op.
+void installStack();
+void uninstallStack();
+/// The `stack` op: the whole reply (`ok`, `code` on errors).
+[[nodiscard]] nlohmann::json stackOp(nlohmann::json const& req);
 } // namespace bedd

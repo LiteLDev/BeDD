@@ -386,6 +386,8 @@ json handle(json const& j) {
         return moveInputOp(j);
     } else if (op == "send") {
         r = sendOp(j);
+    } else if (op == "stack") {
+        r = stackOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
