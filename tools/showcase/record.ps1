@@ -21,7 +21,7 @@
   games, removes the mod, restores the other mods and options and releases the locks.
 
   Output: tools\showcase\out\take-<n>.mkv (near-lossless) and setup screenshots; encode.ps1 turns
-  a take into the files in docs\showcase\.
+  a take into the files in docs\public\showcase\.
 
 .EXAMPLE
   pwsh -NoProfile -File tools/showcase/record.ps1 -KeepOpen
@@ -411,7 +411,7 @@ try {
 
     $take = 1
     $deadline = (Get-Date).AddMinutes($MaxMinutes)
-    if ($KeepOpen) { Write-Show 'ready: create out	ake for a take, out\stop to end'; $take = 0 } else { Show-Take $take }
+    if ($KeepOpen) { Write-Show 'ready: create out\take for a take, out\stop to end'; $take = 0 } else { Show-Take $take }
     while ($KeepOpen -and (Get-Date) -lt $deadline -and -not (Test-Path (Join-Path $Out 'stop'))) {
         if (Test-Path (Join-Path $Out 'take')) {
             Remove-Item (Join-Path $Out 'take')

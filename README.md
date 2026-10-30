@@ -1,11 +1,12 @@
 # Be.D.D.
 
-<img src="docs/logo.png" alt="" width="128" align="right">
+<img src="docs/public/logo.png" alt="" width="128" align="right">
 
 English | [简体中文](README.zh-CN.md)
 
 [![Release](https://img.shields.io/github/v/release/LiteLDev/BeDD)](https://github.com/LiteLDev/BeDD/releases)
 [![License](https://img.shields.io/github/license/LiteLDev/BeDD)](COPYING.LESSER)
+[![Docs](https://img.shields.io/badge/docs-docs.levimc.org%2FBeDD-blue)](https://docs.levimc.org/BeDD/)
 
 Be.D.D. (Bedrock Deep Dive) is named after the H.D.D. of Zenless Zone Zero: a Proxy guides agents through the
 Hollows from afar, your script guides Minecraft from the background.
@@ -14,7 +15,11 @@ Run end-to-end tests of your [LeviLamina](https://github.com/LiteLDev/LeviLamina
 **in the background**. Your script presses keys, types and clicks inside Minecraft Bedrock, while
 your own mouse, keyboard and windows stay yours, and several games can play at once.
 
-<p align="center"><img src="docs/showcase/desktop.webp" alt="Three Minecraft windows react to a test script while the terminal in front keeps the focus" width="100%"></p>
+Be.D.D. is a testing toolkit, not a mod for players: a client-side LeviLamina module that your test
+harness puts into a game instance for a run, the PowerShell client that drives it, and the scripts
+that set up, clone and start the games. **Documentation: <https://docs.levimc.org/BeDD/>**
+
+<p align="center"><img src="docs/public/showcase/desktop.webp" alt="Three Minecraft windows react to a test script while the terminal in front keeps the focus" width="100%"></p>
 
 > [!WARNING]
 > This is a **testing tool**. While background mode is on, the game ignores your real mouse and
@@ -36,21 +41,16 @@ your own mouse, keyboard and windows stay yours, and several games can play at o
 - **Drop-in for existing harnesses.** One file replaces the usual `Click`, `Press-Key`, `Focus-Game`
   helpers of LeviLauncher harnesses; scenarios stay as they are.
 
-<p align="center"><img src="docs/showcase/how-it-feels.svg" alt="Your input goes to your apps; the script drives three background games over one pipe each" width="100%"></p>
+<p align="center"><img src="docs/public/showcase/how-it-feels.svg" alt="Your input goes to your apps; the script drives three background games over one pipe each" width="100%"></p>
 
 ## Install
 
-Put it into the game instance your tests run, for example with
-[lip](https://github.com/LiteLDev/lip):
-
-```powershell
-lip install github.com/LiteLDev/BeDD#client
-```
-
-or unzip `bedd-client-windows-x64.zip` from the
-[releases](https://github.com/LiteLDev/BeDD/releases) into the instance's `mods\`
-folder. Most harnesses copy it in at the start of a run and remove it afterwards
-([see below](#plug-it-into-a-harness)).
+Download `bedd-client-windows-x64.zip` from the
+[releases](https://github.com/LiteLDev/BeDD/releases) and unzip it anywhere: it holds the module
+(`BeDD.dll`) and the scripts. Harnesses copy the module into the game instance's `mods\` folder at the
+start of a run and remove it afterwards ([see below](#plug-it-into-a-harness)); to try it by hand,
+unzip it into the instance's `mods\` folder. Be.D.D. is not a lip package and is not listed on
+LeviMC Mods.
 
 Needs Minecraft Bedrock Edition **1.26.51** (GDK) with LeviLamina **26.51.x** (client), in a game
 instance installed with LeviLauncher. Tests start that instance with `Start-BeDDGame.ps1`
@@ -244,7 +244,7 @@ console window would flash on the desktop at every game start.
 
 ## More
 
-More videos and pictures: https://levimc.org/mods/github.com/LiteLDev/BeDD/?tab=gallery
+The full documentation, with more videos and pictures, is at <https://docs.levimc.org/BeDD/>.
 
 Building it yourself, the pipe protocol or how it works inside? See [CONTRIBUTING.md](CONTRIBUTING.md#development).
 
