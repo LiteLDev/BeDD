@@ -2,9 +2,9 @@
   "format_version": 3,
   "format_uuid": "289f771f-2c9a-4d73-9f3f-8492495a924d",
   "tooth": "github.com/LiteLDev/BeDD",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "info": {
-    "name": "BeDD",
+    "name": "Be.D.D.",
     "description": "Drive a Minecraft Bedrock Edition client from test scripts without touching the real mouse, keyboard or foreground window",
     "tags": ["platform:levilamina", "type:mod", "client", "testing", "category:developer", "automation", "input"],
     "avatar_url": "https://raw.githubusercontent.com/LiteLDev/BeDD/main/docs/logo.png"
