@@ -52,4 +52,4 @@ jobs:
         with:
           name: ${{ github.event.repository.name }}-${{ github.sha }}-client-windows-x64
           path: |
-            bin/LeviHeadlessInput/
+            bin/BeDD/

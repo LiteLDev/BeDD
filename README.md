@@ -1,11 +1,14 @@
-# LeviHeadlessInput
+# Be.D.D.
 
 <img src="docs/logo.png" alt="" width="128" align="right">
 
 English | [简体中文](README.zh-CN.md)
 
-[![Release](https://img.shields.io/github/v/release/LiteLDev/LeviHeadlessInput)](https://github.com/LiteLDev/LeviHeadlessInput/releases)
-[![License](https://img.shields.io/github/license/LiteLDev/LeviHeadlessInput)](COPYING.LESSER)
+[![Release](https://img.shields.io/github/v/release/LiteLDev/BeDD)](https://github.com/LiteLDev/BeDD/releases)
+[![License](https://img.shields.io/github/license/LiteLDev/BeDD)](COPYING.LESSER)
+
+Be.D.D. (Bedrock Deep Dive) is named after the H.D.D. of Zenless Zone Zero: a Proxy guides agents through the
+Hollows from afar, your script guides Minecraft from the background.
 
 Run end-to-end tests of your [LeviLamina](https://github.com/LiteLDev/LeviLamina) client mods
 **in the background**. Your script presses keys, types and clicks inside Minecraft Bedrock, while
@@ -41,16 +44,16 @@ Put it into the game instance your tests run, for example with
 [lip](https://github.com/LiteLDev/lip):
 
 ```powershell
-lip install github.com/LiteLDev/LeviHeadlessInput#client
+lip install github.com/LiteLDev/BeDD#client
 ```
 
-or unzip `leviheadlessinput-client-windows-x64.zip` from the
-[releases](https://github.com/LiteLDev/LeviHeadlessInput/releases) into the instance's `mods\`
+or unzip `bedd-client-windows-x64.zip` from the
+[releases](https://github.com/LiteLDev/BeDD/releases) into the instance's `mods\`
 folder. Most harnesses copy it in at the start of a run and remove it afterwards
 ([see below](#plug-it-into-a-harness)).
 
 Needs Minecraft Bedrock Edition **1.26.51** (GDK) with LeviLamina **26.51.x** (client), in a game
-instance installed with LeviLauncher. Tests start that instance with `Start-HeadlessGame.ps1`
+instance installed with LeviLauncher. Tests start that instance with `Start-BeDDGame.ps1`
 rather than through the launcher ([see below](#several-games-at-once)). Only the test PC's game
 needs it; servers and players do not.
 
@@ -59,26 +62,26 @@ needs it; servers and players do not.
 The PowerShell module ships next to the mod:
 
 ```powershell
-Import-Module .\mods\LeviHeadlessInput\HeadlessInput.psm1
-Connect-HeadlessInput                          # waits until the game is up
-Send-HeadlessKey E                             # open the inventory
-Send-HeadlessMouse click -RX 0.5 -RY 0.474     # click at a fraction of the window
-Send-HeadlessKey T; Send-HeadlessText '/give @s apple 3'; Send-HeadlessKey ENTER
-Save-HeadlessScreenshot C:\temp\shot.png       # works while the window is covered
+Import-Module .\mods\BeDD\BeDD.psm1
+Connect-BeDD                          # waits until the game is up
+Send-BeDDKey E                             # open the inventory
+Send-BeDDMouse click -RX 0.5 -RY 0.474     # click at a fraction of the window
+Send-BeDDKey T; Send-BeDDText '/give @s apple 3'; Send-BeDDKey ENTER
+Save-BeDDScreenshot C:\temp\shot.png       # works while the window is covered
 ```
 
 | Command | What it does |
 |---|---|
-| `Connect-HeadlessInput [-PipeName p]` | wait for the game and pick which game the next calls go to |
-| `Send-HeadlessKey E` | press a key; `-Action down`/`up` to hold, `-Vk 0x10` for any virtual key |
-| `Send-HeadlessText '...'` | type text (no key presses, so `t` does not open chat); `-DelayMs` per character |
-| `Send-HeadlessMouse click -RX 0.5 -RY 0.5` | `move`, `down`, `up`, `click`, `wheel` at `-X -Y` pixels or `-RX -RY` fractions; `-Button right` |
-| `Send-HeadlessRaw move -Dx 200` | turn the camera in the world; `click -Button right` to use an item |
-| `Clear-HeadlessInput` | release every key and button still held |
-| `Save-HeadlessScreenshot path.png` / `Get-HeadlessBitmap` | the game's picture, even when covered |
-| `Set-HeadlessWindow 1600 900` | resize the game window without bringing it forward |
-| `Set-HeadlessBackground $false` | hand the game back to your real mouse and keyboard |
-| `Get-HeadlessState` | is the game up, how much input arrived, did it ever get the foreground |
+| `Connect-BeDD [-PipeName p]` | wait for the game and pick which game the next calls go to |
+| `Send-BeDDKey E` | press a key; `-Action down`/`up` to hold, `-Vk 0x10` for any virtual key |
+| `Send-BeDDText '...'` | type text (no key presses, so `t` does not open chat); `-DelayMs` per character |
+| `Send-BeDDMouse click -RX 0.5 -RY 0.5` | `move`, `down`, `up`, `click`, `wheel` at `-X -Y` pixels or `-RX -RY` fractions; `-Button right` |
+| `Send-BeDDRaw move -Dx 200` | turn the camera in the world; `click -Button right` to use an item |
+| `Clear-BeDDInput` | release every key and button still held |
+| `Save-BeDDScreenshot path.png` / `Get-BeDDBitmap` | the game's picture, even when covered |
+| `Set-BeDDWindow 1600 900` | resize the game window without bringing it forward |
+| `Set-BeDDBackground $false` | hand the game back to your real mouse and keyboard |
+| `Get-BeDDState` | is the game up, how much input arrived, did it ever get the foreground |
 
 Key names: letters, digits, `ESC`, `ENTER`, `BACK`, `TAB`, `SPACE`, `SHIFT`, `CTRL`, `ALT`, arrows
 (`LEFT`...), `HOME`, `END`, `PGUP`, `PGDN`, `INSERT`, `DELETE`, `F1`..`F24`, `SLASH`, `GRAVE`,
@@ -88,8 +91,8 @@ Key names: letters, digits, `ESC`, `ENTER`, `BACK`, `TAB`, `SPACE`, `SHIFT`, `CT
 
 ```powershell
 pwsh -NoProfile -File clone-instance.ps1 -Slot 2                  # versions\1.26.51.01-hi2, ~90 MB, seconds
-& .\Start-HeadlessGame.ps1 -Instance 1.26.51.01-hi2                # starts it without bringing it forward
-Connect-HeadlessInput -PipeName LeviHeadlessInput-1.26.51.01-hi2   # the pipeName in that instance's config
+& .\Start-BeDDGame.ps1 -Instance 1.26.51.01-hi2                # starts it without bringing it forward
+Connect-BeDD -PipeName BeDD-1.26.51.01-hi2   # the pipeName in that instance's config
 ```
 
 A clone has its own `mods\`, logs, worlds and options. A few rules keep parallel runs from
@@ -97,7 +100,7 @@ tripping over each other:
 
 - Give every instance its own lock file, and find your game by its **instance folder**, never just
   by the name `Minecraft.Windows` (or you close someone else's game).
-- Start games as `Minecraft.Windows.exe` (`Start-HeadlessGame.ps1` does): under another file name
+- Start games as `Minecraft.Windows.exe` (`Start-BeDDGame.ps1` does): under another file name
   the game uses your normal Minecraft profile instead of the instance's.
 - Make test worlds single-player with `Set-WorldSinglePlayer <worldDir>` (from the harness shim):
   games on one PC share an online sign-in, and multiplayer worlds opened at the same time fail with
@@ -107,22 +110,22 @@ tripping over each other:
 
 ### The manager window
 
-The first `Start-HeadlessGame.ps1` of your logon session opens the **manager window**, and every
+The first `Start-BeDDGame.ps1` of your logon session opens the **manager window**, and every
 later run (from any terminal, harness or agent) reuses it. Each headless game then shows up there as
 a live picture instead of as a window of its own: no taskbar buttons, nothing in Alt+Tab, no windows
 popping up and vanishing while several runs start and close games. It never takes the focus.
 
 - Each game is labelled with the project (and worktree) of the script that started it, its
-  instance and pid, and whether input is arriving. `-Label` on `Start-HeadlessGame.ps1` names it.
+  instance and pid, and whether input is arriving. `-Label` on `Start-BeDDGame.ps1` names it.
 - **Closing the manager window closes every game in it** (it asks first). The games also go if the
   manager is killed, so nothing is left running in the background.
 - Double-click a game to show only that one. Right-click it to take it over with your own mouse and
   keyboard (and hand it back to the script), open its `latest.log` or instance folder, or close it.
-- From a script: `HeadlessManager.ps1 -List` lists the games, `-Game <pid> -Action show|hide|close`
+- From a script: `BeDDManager.ps1 -List` lists the games, `-Game <pid> -Action show|hide|close`
   does what the right-click menu does, `-Shutdown` closes the manager and every game without asking.
 
-It needs PowerShell 7 (`pwsh`). `Start-HeadlessGame.ps1 -NoManager` (or `LEVI_HEADLESS_MANAGER=0`)
-starts a game without starting the manager, and `Install-HeadlessInputMod -NoManager` (config
+It needs PowerShell 7 (`pwsh`). `Start-BeDDGame.ps1 -NoManager` (or `BEDD_MANAGER=0`)
+starts a game without starting the manager, and `Install-BeDDMod -NoManager` (config
 `"manager": false`) keeps a game out of a running one, for example to record the real screen.
 
 ### Plug it into a harness
@@ -134,22 +137,22 @@ starts a game without starting the manager, and `Install-HeadlessInputMod -NoMan
 ```powershell
 . "$PSScriptRoot/lib.ps1"
 if (-not $Foreground) {
-    . "$headlessDir\harness-shim.ps1"
-    Register-HeadlessNative ([MyE2E.Native])   # optional, see below
+    . "$beddDir\harness-shim.ps1"
+    Register-BeDDNative ([MyE2E.Native])   # optional, see below
 }
 # after deploying your mod and moving the other mods aside:
-if ($script:Headless) { Install-HeadlessInputMod -ModsDir $script:ModsDir -PipeName 'LeviHeadlessInput-<instance>' }
+if ($script:Headless) { Install-BeDDMod -ModsDir $script:ModsDir -PipeName 'BeDD-<instance>' }
 # ... and in finally, once the game is closed:
-if ($script:Headless) { Uninstall-HeadlessInputMod -ModsDir $script:ModsDir }
+if ($script:Headless) { Uninstall-BeDDMod -ModsDir $script:ModsDir }
 ```
 
-Start games with `Start-HeadlessGame.ps1` rather than the launcher, and keep `LeviHeadlessInput`
+Start games with `Start-BeDDGame.ps1` rather than the launcher, and keep `BeDD`
 out of any "move other mods aside" step: it is installed fresh each run and removed afterwards (a
 leftover copy would make a normally started game ignore your mouse and keyboard).
 
 If your scenarios call the harness's own input class directly (`[MyE2E.Native]::Key(0x10, $false)`
 and friends), give it these fields and a one-line guard at the top of each method;
-`Register-HeadlessNative` fills them:
+`Register-BeDDNative` fills them:
 
 ```csharp
 public static Action<ushort, bool> KeyRedirect;          // (vk, up)
@@ -166,15 +169,15 @@ complete harnesses to copy from.
 
 ## Settings
 
-`mods\LeviHeadlessInput\config\config.json`, usually written by the harness
-(`Install-HeadlessInputMod` does it). Without it the mod stays passive: background mode off, the
-pipe still answers. `Install-HeadlessInputMod` and `Start-HeadlessGame.ps1` also switch the
+`mods\BeDD\config\config.json`, usually written by the harness
+(`Install-BeDDMod` does it). Without it the mod stays passive: background mode off, the
+pipe still answers. `Install-BeDDMod` and `Start-BeDDGame.ps1` also switch the
 instance's LeviLamina to its built-in crash logger (`modules.crashLogger.builtin` in
 `mods\LeviLamina\config\Config.json`): the default `CrashLogger.exe` is a console program, and its
 console window would flash on the desktop at every game start.
 
 ```json
-{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "LeviHeadlessInput" }
+{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "BeDD" }
 ```
 
 | Key | |
@@ -190,7 +193,7 @@ console window would flash on the desktop at every game start.
 
 ## More
 
-More videos and pictures: https://levimc.org/mods/github.com/LiteLDev/LeviHeadlessInput/?tab=gallery
+More videos and pictures: https://levimc.org/mods/github.com/LiteLDev/BeDD/?tab=gallery
 
 Building it yourself, the pipe protocol or how it works inside? See [CONTRIBUTING.md](CONTRIBUTING.md#development).
 

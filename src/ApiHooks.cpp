@@ -1,6 +1,6 @@
 // user32 hooks: in background mode the game reads the virtual input state and can neither grab
 // the real cursor nor take the foreground. Outside background mode every hook passes through.
-#include "Headless.h"
+#include "BeDD.h"
 
 #include <array>
 #include <string_view>
@@ -9,7 +9,7 @@
 
 #include "ll/api/memory/Hook.h"
 
-namespace headless {
+namespace bedd {
 
 namespace {
 
@@ -390,4 +390,4 @@ BOOL  SetWindowPos(HWND h, HWND after, int x, int y, int cx, int cy, UINT flags)
 }
 } // namespace real
 
-} // namespace headless
+} // namespace bedd

@@ -14,7 +14,7 @@
       "poster": "script-and-game-poster.webp",
       "width": 1280, "height": 360,
       "title": { "en": "Every line, live in the game", "zh-CN": "脚本每一行，游戏里立刻生效" },
-      "caption": { "en": "Send-HeadlessKey E opens the inventory, Send-HeadlessMouse hovers and moves the sword, ESC closes it, in a window you never clicked.", "zh-CN": "Send-HeadlessKey E 打开背包，Send-HeadlessMouse 悬停、挪动钻石剑，ESC 关闭，全程不用点那个窗口。" }
+      "caption": { "en": "Send-BeDDKey E opens the inventory, Send-BeDDMouse hovers and moves the sword, ESC closes it, in a window you never clicked.", "zh-CN": "Send-BeDDKey E 打开背包，Send-BeDDMouse 悬停、挪动钻石剑，ESC 关闭，全程不用点那个窗口。" }
     },
     {
       "kind": "svg",
@@ -28,14 +28,14 @@
       "src": "chat-summon.webp",
       "width": 1280, "height": 720,
       "title": { "en": "Chat commands, typed for you", "zh-CN": "聊天命令，替你输入" },
-      "caption": { "en": "Send-HeadlessText types '/summon sheep' and '/summon cow' into chat; the game runs them like a player typed them.", "zh-CN": "Send-HeadlessText 在聊天栏里输入 /summon sheep 和 /summon cow，游戏就像玩家亲手输入一样执行。" }
+      "caption": { "en": "Send-BeDDText types '/summon sheep' and '/summon cow' into chat; the game runs them like a player typed them.", "zh-CN": "Send-BeDDText 在聊天栏里输入 /summon sheep 和 /summon cow，游戏就像玩家亲手输入一样执行。" }
     },
     {
       "kind": "image",
       "src": "inventory-hover.webp",
       "width": 1280, "height": 720,
       "title": { "en": "Hover and click where you aim", "zh-CN": "指哪儿悬停，指哪儿点" },
-      "caption": { "en": "A virtual cursor brings up tooltips and clicks slots; this picture is Save-HeadlessScreenshot of a window that was off the screen.", "zh-CN": "虚拟光标能触发物品提示、点击格子；这张图就是 Save-HeadlessScreenshot 对一个移出屏幕的窗口截的。" }
+      "caption": { "en": "A virtual cursor brings up tooltips and clicks slots; this picture is Save-BeDDScreenshot of a window that was off the screen.", "zh-CN": "虚拟光标能触发物品提示、点击格子；这张图就是 Save-BeDDScreenshot 对一个移出屏幕的窗口截的。" }
     },
     {
       "kind": "image",

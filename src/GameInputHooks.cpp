@@ -13,7 +13,7 @@
 // 2.x): IGameInput 3 GetCurrentTimestamp, 4 GetCurrentReading, 5 GetNextReading,
 // 6 GetPreviousReading; IGameInputReading 3 GetInputKind, 4 GetTimestamp, 5 GetDevice,
 // 12 GetKeyCount, 13 GetKeyState, 14 GetMouseState.
-#include "Headless.h"
+#include "BeDD.h"
 
 #include <array>
 #include <chrono>
@@ -25,7 +25,7 @@
 
 #include "ll/api/memory/Hook.h"
 
-namespace headless {
+namespace bedd {
 
 namespace {
 
@@ -444,4 +444,4 @@ std::string gameInputStats() {
     );
 }
 
-} // namespace headless
+} // namespace bedd

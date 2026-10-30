@@ -2,14 +2,14 @@
 # this file right AFTER the harness's lib.ps1, at script level:
 #
 #   . "$PSScriptRoot/lib.ps1"
-#   . (Join-Path $headlessDir 'harness-shim.ps1')     # $headlessDir = bin\LeviHeadlessInput
-#   Register-HeadlessNative ([BsE2E.Native])          # optional: redirects the Native class's input methods
+#   . (Join-Path $beddDir 'harness-shim.ps1')     # $beddDir = bin\BeDD
+#   Register-BeDDNative ([BsE2E.Native])          # optional: redirects the Native class's input methods
 #
 # It replaces the harness's input, focus, window and screenshot helpers with versions that talk to
-# the LeviHeadlessInput mod over its control pipe, so a run never moves the real cursor, presses
+# the BeDD mod over its control pipe, so a run never moves the real cursor, presses
 # real keys or takes the foreground: the user can keep working while scenarios run. Scenarios do
-# not change. The harness additionally has to deploy the mod (Install-HeadlessInputMod after its
-# own deploy, Uninstall-HeadlessInputMod in its cleanup) and keep 'LeviHeadlessInput' out of the
+# not change. The harness additionally has to deploy the mod (Install-BeDDMod after its
+# own deploy, Uninstall-BeDDMod in its cleanup) and keep 'BeDD' out of the
 # "move other mods aside" step.
 #
 # Functions replaced (same parameters and waits as the harness versions):
@@ -17,8 +17,8 @@
 #   Type-Text, Get-ClientBitmap (ignores -FromScreen); Start-Game and Stop-Game are wrapped (signaling
 #   lock, see below).
 
-$script:HeadlessDir = $PSScriptRoot
-Import-Module (Join-Path $PSScriptRoot 'HeadlessInput.psm1') -Force -DisableNameChecking -Global
+$script:BeDDDir = $PSScriptRoot
+Import-Module (Join-Path $PSScriptRoot 'BeDD.psm1') -Force -DisableNameChecking -Global
 $script:Headless = $true
 
 if (-not (Get-Variable -Name WindowW -Scope Script -ErrorAction SilentlyContinue)) { $script:WindowW = 1600 }
@@ -26,29 +26,29 @@ if (-not (Get-Variable -Name WindowH -Scope Script -ErrorAction SilentlyContinue
 
 # --- deployment ---------------------------------------------------------------------------------
 
-# Copies the mod into <ModsDir>\LeviHeadlessInput with a config.json that turns background mode
+# Copies the mod into <ModsDir>\BeDD with a config.json that turns background mode
 # on. Call it after the harness has deployed its own mod and moved other mods aside. -NoManager:
 # the game keeps a window of its own instead of showing up in the session's manager window.
-function Install-HeadlessInputMod([Parameter(Mandatory)][string]$ModsDir, [switch]$Trace, [string]$PipeName = 'LeviHeadlessInput',
+function Install-BeDDMod([Parameter(Mandatory)][string]$ModsDir, [switch]$Trace, [string]$PipeName = 'BeDD',
         [ValidateSet('back', 'offscreen', 'none')][string]$Placement = 'back', [switch]$NoManager) {
-    $dest = Join-Path $ModsDir 'LeviHeadlessInput'
+    $dest = Join-Path $ModsDir 'BeDD'
     if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
     New-Item -ItemType Directory -Force (Join-Path $dest 'config') | Out-Null
-    foreach ($f in 'LeviHeadlessInput.dll', 'manifest.json') { Copy-Item (Join-Path $script:HeadlessDir $f) $dest }
+    foreach ($f in 'BeDD.dll', 'manifest.json') { Copy-Item (Join-Path $script:BeDDDir $f) $dest }
     @{ background = $true; placement = $Placement; clientWidth = $script:WindowW; clientHeight = $script:WindowH; trace = [bool]$Trace; pipeName = $PipeName; manager = -not $NoManager } |
         ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $dest 'config\config.json')
-    $script:HeadlessNoManager = [bool]$NoManager
+    $script:BeDDNoManager = [bool]$NoManager
     # No console window flashing up as the game starts (LeviLamina's CrashLogger.exe).
-    Set-HeadlessCrashLogger $ModsDir
-    Set-HeadlessPipe $PipeName
-    Write-Host "[e2e] headless input: deployed LeviHeadlessInput (the game will not take the mouse, keyboard or foreground)"
+    Set-BeDDCrashLogger $ModsDir
+    Set-BeDDPipe $PipeName
+    Write-Host "[e2e] headless input: deployed BeDD (the game will not take the mouse, keyboard or foreground)"
 }
 
 # Removes the mod again (retrying while the game still holds the DLL). A leftover would keep a
 # normally started game deaf to the real mouse and keyboard, so harnesses call this in `finally`.
-function Uninstall-HeadlessInputMod([Parameter(Mandatory)][string]$ModsDir) {
-    Disconnect-HeadlessInput
-    $dest = Join-Path $ModsDir 'LeviHeadlessInput'
+function Uninstall-BeDDMod([Parameter(Mandatory)][string]$ModsDir) {
+    Disconnect-BeDD
+    $dest = Join-Path $ModsDir 'BeDD'
     for ($i = 0; $i -lt 10 -and (Test-Path $dest); $i++) {
         try { Remove-Item -Recurse -Force $dest -ErrorAction Stop } catch { Start-Sleep -Seconds 2 }
     }
@@ -113,7 +113,7 @@ function Set-RecentWorldsSinglePlayer([int]$Minutes = 15) {
 # declares the matching public static delegate fields (KeyRedirect, MouseButtonRedirect,
 # WheelRedirect, UnicodeRedirect, MoveRelativeRedirect) and its methods call them when set, this
 # routes those calls through the pipe too. Fields the class lacks are skipped.
-function Register-HeadlessNative([Parameter(Mandatory)][type]$Type) {
+function Register-BeDDNative([Parameter(Mandatory)][type]$Type) {
     $set = {
         param([string]$Name, $Value)
         $f = $Type.GetField($Name)
@@ -122,14 +122,14 @@ function Register-HeadlessNative([Parameter(Mandatory)][type]$Type) {
     }
     $n = 0
     if (& $set 'KeyRedirect' ([Action[uint16, bool]] {
-                param($vk, $up) Send-HeadlessKey -Vk ([int]$vk) -Action $(if ($up) { 'up' } else { 'down' }) })) { $n++ }
+                param($vk, $up) Send-BeDDKey -Vk ([int]$vk) -Action $(if ($up) { 'up' } else { 'down' }) })) { $n++ }
     if (& $set 'MouseButtonRedirect' ([Action[int, bool]] {
                 param($button, $up)
                 $b = switch ($button) { 1 { 'right' } 2 { 'middle' } default { 'left' } }
-                Send-HeadlessMouse -Action $(if ($up) { 'up' } else { 'down' }) -Button $b })) { $n++ }
-    if (& $set 'WheelRedirect' ([Action[int]] { param($delta) Send-HeadlessMouse -Action wheel -Notches ([int]($delta / 120)) })) { $n++ }
-    if (& $set 'UnicodeRedirect' ([Action[char]] { param($c) Send-HeadlessText ([string]$c) })) { $n++ }
-    if (& $set 'MoveRelativeRedirect' ([Action[int, int]] { param($dx, $dy) Send-HeadlessRaw -Action move -Dx $dx -Dy $dy })) { $n++ }
+                Send-BeDDMouse -Action $(if ($up) { 'up' } else { 'down' }) -Button $b })) { $n++ }
+    if (& $set 'WheelRedirect' ([Action[int]] { param($delta) Send-BeDDMouse -Action wheel -Notches ([int]($delta / 120)) })) { $n++ }
+    if (& $set 'UnicodeRedirect' ([Action[char]] { param($c) Send-BeDDText ([string]$c) })) { $n++ }
+    if (& $set 'MoveRelativeRedirect' ([Action[int, int]] { param($dx, $dy) Send-BeDDRaw -Action move -Dx $dx -Dy $dy })) { $n++ }
     Write-Host "[e2e] headless input: $n input method(s) of $($Type.FullName) redirected"
 }
 
@@ -211,28 +211,28 @@ function Exit-SignalingLock {
 }
 
 # Start-Game: take the signaling lock (shared, or exclusive with $script:ExclusiveSignaling) for
-# the game's lifetime, start the session's manager window unless it runs (HeadlessManager.ps1; also
+# the game's lifetime, start the session's manager window unless it runs (BeDDManager.ps1; also
 # for harnesses that start the game through the launcher), and remember where the user was so the
 # mod hands the foreground back there. Stop-Game: release the lock once the game is closed.
 if (Get-Command Start-Game -CommandType Function -ErrorAction SilentlyContinue) {
-    $script:HeadlessOriginalStartGame = ${function:Start-Game}
+    $script:BeDDOriginalStartGame = ${function:Start-Game}
     function Start-Game {
         Enter-SignalingLock -Exclusive:([bool]$script:ExclusiveSignaling)
         Set-RecentWorldsSinglePlayer
-        if (-not $script:HeadlessNoManager -and $env:LEVI_HEADLESS_MANAGER -ne '0') { & (Join-Path $script:HeadlessDir 'HeadlessManager.ps1') -Ensure | Out-Null }
-        $env:LEVI_HEADLESS_RETURN_FOCUS = [string][int64][HeadlessInput.Foreground]::Get()
-        & $script:HeadlessOriginalStartGame @args
+        if (-not $script:BeDDNoManager -and $env:BEDD_MANAGER -ne '0') { & (Join-Path $script:BeDDDir 'BeDDManager.ps1') -Ensure | Out-Null }
+        $env:BEDD_RETURN_FOCUS = [string][int64][BeDD.Foreground]::Get()
+        & $script:BeDDOriginalStartGame @args
     }
 }
 if (Get-Command Stop-Game -CommandType Function -ErrorAction SilentlyContinue) {
-    $script:HeadlessOriginalStopGame = ${function:Stop-Game}
+    $script:BeDDOriginalStopGame = ${function:Stop-Game}
     function Stop-Game {
-        try { & $script:HeadlessOriginalStopGame @args } finally { Exit-SignalingLock }
+        try { & $script:BeDDOriginalStopGame @args } finally { Exit-SignalingLock }
     }
 }
-if (-not ('HeadlessInput.Foreground' -as [type])) {
+if (-not ('BeDD.Foreground' -as [type])) {
     Add-Type -TypeDefinition @'
-namespace HeadlessInput {
+namespace BeDD {
 public static class Foreground {
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern System.IntPtr GetForegroundWindow();
     public static System.IntPtr Get() { return GetForegroundWindow(); }
@@ -245,36 +245,36 @@ public static class Foreground {
 function Focus-Game { }
 
 # Input never depends on the foreground any more; only make sure the mod answers.
-function Assert-GameForeground { Connect-HeadlessInput -TimeoutSeconds 60 | Out-Null }
+function Assert-GameForeground { Connect-BeDD -TimeoutSeconds 60 | Out-Null }
 
 function Set-GameWindowSize([int]$ClientW = $script:WindowW, [int]$ClientH = $script:WindowH) {
-    Connect-HeadlessInput | Out-Null
-    Set-HeadlessWindow -ClientWidth $ClientW -ClientHeight $ClientH -Placement back | Out-Null
+    Connect-BeDD | Out-Null
+    Set-BeDDWindow -ClientWidth $ClientW -ClientHeight $ClientH -Placement back | Out-Null
     Start-Sleep -Milliseconds 800
 }
 
 function Move-Mouse([double]$x, [double]$y, [switch]$Relative) {
-    if ($Relative) { Send-HeadlessMouse -Action move -RX $x -RY $y } else { Send-HeadlessMouse -Action move -X $x -Y $y }
+    if ($Relative) { Send-BeDDMouse -Action move -RX $x -RY $y } else { Send-BeDDMouse -Action move -X $x -Y $y }
     Start-Sleep -Milliseconds 120
 }
 
 function Click([double]$x, [double]$y, [switch]$Relative, [switch]$Right) {
     Move-Mouse $x $y -Relative:$Relative
-    Send-HeadlessMouse -Action click -Button $(if ($Right) { 'right' } else { 'left' })
+    Send-BeDDMouse -Action click -Button $(if ($Right) { 'right' } else { 'left' })
     Start-Sleep -Milliseconds 250
 }
 
-function Scroll([int]$notches) { Send-HeadlessMouse -Action wheel -Notches $notches; Start-Sleep -Milliseconds 200 }
+function Scroll([int]$notches) { Send-BeDDMouse -Action wheel -Notches $notches; Start-Sleep -Milliseconds 200 }
 
 function Press-Key([string]$key, [int]$holdMs = 60) {
-    Send-HeadlessKey -Key $key -HoldMs $holdMs
+    Send-BeDDKey -Key $key -HoldMs $holdMs
     Start-Sleep -Milliseconds 200
 }
 
 function Type-Text([string]$text) {
-    Send-HeadlessText $text -DelayMs 20
+    Send-BeDDText $text -DelayMs 20
     Start-Sleep -Milliseconds 200
 }
 
 # The client area via PrintWindow; -FromScreen is accepted and ignored (the game is not on top).
-function Get-ClientBitmap([switch]$FromScreen) { Get-HeadlessBitmap }
+function Get-ClientBitmap([switch]$FromScreen) { Get-BeDDBitmap }

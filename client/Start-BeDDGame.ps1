@@ -5,16 +5,16 @@
 .DESCRIPTION
   Runs versions\<Instance>\Minecraft.Windows.exe with STARTUPINFO.wShowWindow = SW_SHOWNOACTIVATE,
   so the window appears without taking the foreground (LeviLauncher is not needed: the exe loads
-  PreLoader/LeviLamina itself). LEVI_HEADLESS_RETURN_FOCUS is set to the current foreground
+  PreLoader/LeviLamina itself). BEDD_RETURN_FOCUS is set to the current foreground
   window, in case the game still activates itself while starting. Returns the process.
 
-  Starts the session's manager window first unless it runs (HeadlessManager.ps1): the game then
+  Starts the session's manager window first unless it runs (BeDDManager.ps1): the game then
   shows up there instead of as a window of its own, and closing the manager closes it. -Label
   names the game there (default: the project and worktree of the calling script).
-  -NoManager, or LEVI_HEADLESS_MANAGER=0, starts the game without it.
+  -NoManager, or BEDD_MANAGER=0, starts the game without it.
 
 .EXAMPLE
-  & bin\LeviHeadlessInput\Start-HeadlessGame.ps1 -Instance 1.26.51.01-hi2
+  & bin\BeDD\Start-BeDDGame.ps1 -Instance 1.26.51.01-hi2
 #>
 param(
     [Parameter(Mandatory)][string]$Instance,
@@ -37,11 +37,11 @@ function Get-CallerLabel {
     return Split-Path $dir -Leaf
 }
 
-if (-not ('HeadlessInput.Launch' -as [type])) {
+if (-not ('BeDD.Launch' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-namespace HeadlessInput {
+namespace BeDD {
 public static class Launch {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     struct STARTUPINFO {
@@ -79,10 +79,10 @@ $exe = Join-Path $dir 'Minecraft.Windows.exe'
 if (-not (Test-Path $exe)) { throw "No game instance at $dir" }
 # Only a game whose mod links to the manager (background mode, "manager" not false) goes there.
 $config = $null
-try { $config = Get-Content (Join-Path $dir 'mods\LeviHeadlessInput\config\config.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch { }
+try { $config = Get-Content (Join-Path $dir 'mods\BeDD\config\config.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch { }
 # LeviLamina's crash logger in the game process instead of CrashLogger.exe, a console program that
-# would flash a console window on the desktop as the game starts (see Set-HeadlessCrashLogger in
-# HeadlessInput.psm1).
+# would flash a console window on the desktop as the game starts (see Set-BeDDCrashLogger in
+# BeDD.psm1).
 if ($config -and $config.background -eq $true) {
     $ll = Join-Path $dir 'mods\LeviLamina\config\Config.json'
     try {
@@ -94,23 +94,23 @@ if ($config -and $config.background -eq $true) {
         }
     } catch [System.Management.Automation.ItemNotFoundException] {
     } catch {
-        Write-Warning "[headless] could not switch LeviLamina to its built-in crash logger ($ll): $($_.Exception.Message)"
+        Write-Warning "[BeDD] could not switch LeviLamina to its built-in crash logger ($ll): $($_.Exception.Message)"
     }
 }
-$managed = -not $NoManager -and $env:LEVI_HEADLESS_MANAGER -ne '0' -and $config -and $config.background -eq $true -and $config.manager -ne $false
+$managed = -not $NoManager -and $env:BEDD_MANAGER -ne '0' -and $config -and $config.background -eq $true -and $config.manager -ne $false
 $manager = $null
-if ($managed) { $manager = & (Join-Path $PSScriptRoot 'HeadlessManager.ps1') -Ensure }
-if (-not $Label) { $Label = if ($env:LEVI_HEADLESS_LABEL) { $env:LEVI_HEADLESS_LABEL } else { Get-CallerLabel } }
+if ($managed) { $manager = & (Join-Path $PSScriptRoot 'BeDDManager.ps1') -Ensure }
+if (-not $Label) { $Label = if ($env:BEDD_LABEL) { $env:BEDD_LABEL } else { Get-CallerLabel } }
 # For the game only (the mod reads them): this process keeps its own environment.
-$saved = @{ label = $env:LEVI_HEADLESS_LABEL; focus = $env:LEVI_HEADLESS_RETURN_FOCUS }
+$saved = @{ label = $env:BEDD_LABEL; focus = $env:BEDD_RETURN_FOCUS }
 try {
-    $env:LEVI_HEADLESS_LABEL = $Label
-    $env:LEVI_HEADLESS_RETURN_FOCUS = [string][int64][HeadlessInput.Launch]::GetForegroundWindow()
-    $id = [HeadlessInput.Launch]::StartNoActivate($exe, $dir)
+    $env:BEDD_LABEL = $Label
+    $env:BEDD_RETURN_FOCUS = [string][int64][BeDD.Launch]::GetForegroundWindow()
+    $id = [BeDD.Launch]::StartNoActivate($exe, $dir)
 } finally {
-    $env:LEVI_HEADLESS_LABEL = $saved.label
-    $env:LEVI_HEADLESS_RETURN_FOCUS = $saved.focus
+    $env:BEDD_LABEL = $saved.label
+    $env:BEDD_RETURN_FOCUS = $saved.focus
 }
 # Shown in the manager from the start, also while the game loads.
-if ($manager) { & (Join-Path $PSScriptRoot 'HeadlessManager.ps1') -Adopt $id -Instance $Instance -Label $Label | Out-Null }
+if ($manager) { & (Join-Path $PSScriptRoot 'BeDDManager.ps1') -Adopt $id -Instance $Instance -Label $Label | Out-Null }
 return Get-Process -Id $id

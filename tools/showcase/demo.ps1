@@ -3,7 +3,7 @@
 param([Parameter(Mandatory)][string]$Pipes, [string]$GoFile, [int]$LingerSeconds = 6)
 $ErrorActionPreference = 'Stop'
 
-$module = Join-Path (Resolve-Path "$PSScriptRoot/../..").Path 'bin\LeviHeadlessInput\HeadlessInput.psm1'
+$module = Join-Path (Resolve-Path "$PSScriptRoot/../..").Path 'bin\BeDD\BeDD.psm1'
 Import-Module $module   # once here, so the runspaces below find its types already loaded
 $pipeList = $Pipes -split ','
 
@@ -16,25 +16,25 @@ if ($GoFile) { while (-not (Test-Path $GoFile)) { Start-Sleep -Milliseconds 50 }
 
 $scripts = @{
     1 = @(
-        300, '1..40 | % { Send-HeadlessRaw move 12; sleep -m 20 }',
-        300, 'Send-HeadlessKey SPACE',
-        700, '1..40 | % { Send-HeadlessRaw move -9; sleep -m 20 }'
+        300, '1..40 | % { Send-BeDDRaw move 12; sleep -m 20 }',
+        300, 'Send-BeDDKey SPACE',
+        700, '1..40 | % { Send-BeDDRaw move -9; sleep -m 20 }'
     )
     2 = @(
-        900, 'Send-HeadlessKey T',
-        500, "Send-HeadlessText '/summon sheep ^ ^ ^3' -DelayMs 40",
-        200, 'Send-HeadlessKey ENTER',
-        1200, 'Send-HeadlessKey T',
-        500, "Send-HeadlessText '/summon cow ^2 ^ ^4' -DelayMs 40",
-        200, 'Send-HeadlessKey ENTER'
+        900, 'Send-BeDDKey T',
+        500, "Send-BeDDText '/summon sheep ^ ^ ^3' -DelayMs 40",
+        200, 'Send-BeDDKey ENTER',
+        1200, 'Send-BeDDKey T',
+        500, "Send-BeDDText '/summon cow ^2 ^ ^4' -DelayMs 40",
+        200, 'Send-BeDDKey ENTER'
     )
     3 = @(
-        1800, 'Send-HeadlessKey E',
-        900, 'Send-HeadlessMouse move -RX 0.504 -RY 0.644',
-        1400, 'Send-HeadlessMouse click',
-        600, 'Send-HeadlessMouse click -RX 0.588 -RY 0.562',
-        900, 'Send-HeadlessMouse move -RX 0.61 -RY 0.644',
-        1600, 'Send-HeadlessKey ESC'
+        1800, 'Send-BeDDKey E',
+        900, 'Send-BeDDMouse move -RX 0.504 -RY 0.644',
+        1400, 'Send-BeDDMouse click',
+        600, 'Send-BeDDMouse click -RX 0.588 -RY 0.562',
+        900, 'Send-BeDDMouse move -RX 0.61 -RY 0.644',
+        1600, 'Send-BeDDKey ESC'
     )
 }
 $colors = @{ 1 = 'Cyan'; 2 = 'Yellow'; 3 = 'Green' }
@@ -42,7 +42,7 @@ $colors = @{ 1 = 'Cyan'; 2 = 'Yellow'; 3 = 'Green' }
 1..$pipeList.Count | ForEach-Object -ThrottleLimit 8 -Parallel {
     $n = $_
     Import-Module $using:module
-    Connect-HeadlessInput -PipeName ($using:pipeList)[$n - 1] -TimeoutSeconds 10 | Out-Null
+    Connect-BeDD -PipeName ($using:pipeList)[$n - 1] -TimeoutSeconds 10 | Out-Null
     $steps = ($using:scripts)[$n]
     $color = ($using:colors)[$n]
     for ($i = 0; $i -lt $steps.Count; $i += 2) {

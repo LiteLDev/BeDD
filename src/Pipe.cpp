@@ -1,6 +1,6 @@
-// Control pipe: \\.\pipe\LeviHeadlessInput, one JSON object per line in each direction.
+// Control pipe: \\.\pipe\BeDD, one JSON object per line in each direction.
 // See README.md for the protocol.
-#include "Headless.h"
+#include "BeDD.h"
 
 #include <algorithm>
 #include <cctype>
@@ -9,7 +9,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace headless {
+namespace bedd {
 
 namespace {
 
@@ -414,4 +414,4 @@ void stopPipeServer() {
     gServer.join();
 }
 
-} // namespace headless
+} // namespace bedd

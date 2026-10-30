@@ -1,4 +1,4 @@
-#include "Headless.h"
+#include "BeDD.h"
 
 #include <array>
 #include <fstream>
@@ -9,7 +9,7 @@
 #include "ll/api/mod/NativeMod.h"
 #include "ll/api/mod/RegisterHelper.h"
 
-namespace headless {
+namespace bedd {
 
 namespace {
 
@@ -70,7 +70,7 @@ bool Mod::load() {
     // Before the game sets up its audio: not a sound, not even while it loads.
     if (gOptions.mute) installAudioHooks();
     log().info(
-        "LeviHeadlessInput loaded: background={} placement={} client={}x{} trace={} pipe={} manager={} mute={}",
+        "BeDD loaded: background={} placement={} client={}x{} trace={} pipe={} manager={} mute={}",
         gOptions.background,
         gOptions.placement,
         gOptions.clientWidth,
@@ -89,7 +89,7 @@ bool Mod::enable() {
     startWindowWatcher();
     startPipeServer();
     startInputTrace();
-    log().info("LeviHeadlessInput enabled");
+    log().info("BeDD enabled");
     return true;
 }
 
@@ -170,6 +170,6 @@ void releaseAll() {
 }
 } // namespace vstate
 
-} // namespace headless
+} // namespace bedd
 
-LL_REGISTER_MOD(headless::Mod, headless::Mod::getInstance());
+LL_REGISTER_MOD(bedd::Mod, bedd::Mod::getInstance());

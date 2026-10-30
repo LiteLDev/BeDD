@@ -3,7 +3,7 @@
 // sounds on the user's speakers. The master channel group of each FMOD system is muted while
 // background mode is on (a human taking the game over hears it again); the game's own
 // setMute() calls on it are remembered and win once background mode ends.
-#include "Headless.h"
+#include "BeDD.h"
 
 #include <array>
 #include <mutex>
@@ -11,7 +11,7 @@
 
 #include "ll/api/memory/Hook.h"
 
-namespace headless {
+namespace bedd {
 
 namespace {
 
@@ -171,4 +171,4 @@ std::string audioStats() {
     return std::to_string(gSystems.size()) + " FMOD system(s), " + (muteNow() ? "muted" : "audible");
 }
 
-} // namespace headless
+} // namespace bedd

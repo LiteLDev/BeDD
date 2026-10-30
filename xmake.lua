@@ -4,7 +4,7 @@ add_repositories("levimc-repo https://github.com/LiteLDev/xmake-repo.git")
 
 set_policy("package.requires_lock", true)
 
--- LeviHeadlessInput is a client-only, test-only mod. The option exists because the levilamina
+-- BeDD is a client-only, test-only mod. The option exists because the levilamina
 -- package and levibuildscript rules read it.
 option("target_type")
     set_default("client")
@@ -20,7 +20,7 @@ if not has_config("vs_runtime") then
     set_runtimes("MD")
 end
 
-target("LeviHeadlessInput")
+target("BeDD")
     add_rules("@levibuildscript/linkrule")
     add_rules("@levibuildscript/modpacker")
     set_kind("shared")
@@ -49,10 +49,10 @@ target("LeviHeadlessInput")
     add_headerfiles("src/**.h")
     add_files("src/**.cpp")
     after_build(function (target)
-        -- The PowerShell client and harness shim ship next to the mod, so a harness only needs bin\LeviHeadlessInput.
+        -- The PowerShell client and harness shim ship next to the mod, so a harness only needs bin\BeDD.
         local bindir = path.join(os.projectdir(), "bin", target:name())
         os.mkdir(bindir)
-        for _, f in ipairs({"HeadlessInput.psm1", "harness-shim.ps1", "Start-HeadlessGame.ps1", "HeadlessManager.ps1", "clone-instance.ps1"}) do
+        for _, f in ipairs({"BeDD.psm1", "harness-shim.ps1", "Start-BeDDGame.ps1", "BeDDManager.ps1", "clone-instance.ps1"}) do
             os.cp(path.join(os.projectdir(), "client", f), path.join(bindir, f))
         end
     end)

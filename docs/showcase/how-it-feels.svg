@@ -80,9 +80,9 @@
   <rect class="hl l1" x="444" y="306" width="292" height="26" rx="4"/>
   <rect class="hl l2" x="444" y="340" width="292" height="26" rx="4"/>
   <rect class="hl l3" x="444" y="374" width="292" height="26" rx="4"/>
-  <text class="code" x="454" y="324"><tspan class="c1">game 1</tspan> Send-HeadlessRaw move</text>
-  <text class="code" x="454" y="358"><tspan class="c2">game 2</tspan> Send-HeadlessText '/…'</text>
-  <text class="code" x="454" y="392"><tspan class="c3">game 3</tspan> Send-HeadlessKey E</text>
+  <text class="code" x="454" y="324"><tspan class="c1">game 1</tspan> Send-BeDDRaw move</text>
+  <text class="code" x="454" y="358"><tspan class="c2">game 2</tspan> Send-BeDDText '/…'</text>
+  <text class="code" x="454" y="392"><tspan class="c3">game 3</tspan> Send-BeDDKey E</text>
   <text class="s" x="454" y="438">each call returns once the game</text>
   <text class="s" x="454" y="458">has handled it</text>
 

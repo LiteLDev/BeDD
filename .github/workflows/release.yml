@@ -43,7 +43,7 @@ jobs:
         shell: pwsh
         run: |
           $expected = "${{ github.ref_name }}".TrimStart('v')
-          $actual = (Get-Content bin/LeviHeadlessInput/manifest.json | ConvertFrom-Json).version
+          $actual = (Get-Content bin/BeDD/manifest.json | ConvertFrom-Json).version
           if ($actual -ne $expected) { throw "manifest version $actual does not match tag $expected" }
           $tooth = (Get-Content tooth.json | ConvertFrom-Json).version
           if ($tooth -ne $expected) { throw "tooth.json version $tooth does not match tag $expected" }
@@ -51,9 +51,9 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          Copy-Item COPYING, COPYING.LESSER, README.md, README.zh-CN.md -Destination bin/LeviHeadlessInput/
-          Remove-Item bin/LeviHeadlessInput/*.pdb -ErrorAction SilentlyContinue
-          Compress-Archive -Path bin/LeviHeadlessInput -DestinationPath leviheadlessinput-client-windows-x64.zip
+          Copy-Item COPYING, COPYING.LESSER, README.md, README.zh-CN.md -Destination bin/BeDD/
+          Remove-Item bin/BeDD/*.pdb -ErrorAction SilentlyContinue
+          Compress-Archive -Path bin/BeDD -DestinationPath bedd-client-windows-x64.zip
 
       - name: Release notes
         shell: pwsh
@@ -70,5 +70,5 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           files: |
-            leviheadlessinput-client-windows-x64.zip
+            bedd-client-windows-x64.zip
           body_path: RELEASE_NOTES.md

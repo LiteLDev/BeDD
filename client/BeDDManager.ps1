@@ -4,9 +4,9 @@
   when it is closed.
 
 .DESCRIPTION
-  Start-HeadlessGame.ps1 (and the harness shim's Start-Game) start the manager with -Ensure when
+  Start-BeDDGame.ps1 (and the harness shim's Start-Game) start the manager with -Ensure when
   it does not run yet, so the first test run of the session opens it and later runs reuse it. Every
-  game with LeviHeadlessInput in background mode links to it: the game window then stays off
+  game with BeDD in background mode links to it: the game window then stays off
   screen, off the taskbar and out of Alt+Tab, and the manager shows a live picture of it instead.
   Many agents starting and closing games no longer make windows pop up and vanish on the desktop.
 
@@ -19,18 +19,18 @@
   harness that happened to start it can finish without taking the other agents' games along.
   It needs PowerShell 7 (pwsh). The client switches below also work in Windows PowerShell.
 
-  Talks JSON lines on \\.\pipe\LeviHeadlessInput-Manager-<session id> (see CONTRIBUTING.md).
-  Logs to %LOCALAPPDATA%\LeviHeadlessInput\manager.log.
+  Talks JSON lines on \\.\pipe\BeDD-Manager-<session id> (see CONTRIBUTING.md).
+  Logs to %LOCALAPPDATA%\BeDD\manager.log.
 
 .EXAMPLE
-  & .\HeadlessManager.ps1 -Ensure       # start it unless it runs; returns its pipe name
-  & .\HeadlessManager.ps1 -List         # the games it shows
-  & .\HeadlessManager.ps1 -Shutdown     # close it and every game, without asking
+  & .\BeDDManager.ps1 -Ensure       # start it unless it runs; returns its pipe name
+  & .\BeDDManager.ps1 -List         # the games it shows
+  & .\BeDDManager.ps1 -Shutdown     # close it and every game, without asking
 #>
 param(
     # Start the manager unless it already runs. Returns its pipe name ($null if it could not start).
     [switch]$Ensure,
-    # Register a game process right after starting it (Start-HeadlessGame.ps1 does this).
+    # Register a game process right after starting it (Start-BeDDGame.ps1 does this).
     [int]$Adopt = 0,
     [string]$Instance = '',
     [string]$Label = '',
@@ -46,7 +46,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-$PipeName = "LeviHeadlessInput-Manager-$([Diagnostics.Process]::GetCurrentProcess().SessionId)"
+$PipeName = "BeDD-Manager-$([Diagnostics.Process]::GetCurrentProcess().SessionId)"
 
 # One request, one reply (or $null when no manager answers).
 function Invoke-Manager([hashtable]$Request, [int]$TimeoutMs = 2000) {
@@ -80,13 +80,13 @@ function Get-Pwsh {
 function Start-Manager {
     if (Test-Manager) { return $PipeName }
     # Several runs may get here at once: one of them starts the manager, the others wait for it.
-    $mutex = New-Object System.Threading.Mutex($false, 'Local\LeviHeadlessInput.ManagerStart')
+    $mutex = New-Object System.Threading.Mutex($false, 'Local\BeDD.ManagerStart')
     $owned = $false
     try {
         try { $owned = $mutex.WaitOne($TimeoutSeconds * 1000) } catch [System.Threading.AbandonedMutexException] { $owned = $true }
         if (Test-Manager) { return $PipeName }
         $pwsh = Get-Pwsh
-        if (-not $pwsh) { Write-Warning '[headless] the manager window needs PowerShell 7 (pwsh); games run without it'; return $null }
+        if (-not $pwsh) { Write-Warning '[BeDD] the manager window needs PowerShell 7 (pwsh); games run without it'; return $null }
         $argLine = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$PSCommandPath`""
         # Through WMI, so the manager is not part of this process tree or its job (an agent's shell
         # may close its job, and the manager would take every other agent's games with it), and
@@ -97,9 +97,9 @@ function Start-Manager {
             $c = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
                 CommandLine = "`"$conhost`" --headless `"$pwsh`" $argLine"; CurrentDirectory = $PSScriptRoot }
             $started = $c.ReturnValue -eq 0
-            if (-not $started) { Write-Warning "[headless] starting the manager through WMI failed ($($c.ReturnValue))" }
+            if (-not $started) { Write-Warning "[BeDD] starting the manager through WMI failed ($($c.ReturnValue))" }
         } catch {
-            Write-Warning "[headless] starting the manager through WMI failed: $($_.Exception.Message)"
+            Write-Warning "[BeDD] starting the manager through WMI failed: $($_.Exception.Message)"
         }
         if (-not $started) {
             # It then closes with this process tree's job, if there is one.
@@ -110,7 +110,7 @@ function Start-Manager {
             if (Test-Manager) { return $PipeName }
             Start-Sleep -Milliseconds 250
         }
-        Write-Warning "[headless] the manager window did not start within $TimeoutSeconds s (see $env:LOCALAPPDATA\LeviHeadlessInput\manager.log); games run without it"
+        Write-Warning "[BeDD] the manager window did not start within $TimeoutSeconds s (see $env:LOCALAPPDATA\BeDD\manager.log); games run without it"
         return $null
     } finally {
         if ($owned) { $mutex.ReleaseMutex() }
@@ -131,10 +131,10 @@ if ($List) {
 if ($Game) {
     if ($Action -eq 'show') {
         # Let the game come to the front (this process may hold the foreground right now).
-        if (-not ('HeadlessInput.Fg' -as [type])) {
-            Add-Type -Namespace HeadlessInput -Name Fg -MemberDefinition '[DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int pid);'
+        if (-not ('BeDD.Fg' -as [type])) {
+            Add-Type -Namespace BeDD -Name Fg -MemberDefinition '[DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int pid);'
         }
-        [HeadlessInput.Fg]::AllowSetForegroundWindow($Game) | Out-Null
+        [BeDD.Fg]::AllowSetForegroundWindow($Game) | Out-Null
     }
     return Invoke-Manager @{ op = 'game'; pid = $Game; action = $Action } 15000
 }
@@ -174,7 +174,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace LeviHeadlessInput {
+namespace BeDD {
 
 static class Native {
     [StructLayout(LayoutKind.Sequential)]
@@ -325,7 +325,7 @@ public sealed class ManagerForm : Form {
     bool forceClose;
     int focusPid;
 
-    static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LeviHeadlessInput");
+    static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BeDD");
     static readonly string SettingsFile = Path.Combine(DataDir, "manager.json");
     static readonly string LogFile = Path.Combine(DataDir, "manager.log");
     static readonly object logGate = new object();
@@ -350,12 +350,12 @@ public sealed class ManagerForm : Form {
         } catch { }
         // One manager per logon session. A manager that is closing still holds this for a moment:
         // wait for it rather than give up (the run that started us waits for the pipe).
-        using (Mutex single = new Mutex(false, @"Local\LeviHeadlessInput.Manager")) {
+        using (Mutex single = new Mutex(false, @"Local\BeDD.Manager")) {
             bool owned;
             try { owned = single.WaitOne(30000); } catch (AbandonedMutexException) { owned = true; }
             if (!owned) { Log("another manager runs in this session; exiting"); return 1; }
             try {
-                Native.SetCurrentProcessExplicitAppUserModelID("LiteLDev.LeviHeadlessInput.Manager");
+                Native.SetCurrentProcessExplicitAppUserModelID("LiteLDev.BeDD.Manager");
                 Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
@@ -374,7 +374,7 @@ public sealed class ManagerForm : Form {
 
     ManagerForm(string pipeName) {
         this.pipeName = pipeName;
-        Text = "LeviHeadlessInput";
+        Text = "BeDD";
         BackColor = Back;
         ForeColor = Text1;
         Font = new Font("Segoe UI", 9f);
@@ -715,7 +715,7 @@ public sealed class ManagerForm : Form {
                 string what = n == 1 ? "the Minecraft game it shows" : "the " + n + " Minecraft games it shows";
                 DialogResult answer = MessageBox.Show(this,
                     "Closing this window also closes " + what + ".\n\nTest runs still driving them will fail.",
-                    "LeviHeadlessInput", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+                    "BeDD", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
                 if (answer != DialogResult.OK) { e.Cancel = true; return; }
             }
         }
@@ -821,7 +821,7 @@ public sealed class ManagerForm : Form {
     void Status(Game g, out string text, out Color dot) {
         if (g.Closing) { text = "closing"; dot = Bad; return; }
         if (g.Link == null) {
-            if (!g.EverLinked) { text = g.Hwnd == IntPtr.Zero ? "starting" : "not linked (LeviHeadlessInput not loaded?)"; dot = Idle; return; }
+            if (!g.EverLinked) { text = g.Hwnd == IntPtr.Zero ? "starting" : "not linked (BeDD not loaded?)"; dot = Idle; return; }
             text = "link lost"; dot = Bad; return;
         }
         if (g.TakenOver || !g.Background) { text = "yours: real mouse and keyboard"; dot = Warn; return; }
@@ -850,7 +850,7 @@ public sealed class ManagerForm : Form {
                 TextRenderer.DrawText(gr, "Closing this window closes every game in it", small, new Rectangle(header.Width / 2, 0, header.Width / 2 - S(12), header.Height), Text2, TextFormatFlags.VerticalCenter | TextFormatFlags.Right | TextFormatFlags.EndEllipsis);
                 if (n == 0) {
                     Rectangle body = Rectangle.FromLTRB(0, header.Bottom, ClientSize.Width, ClientSize.Height);
-                    TextRenderer.DrawText(gr, "Games started with Start-HeadlessGame.ps1 show up here.\nRight-click a game to take it over, double-click to enlarge.", Font, body, Text2,
+                    TextRenderer.DrawText(gr, "Games started with Start-BeDDGame.ps1 show up here.\nRight-click a game to take it over, double-click to enlarge.", Font, body, Text2,
                         TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
                     return;
                 }
@@ -953,4 +953,4 @@ public sealed class ManagerForm : Form {
 
 }
 '@
-exit [LeviHeadlessInput.ManagerForm]::Run($PipeName)
+exit [BeDD.ManagerForm]::Run($PipeName)

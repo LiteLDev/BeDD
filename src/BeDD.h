@@ -11,7 +11,7 @@
 #include "ll/api/io/Logger.h"
 #include "ll/api/thread/GlobalThreadPauser.h"
 
-// LeviHeadlessInput: drive a LeviLamina Minecraft Bedrock client without touching the real
+// BeDD: drive a LeviLamina Minecraft Bedrock client without touching the real
 // mouse, keyboard or foreground window.
 //
 //   * Window.cpp subclasses the game window. In background mode it swallows the focus-loss
@@ -21,10 +21,10 @@
 //   * ApiHooks.cpp hooks the user32 calls through which the game would otherwise grab or read the
 //     real devices (ClipCursor, SetCursorPos, GetCursorPos, GetAsyncKeyState, ...): they see the
 //     virtual state below instead.
-//   * Pipe.cpp serves a JSON-lines control protocol on \\.\pipe\LeviHeadlessInput.
-//   * Manager.cpp links the game to the session's manager window (client/HeadlessManager.ps1),
+//   * Pipe.cpp serves a JSON-lines control protocol on \\.\pipe\BeDD.
+//   * Manager.cpp links the game to the session's manager window (client/BeDDManager.ps1),
 //     which shows every headless game and closes them all when it is closed.
-namespace headless {
+namespace bedd {
 
 [[nodiscard]] ll::io::Logger& log();
 
@@ -39,7 +39,7 @@ struct Options {
     /// Log message and API-hook statistics every few seconds.
     bool trace = false;
     /// Control pipe name (\\.\pipe\<name>); one per game instance when several run in parallel.
-    std::string pipeName = "LeviHeadlessInput";
+    std::string pipeName = "BeDD";
     /// In background mode, keep the game on the PC: wildcard bind()s become loopback ones (no
     /// firewall prompts) and servers off the PC are not queried (no bogus "LAN worlds").
     bool loopbackOnly = true;
@@ -206,9 +206,9 @@ void stopPipeServer();
 [[nodiscard]] std::string handleControlLine(std::string const& line);
 
 // ---------------------------------------------------------------------------------------------
-// Manager link (Manager.cpp): \\.\pipe\LeviHeadlessInput-Manager-<session id>
+// Manager link (Manager.cpp): \\.\pipe\BeDD-Manager-<session id>
 // ---------------------------------------------------------------------------------------------
 void startManagerLink();
 void stopManagerLink();
 
-} // namespace headless
+} // namespace bedd

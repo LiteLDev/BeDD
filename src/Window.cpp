@@ -1,5 +1,5 @@
 // The game window: subclassing, synthetic input dispatch, focus shield and placement.
-#include "Headless.h"
+#include "BeDD.h"
 
 #include <shobjidl.h>
 
@@ -12,7 +12,7 @@
 #include <thread>
 #include <unordered_map>
 
-namespace headless {
+namespace bedd {
 
 namespace {
 
@@ -55,7 +55,7 @@ std::atomic<bool> gManaged{false};
 std::atomic<bool> gTakenOver{false};
 std::atomic<bool> gCreatedHidden{false}; // the game window was created hidden (CreateWindowExW)
 // Set on a window this mod made a tool window (findGameWindow skips other tool windows).
-wchar_t const* const kHiddenProp = L"LeviHeadlessInput.Hidden";
+wchar_t const* const kHiddenProp = L"BeDD.Hidden";
 
 bool bg() { return backgroundMode().load(std::memory_order_relaxed); }
 
@@ -344,7 +344,7 @@ std::string processNameOf(DWORD pid) {
 
 void rememberReturnFocus() {
     char buf[32]{};
-    if (GetEnvironmentVariableA("LEVI_HEADLESS_RETURN_FOCUS", buf, sizeof(buf)) > 0) {
+    if (GetEnvironmentVariableA("BEDD_RETURN_FOCUS", buf, sizeof(buf)) > 0) {
         gReturnFocus = reinterpret_cast<HWND>(static_cast<uintptr_t>(std::strtoull(buf, nullptr, 0)));
         return;
     }
@@ -581,8 +581,8 @@ void markHidden(HWND h) {
 int offScreenLeft(int windowWidth) { return offScreenX(windowWidth); }
 
 void startWindowWatcher() {
-    gInputMsg = RegisterWindowMessageW(L"LeviHeadlessInput.Event");
-    gSyncMsg  = RegisterWindowMessageW(L"LeviHeadlessInput.Sync");
+    gInputMsg = RegisterWindowMessageW(L"BeDD.Event");
+    gSyncMsg  = RegisterWindowMessageW(L"BeDD.Sync");
     rememberReturnFocus();
     gWatcher = std::jthread(watch);
 }
@@ -596,4 +596,4 @@ void stopWindowWatcher() {
     if (h && gOrigProc && IsWindow(h)) SetWindowLongPtrW(h, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gOrigProc));
 }
 
-} // namespace headless
+} // namespace bedd

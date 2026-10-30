@@ -1,11 +1,13 @@
-# LeviHeadlessInput
+# Be.D.D.
 
 <img src="docs/logo.png" alt="" width="128" align="right">
 
 [English](README.md) | 简体中文
 
-[![Release](https://img.shields.io/github/v/release/LiteLDev/LeviHeadlessInput)](https://github.com/LiteLDev/LeviHeadlessInput/releases)
-[![License](https://img.shields.io/github/license/LiteLDev/LeviHeadlessInput)](COPYING.LESSER)
+[![Release](https://img.shields.io/github/v/release/LiteLDev/BeDD)](https://github.com/LiteLDev/BeDD/releases)
+[![License](https://img.shields.io/github/license/LiteLDev/BeDD)](COPYING.LESSER)
+
+Be.D.D.（Bedrock Deep Dive）得名自《绝区零》的 H.D.D.：绳匠在远处引导代理人穿行空洞，你的脚本在后台引导 Minecraft。
 
 让 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 客户端模组的端到端测试**在后台跑**。
 脚本在 Minecraft 基岩版里按键、打字、点击，你的鼠标、键盘和窗口照常归你用，还能同时开好几个游戏一起测。
@@ -33,41 +35,41 @@
 装进跑测试的那个游戏实例，例如用 [lip](https://github.com/LiteLDev/lip)：
 
 ```powershell
-lip install github.com/LiteLDev/LeviHeadlessInput#client
+lip install github.com/LiteLDev/BeDD#client
 ```
 
-也可以从 [Releases](https://github.com/LiteLDev/LeviHeadlessInput/releases) 下载
-`leviheadlessinput-client-windows-x64.zip`，解压到该实例的 `mods\` 目录。多数测试框架会在每次运行开始时自己放进去、结束后删掉
+也可以从 [Releases](https://github.com/LiteLDev/BeDD/releases) 下载
+`bedd-client-windows-x64.zip`，解压到该实例的 `mods\` 目录。多数测试框架会在每次运行开始时自己放进去、结束后删掉
 （[见下文](#接入测试框架)）。
 
 需要 Minecraft 基岩版 **1.26.51**（GDK 版）和 LeviLamina **26.51.x**（客户端），装在用 LeviLauncher 安装的游戏实例里。
-测试时用 `Start-HeadlessGame.ps1` 启动这个实例，不走启动器（[见下文](#多开)）。只有测试机上的游戏需要装，服务器和玩家都不用。
+测试时用 `Start-BeDDGame.ps1` 启动这个实例，不走启动器（[见下文](#多开)）。只有测试机上的游戏需要装，服务器和玩家都不用。
 
 ## 使用方法
 
 PowerShell 模块就放在模组旁边：
 
 ```powershell
-Import-Module .\mods\LeviHeadlessInput\HeadlessInput.psm1
-Connect-HeadlessInput                          # 等游戏启动好
-Send-HeadlessKey E                             # 打开背包
-Send-HeadlessMouse click -RX 0.5 -RY 0.474     # 按窗口比例位置点击
-Send-HeadlessKey T; Send-HeadlessText '/give @s apple 3'; Send-HeadlessKey ENTER
-Save-HeadlessScreenshot C:\temp\shot.png       # 窗口被挡住也能截
+Import-Module .\mods\BeDD\BeDD.psm1
+Connect-BeDD                          # 等游戏启动好
+Send-BeDDKey E                             # 打开背包
+Send-BeDDMouse click -RX 0.5 -RY 0.474     # 按窗口比例位置点击
+Send-BeDDKey T; Send-BeDDText '/give @s apple 3'; Send-BeDDKey ENTER
+Save-BeDDScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 ```
 
 | 命令 | 作用 |
 |---|---|
-| `Connect-HeadlessInput [-PipeName p]` | 等游戏就绪，并选定之后的调用发给哪个游戏 |
-| `Send-HeadlessKey E` | 按一下键；`-Action down`/`up` 按住或松开，`-Vk 0x10` 指定任意虚拟键码 |
-| `Send-HeadlessText '...'` | 输入文字（不产生按键，所以 `t` 不会打开聊天栏）；`-DelayMs` 设定每个字的间隔 |
-| `Send-HeadlessMouse click -RX 0.5 -RY 0.5` | `move`、`down`、`up`、`click`、`wheel`，位置用 `-X -Y` 像素或 `-RX -RY` 比例；`-Button right` 右键 |
-| `Send-HeadlessRaw move -Dx 200` | 在世界里转视角；`click -Button right` 使用物品 |
-| `Clear-HeadlessInput` | 松开所有还按着的键和鼠标按钮 |
-| `Save-HeadlessScreenshot path.png` / `Get-HeadlessBitmap` | 游戏画面，被挡住也照样截 |
-| `Set-HeadlessWindow 1600 900` | 调整游戏窗口大小，不会把它提到前面 |
-| `Set-HeadlessBackground $false` | 把游戏交还给你的真鼠标和键盘 |
-| `Get-HeadlessState` | 游戏是否在线、收到了多少输入、是否抢过前台 |
+| `Connect-BeDD [-PipeName p]` | 等游戏就绪，并选定之后的调用发给哪个游戏 |
+| `Send-BeDDKey E` | 按一下键；`-Action down`/`up` 按住或松开，`-Vk 0x10` 指定任意虚拟键码 |
+| `Send-BeDDText '...'` | 输入文字（不产生按键，所以 `t` 不会打开聊天栏）；`-DelayMs` 设定每个字的间隔 |
+| `Send-BeDDMouse click -RX 0.5 -RY 0.5` | `move`、`down`、`up`、`click`、`wheel`，位置用 `-X -Y` 像素或 `-RX -RY` 比例；`-Button right` 右键 |
+| `Send-BeDDRaw move -Dx 200` | 在世界里转视角；`click -Button right` 使用物品 |
+| `Clear-BeDDInput` | 松开所有还按着的键和鼠标按钮 |
+| `Save-BeDDScreenshot path.png` / `Get-BeDDBitmap` | 游戏画面，被挡住也照样截 |
+| `Set-BeDDWindow 1600 900` | 调整游戏窗口大小，不会把它提到前面 |
+| `Set-BeDDBackground $false` | 把游戏交还给你的真鼠标和键盘 |
+| `Get-BeDDState` | 游戏是否在线、收到了多少输入、是否抢过前台 |
 
 按键名：字母、数字、`ESC`、`ENTER`、`BACK`、`TAB`、`SPACE`、`SHIFT`、`CTRL`、`ALT`、方向键（`LEFT` 等）、
 `HOME`、`END`、`PGUP`、`PGDN`、`INSERT`、`DELETE`、`F1`..`F24`、`SLASH`、`GRAVE`、`MINUS`、`EQUALS`。
@@ -76,14 +78,14 @@ Save-HeadlessScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 
 ```powershell
 pwsh -NoProfile -File clone-instance.ps1 -Slot 2                  # versions\1.26.51.01-hi2，约 90 MB，几秒钟
-& .\Start-HeadlessGame.ps1 -Instance 1.26.51.01-hi2                # 启动时不把窗口提到前面
-Connect-HeadlessInput -PipeName LeviHeadlessInput-1.26.51.01-hi2   # 该实例配置里的 pipeName
+& .\Start-BeDDGame.ps1 -Instance 1.26.51.01-hi2                # 启动时不把窗口提到前面
+Connect-BeDD -PipeName BeDD-1.26.51.01-hi2   # 该实例配置里的 pipeName
 ```
 
 克隆出来的实例有自己的 `mods\`、日志、存档和设置。几条规矩，免得并行的测试互相打架：
 
 - 每个实例用自己的锁文件；按**实例目录**找自己的游戏进程，别只看进程名 `Minecraft.Windows`（不然会关掉别人的游戏）。
-- 一定以 `Minecraft.Windows.exe` 这个文件名启动（`Start-HeadlessGame.ps1` 就是这样做的）：换个名字，游戏会悄悄改用你平时玩的
+- 一定以 `Minecraft.Windows.exe` 这个文件名启动（`Start-BeDDGame.ps1` 就是这样做的）：换个名字，游戏会悄悄改用你平时玩的
   Minecraft 存档目录，而不是这个实例的。
 - 测试存档用 `Set-WorldSinglePlayer <存档目录>`（框架垫片里提供）设成单人：同一台电脑上的游戏共用一个联机登录，
   多个多人存档同时打开会报"发生错误"（代码 "Blaze"）。
@@ -91,18 +93,18 @@ Connect-HeadlessInput -PipeName LeviHeadlessInput-1.26.51.01-hi2   # 该实例�
 
 ### 管理窗口
 
-本次登录后第一次运行 `Start-HeadlessGame.ps1` 时会打开**管理窗口**，之后的运行（不管来自哪个终端、测试框架或 agent）都复用它。
+本次登录后第一次运行 `Start-BeDDGame.ps1` 时会打开**管理窗口**，之后的运行（不管来自哪个终端、测试框架或 agent）都复用它。
 每个后台游戏都以实时画面显示在里面，不再有自己的窗口：任务栏上没有按钮，Alt+Tab 里也没有，多个测试同时启动、关闭游戏时
 桌面上不会有窗口弹出又消失。它也从不抢焦点。
 
-- 每个游戏标注启动它的脚本所在的项目（和 worktree）、实例名、pid，以及是否正在收到输入。`Start-HeadlessGame.ps1 -Label` 可以自己起名。
+- 每个游戏标注启动它的脚本所在的项目（和 worktree）、实例名、pid，以及是否正在收到输入。`Start-BeDDGame.ps1 -Label` 可以自己起名。
 - **关掉管理窗口会关掉里面所有的游戏**（会先确认）。管理窗口被强制结束时游戏也会一起退出，不会在后台留下游戏。
 - 双击某个游戏只看它一个。右键可以用自己的鼠标键盘接管它（以及交还给脚本）、打开它的 `latest.log` 或实例目录、或者关掉它。
-- 脚本里：`HeadlessManager.ps1 -List` 列出游戏，`-Game <pid> -Action show|hide|close` 做右键菜单的事，
+- 脚本里：`BeDDManager.ps1 -List` 列出游戏，`-Game <pid> -Action show|hide|close` 做右键菜单的事，
   `-Shutdown` 不经确认关掉管理窗口和所有游戏。
 
-需要 PowerShell 7（`pwsh`）。`Start-HeadlessGame.ps1 -NoManager`（或 `LEVI_HEADLESS_MANAGER=0`）启动游戏时不启动管理窗口；
-`Install-HeadlessInputMod -NoManager`（配置 `"manager": false`）让游戏不进已经开着的管理窗口，比如要录制真实屏幕的时候。
+需要 PowerShell 7（`pwsh`）。`Start-BeDDGame.ps1 -NoManager`（或 `BEDD_MANAGER=0`）启动游戏时不启动管理窗口；
+`Install-BeDDMod -NoManager`（配置 `"manager": false`）让游戏不进已经开着的管理窗口，比如要录制真实屏幕的时候。
 
 ### 接入测试框架
 
@@ -113,20 +115,20 @@ Connect-HeadlessInput -PipeName LeviHeadlessInput-1.26.51.01-hi2   # 该实例�
 ```powershell
 . "$PSScriptRoot/lib.ps1"
 if (-not $Foreground) {
-    . "$headlessDir\harness-shim.ps1"
-    Register-HeadlessNative ([MyE2E.Native])   # 可选，见下文
+    . "$beddDir\harness-shim.ps1"
+    Register-BeDDNative ([MyE2E.Native])   # 可选，见下文
 }
 # 部署完你的模组、把其他模组挪开之后：
-if ($script:Headless) { Install-HeadlessInputMod -ModsDir $script:ModsDir -PipeName 'LeviHeadlessInput-<实例名>' }
+if ($script:Headless) { Install-BeDDMod -ModsDir $script:ModsDir -PipeName 'BeDD-<实例名>' }
 # ……在 finally 里、游戏关掉之后：
-if ($script:Headless) { Uninstall-HeadlessInputMod -ModsDir $script:ModsDir }
+if ($script:Headless) { Uninstall-BeDDMod -ModsDir $script:ModsDir }
 ```
 
-游戏用 `Start-HeadlessGame.ps1` 启动，不要走启动器；"把其他模组挪开"那一步要跳过 `LeviHeadlessInput`：它每次运行都重新装、
+游戏用 `Start-BeDDGame.ps1` 启动，不要走启动器；"把其他模组挪开"那一步要跳过 `BeDD`：它每次运行都重新装、
 结束就删（留下一份的话，正常启动的游戏会不理你的鼠标键盘）。
 
 如果测试场景直接调用框架自己的输入类（比如 `[MyE2E.Native]::Key(0x10, $false)`），给这个类加上下面几个字段，
-并在每个方法开头加一行判断，`Register-HeadlessNative` 会把它们填好：
+并在每个方法开头加一行判断，`Register-BeDDNative` 会把它们填好：
 
 ```csharp
 public static Action<ushort, bool> KeyRedirect;          // (vk, up)
@@ -142,13 +144,13 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 
 ## 设置
 
-`mods\LeviHeadlessInput\config\config.json`，一般由测试框架写入（`Install-HeadlessInputMod` 会写）。
-没有这个文件时模组是被动的：后台模式关闭，管道照样能用。`Install-HeadlessInputMod` 和 `Start-HeadlessGame.ps1`
+`mods\BeDD\config\config.json`，一般由测试框架写入（`Install-BeDDMod` 会写）。
+没有这个文件时模组是被动的：后台模式关闭，管道照样能用。`Install-BeDDMod` 和 `Start-BeDDGame.ps1`
 还会把实例的 LeviLamina 切到内置崩溃记录器（`mods\LeviLamina\config\Config.json` 里的
 `modules.crashLogger.builtin`）：默认的 `CrashLogger.exe` 是控制台程序，每次启动游戏都会在桌面上闪一下黑窗口。
 
 ```json
-{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "LeviHeadlessInput" }
+{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "BeDD" }
 ```
 
 | 键 | |
@@ -164,7 +166,7 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 
 ## 更多
 
-更多视频和截图：https://levimc.org/mods/github.com/LiteLDev/LeviHeadlessInput/?tab=gallery
+更多视频和截图：https://levimc.org/mods/github.com/LiteLDev/BeDD/?tab=gallery
 
 想自己构建、了解管道协议或内部原理？见 [CONTRIBUTING.md](CONTRIBUTING.md#development)。
 

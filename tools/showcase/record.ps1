@@ -6,7 +6,7 @@
 .DESCRIPTION
   Takes the machine-wide e2e lock (bei-e2e.lock, shared with the other LiteLDev harnesses) and the
   locks of the clone slots it uses, prepares the clone instances versions\<base>-hi<N> (other mods
-  moved aside, LeviHeadlessInput deployed with its own pipe, the Showcase world restored), starts
+  moved aside, BeDD deployed with its own pipe, the Showcase world restored), starts
   the games without activating them, enters the world in each and stages the scene through chat
   commands.
 
@@ -36,7 +36,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $Root      = (Resolve-Path "$PSScriptRoot/../..").Path
-$Bin       = Join-Path $Root 'bin\LeviHeadlessInput'
+$Bin       = Join-Path $Root 'bin\BeDD'
 $Out       = Join-Path $PSScriptRoot 'out'
 $Data      = Join-Path $env:APPDATA 'levilauncher.exe'
 $WorldZip  = Join-Path $PSScriptRoot 'fixtures\Showcase.zip'
@@ -48,12 +48,12 @@ $FFmpeg    = if ($env:FFMPEG) { $env:FFMPEG } else {
 $ClientW = 848; $ClientH = 477
 $RegionW = 1920; $RegionH = 1080
 
-if (-not (Test-Path (Join-Path $Bin 'LeviHeadlessInput.dll'))) { throw "Build first (xmake): $Bin" }
+if (-not (Test-Path (Join-Path $Bin 'BeDD.dll'))) { throw "Build first (xmake): $Bin" }
 New-Item -ItemType Directory -Force $Out | Out-Null
 Remove-Item (Join-Path $Out 'take'), (Join-Path $Out 'stop'), (Join-Path $Out 'go') -ErrorAction SilentlyContinue
 
-# Set-WorldSinglePlayer, Install-/Uninstall-HeadlessInputMod, Enter-/Exit-SignalingLock and the
-# HeadlessInput.psm1 client (per-monitor DPI aware: all coordinates below are physical pixels).
+# Set-WorldSinglePlayer, Install-/Uninstall-BeDDMod, Enter-/Exit-SignalingLock and the
+# BeDD.psm1 client (per-monitor DPI aware: all coordinates below are physical pixels).
 . (Join-Path $Bin 'harness-shim.ps1')
 
 if (-not ('LhiShow.Win' -as [type])) {
@@ -119,7 +119,7 @@ $Games = @(for ($i = 0; $i -lt $Slots.Count; $i++) {
     [pscustomobject]@{
         N = $i + 1; Slot = $Slots[$i]; Version = $ver
         Dir = Join-Path $Data "versions\$ver"
-        Pipe = "LeviHeadlessInput-$ver"
+        Pipe = "BeDD-$ver"
         Lock = Join-Path $Data "hi$($Slots[$i])-e2e.lock"
         Options = $null; Hwnd = [IntPtr]::Zero
     }
@@ -183,12 +183,12 @@ function Initialize-Instance($g) {
     $aside = Join-Path $g.Dir $Aside
     New-Item -ItemType Directory -Force $aside | Out-Null
     foreach ($d in Get-ChildItem (Join-Path $g.Dir 'mods') -Directory) {
-        if ($d.Name -in 'LeviLamina', 'LeviHeadlessInput') { continue }
+        if ($d.Name -in 'LeviLamina', 'BeDD') { continue }
         Move-Item $d.FullName (Join-Path $aside $d.Name)
     }
     $script:WindowW = 1600; $script:WindowH = 900
     # Recorded on the real screen: the games keep their own windows (no manager window).
-    Install-HeadlessInputMod -ModsDir (Join-Path $g.Dir 'mods') -PipeName $g.Pipe -Placement offscreen -NoManager
+    Install-BeDDMod -ModsDir (Join-Path $g.Dir 'mods') -PipeName $g.Pipe -Placement offscreen -NoManager
 
     $worlds = Get-WorldsDir $g
     if (-not $worlds) { throw "No worlds folder in $($g.Dir) (start the instance once)" }
@@ -212,26 +212,26 @@ function Initialize-Instance($g) {
 
 function Reset-Instance($g) {
     foreach ($p in Get-InstanceProcesses $g) { $p.CloseMainWindow() | Out-Null; if (-not $p.WaitForExit(10000)) { $p.Kill() } }
-    try { Uninstall-HeadlessInputMod -ModsDir (Join-Path $g.Dir 'mods') } catch { Write-Show "removing the mod failed: $_" }
+    try { Uninstall-BeDDMod -ModsDir (Join-Path $g.Dir 'mods') } catch { Write-Show "removing the mod failed: $_" }
     try { Restore-Mods $g } catch { Write-Show "restoring mods failed: $_" }
     if ($g.Options -and (Test-Path "$($g.Options).lhi-showcase")) { Move-Item "$($g.Options).lhi-showcase" $g.Options -Force }
 }
 
 # --- driving ------------------------------------------------------------------------------------
 
-function Use-Game($g) { Set-HeadlessPipe $g.Pipe }
+function Use-Game($g) { Set-BeDDPipe $g.Pipe }
 function Invoke-Chat($g, [string]$Text) {
     Use-Game $g
-    Send-HeadlessKey T; Start-Sleep -Milliseconds 700
-    Send-HeadlessText $Text
-    Send-HeadlessKey ENTER; Start-Sleep -Milliseconds 500
+    Send-BeDDKey T; Start-Sleep -Milliseconds 700
+    Send-BeDDText $Text
+    Send-BeDDKey ENTER; Start-Sleep -Milliseconds 500
 }
-function Save-Shot($g, [string]$Name) { Use-Game $g; Save-HeadlessScreenshot (Join-Path $Out "g$($g.N)-$Name.png") | Out-Null }
+function Save-Shot($g, [string]$Name) { Use-Game $g; Save-BeDDScreenshot (Join-Path $Out "g$($g.N)-$Name.png") | Out-Null }
 
 # Title screen: the green Play button (fraction of the client area).
 function Test-PlayButton($g) {
     Use-Game $g
-    $bmp = Get-HeadlessBitmap
+    $bmp = Get-BeDDBitmap
     try { $c = $bmp.GetPixel([int]($bmp.Width * 0.47), [int]($bmp.Height * 0.474)) } finally { $bmp.Dispose() }
     return ($c.G -gt $c.R + 30 -and $c.G -gt $c.B + 30)
 }
@@ -240,9 +240,9 @@ function Get-LogLines($g) { @(Get-Content (Join-Path $g.Dir 'logs\latest.log') -
 
 function Enter-World($g) {
     Use-Game $g
-    Send-HeadlessMouse click -RX 0.498 -RY 0.474; Start-Sleep -Seconds 4     # Play
+    Send-BeDDMouse click -RX 0.498 -RY 0.474; Start-Sleep -Seconds 4     # Play
     Save-Shot $g 'worldlist'
-    Send-HeadlessMouse click -RX $TileX[0] -RY 0.43                          # first world (LastPlayed = now)
+    Send-BeDDMouse click -RX $TileX[0] -RY 0.43                          # first world (LastPlayed = now)
 }
 # World list tiles (fractions of the 1600x900 client). The first tile can be a featured server
 # shown as a "LAN world" (it sorts before local worlds): then the test world is the next tile.
@@ -261,10 +261,10 @@ function Wait-InWorld($g, [int]$After) {
         if ($attempt -ge $TileX.Count) { break }
         Write-Show "game $($g.N): not in the test world yet, cancelling and trying tile $($attempt + 1)"
         Use-Game $g
-        Send-HeadlessMouse click -RX 0.5 -RY 0.574; Start-Sleep -Seconds 5       # Cancel "Connecting to multiplayer game"
+        Send-BeDDMouse click -RX 0.5 -RY 0.574; Start-Sleep -Seconds 5       # Cancel "Connecting to multiplayer game"
         Save-Shot $g "after-cancel-$attempt"
-        if (Test-PlayButton $g) { Send-HeadlessMouse click -RX 0.498 -RY 0.474; Start-Sleep -Seconds 4 }
-        Send-HeadlessMouse click -RX $TileX[$attempt] -RY 0.43
+        if (Test-PlayButton $g) { Send-BeDDMouse click -RX 0.498 -RY 0.474; Start-Sleep -Seconds 4 }
+        Send-BeDDMouse click -RX $TileX[$attempt] -RY 0.43
     }
     throw "game $($g.N) did not enter the world"
 }
@@ -281,8 +281,8 @@ function Set-Scene($g) {
         Invoke-Chat $g '/clear @s'
         foreach ($i in 'diamond_sword 1', 'golden_apple 4', 'cooked_beef 16', 'oak_log 32', 'torch 24', 'cake 1') { Invoke-Chat $g "/give @s $i" }
     }
-    Use-Game $g; Clear-HeadlessInput
-    Disconnect-HeadlessInput   # the pipe serves one client at a time: leave it to demo.ps1
+    Use-Game $g; Clear-BeDDInput
+    Disconnect-BeDD   # the pipe serves one client at a time: leave it to demo.ps1
 }
 
 function Show-Take([int]$Take) {
@@ -303,7 +303,7 @@ function Show-Take([int]$Take) {
         Start-Sleep -Seconds 2
         foreach ($g in $Games) {
             Use-Game $g
-            $h = [IntPtr][int64](Invoke-HeadlessInput @{ op = 'ping' }).hwnd
+            $h = [IntPtr][int64](Invoke-BeDD @{ op = 'ping' }).hwnd
             $g.Hwnd = $h
             [LhiShow.Win]::SetWindowText($h, "Minecraft - game $($g.N)") | Out-Null
             $col = ($g.N - 1) % 2; $row = [math]::Floor(($g.N - 1) / 2)
@@ -313,7 +313,7 @@ function Show-Take([int]$Take) {
             $y = $y0 + $row * $cellH + [int](($cellH - $fh) / 2) - ($f.Top - $wr.Top)
             [LhiShow.Win]::SetWindowPos($h, $HWND_TOPMOST, $x, $y, 0, 0, $SWP_NOSIZE -bor $SWP_NOACTIVATE) | Out-Null
         }
-        Disconnect-HeadlessInput
+        Disconnect-BeDD
 
         # The terminal: the window the "user" works in; it takes the focus like any app you open.
         Remove-Item (Join-Path $Out 'go') -ErrorAction SilentlyContinue
@@ -350,7 +350,7 @@ function Show-Take([int]$Take) {
         if ($stage -and -not $stage.HasExited) { $stage.Kill() }
         $th = [LhiShow.Win]::FindByTitle('e2e - my-client-mod')
         if ($th -ne [IntPtr]::Zero) { [LhiShow.Win]::SetWindowPos($th, $HWND_NOTOPMOST, 0, 0, 0, 0, $SWP_NOSIZE -bor $SWP_NOMOVE -bor $SWP_NOACTIVATE) | Out-Null }
-        foreach ($g in $Games) { Use-Game $g; try { Clear-HeadlessInput } catch {} }
+        foreach ($g in $Games) { Use-Game $g; try { Clear-BeDDInput } catch {} }
     }
 }
 
@@ -381,12 +381,12 @@ try {
     Enter-SignalingLock
 
     foreach ($g in $Games) {
-        & (Join-Path $Bin 'Start-HeadlessGame.ps1') -Instance $g.Version -NoManager | Out-Null
+        & (Join-Path $Bin 'Start-BeDDGame.ps1') -Instance $g.Version -NoManager | Out-Null
         Write-Show "started $($g.Version)"
         Start-Sleep -Seconds 3
     }
     foreach ($g in $Games) {
-        Connect-HeadlessInput -PipeName $g.Pipe -TimeoutSeconds 240 | Out-Null
+        Connect-BeDD -PipeName $g.Pipe -TimeoutSeconds 240 | Out-Null
         $deadline = (Get-Date).AddSeconds(180)
         while (-not (Test-PlayButton $g)) {
             if ((Get-Date) -gt $deadline) { Save-Shot $g 'no-title'; throw "game $($g.N): title screen not found" }
@@ -402,10 +402,10 @@ try {
     foreach ($g in $Games) {
         Use-Game $g
         Invoke-Chat $g '/gamerule sendcommandfeedback false'
-        Set-HeadlessWindow -ClientWidth $ClientW -ClientHeight $ClientH -Placement none | Out-Null
+        Set-BeDDWindow -ClientWidth $ClientW -ClientHeight $ClientH -Placement none | Out-Null
         Save-Shot $g 'in-world'
     }
-    Disconnect-HeadlessInput
+    Disconnect-BeDD
 
     $take = 1
     $deadline = (Get-Date).AddMinutes($MaxMinutes)
@@ -419,7 +419,7 @@ try {
         Start-Sleep -Milliseconds 500
     }
 } finally {
-    Disconnect-HeadlessInput
+    Disconnect-BeDD
     foreach ($g in $Games) { Reset-Instance $g }
     Exit-SignalingLock
     foreach ($s in $locks) { $s.Dispose() }

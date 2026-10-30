@@ -15,14 +15,14 @@ body:
       label: Steps to reproduce
       placeholder: |
         1. Start the game with background mode on
-        2. Send-HeadlessKey E
+        2. Send-BeDDKey E
         3. ...
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: LeviHeadlessInput version
+      label: Be.D.D. version
       placeholder: 0.1.0
     validations:
       required: true

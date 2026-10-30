@@ -1,13 +1,13 @@
 // Trace mode: log what reaches the game's input layer (LeviLamina's input events fire in
 // HIDControllerGameCoreDesktop::onKeyDown/onKeyUp and MouseDevice::feed), marked synthetic or real.
-#include "Headless.h"
+#include "BeDD.h"
 
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/ListenerBase.h"
 #include "ll/api/event/input/KeyInputEvent.h"
 #include "ll/api/event/input/MouseInputEvent.h"
 
-namespace headless {
+namespace bedd {
 
 namespace {
 ll::event::ListenerPtr gKeyListener;
@@ -46,4 +46,4 @@ void stopInputTrace() {
     gMouseListener = nullptr;
 }
 
-} // namespace headless
+} // namespace bedd

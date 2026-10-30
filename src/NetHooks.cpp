@@ -15,7 +15,7 @@
 //
 // Installed in load(), before the game sets up its network, and active for the whole process
 // (also after the game was handed back to the user: new sockets would raise the prompt then).
-#include "Headless.h"
+#include "BeDD.h"
 
 #include <winsock2.h>
 #include <ws2ipdef.h>
@@ -28,7 +28,7 @@
 
 #include "ll/api/memory/Hook.h"
 
-namespace headless {
+namespace bedd {
 
 namespace {
 
@@ -128,4 +128,4 @@ uint64_t loopbackRebinds() { return gRebound.load(); }
 
 uint64_t serverQueriesRefused() { return gServerQueriesRefused.load(); }
 
-} // namespace headless
+} // namespace bedd

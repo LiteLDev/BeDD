@@ -1,17 +1,17 @@
-// Link to the manager window of this logon session (client/HeadlessManager.ps1) on
-// \\.\pipe\LeviHeadlessInput-Manager-<session id>. The game says hello once, then answers the
+// Link to the manager window of this logon session (client/BeDDManager.ps1) on
+// \\.\pipe\BeDD-Manager-<session id>. The game says hello once, then answers the
 // manager's requests: every control-pipe op, plus "show" (take over), "hide" (hand back) and
 // "close". While linked, the game window stays off screen and off the taskbar (Window.cpp) and the
 // manager shows it; the manager also puts the game into a kill-on-close job, so closing the
 // manager closes the game.
-#include "Headless.h"
+#include "BeDD.h"
 
 #include <format>
 #include <thread>
 
 #include <nlohmann/json.hpp>
 
-namespace headless {
+namespace bedd {
 
 namespace {
 
@@ -25,7 +25,7 @@ std::jthread gLink;
 std::wstring managerPipePath() {
     DWORD session = 0;
     ProcessIdToSessionId(GetCurrentProcessId(), &session);
-    return std::format(L"\\\\.\\pipe\\LeviHeadlessInput-Manager-{}", session);
+    return std::format(L"\\\\.\\pipe\\BeDD-Manager-{}", session);
 }
 
 std::string utf8(std::wstring const& w) {
@@ -48,10 +48,10 @@ std::string instanceName() {
     return utf8(slash == std::wstring::npos ? path : path.substr(slash + 1));
 }
 
-// Who started the game (Start-HeadlessGame.ps1 sets it: the project and worktree of the caller).
+// Who started the game (Start-BeDDGame.ps1 sets it: the project and worktree of the caller).
 std::string label() {
     wchar_t buf[512]{};
-    DWORD   n = GetEnvironmentVariableW(L"LEVI_HEADLESS_LABEL", buf, 512);
+    DWORD   n = GetEnvironmentVariableW(L"BEDD_LABEL", buf, 512);
     return n > 0 && n < 512 ? utf8(std::wstring(buf, n)) : std::string();
 }
 
@@ -170,7 +170,7 @@ void run(std::stop_token stop, HANDLE first) {
     bool   lost = false;
     while (!stop.stop_requested()) {
         if (!pipe) {
-            // No manager (yet): one may start any time (the next Start-HeadlessGame.ps1 does).
+            // No manager (yet): one may start any time (the next Start-BeDDGame.ps1 does).
             if (!sleepUnlessStopped(stop, 1000ms)) break;
             if (!(pipe = link())) continue;
         }
@@ -216,4 +216,4 @@ void stopManagerLink() {
     gLink.join();
 }
 
-} // namespace headless
+} // namespace bedd

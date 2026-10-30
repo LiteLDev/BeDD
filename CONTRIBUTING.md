@@ -1,14 +1,14 @@
-# Contributing to LeviHeadlessInput
+# Contributing to Be.D.D.
 
 Thanks for helping! Bug reports, ideas and pull requests are all welcome.
 
 ## Reporting bugs and requesting features
 
-Use the [issue templates](https://github.com/LiteLDev/LeviHeadlessInput/issues/new/choose). For bugs, include:
+Use the [issue templates](https://github.com/LiteLDev/BeDD/issues/new/choose). For bugs, include:
 
-- the LeviHeadlessInput, LeviLamina and Minecraft versions;
+- the Be.D.D., LeviLamina and Minecraft versions;
 - what the script sent (the JSON request or the PowerShell call) and what the game did instead;
-- `mods/LeviHeadlessInput/config/config.json`;
+- `mods/BeDD/config/config.json`;
 - the relevant part of `logs/latest.log`, ideally with `"trace": true` (it shows which input reached the game and whether it was synthetic or real).
 
 ## Development setup
@@ -17,7 +17,7 @@ See [Development](#development) below. The code is small:
 
 | File | |
 |---|---|
-| `src/Headless.h` | shared state and declarations of the parts below |
+| `src/BeDD.h` | shared state and declarations of the parts below |
 | `src/Mod.cpp` | entry point, config, virtual key/cursor state |
 | `src/Window.cpp` | window discovery, subclassing, synthetic event dispatch, focus shield, placement |
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
@@ -28,7 +28,7 @@ See [Development](#development) below. The code is small:
 | `src/Manager.cpp` | link to the session's manager window |
 | `src/Trace.cpp` | trace-mode input logging |
 | `src/MemoryOperators.cpp` | routes `new`/`delete` through LeviLamina's allocator (required by LeviLamina) |
-| `client/` | PowerShell client, harness shim, game start (`Start-HeadlessGame.ps1`), manager window (`HeadlessManager.ps1`) and clone scripts (shipped next to the DLL) |
+| `client/` | PowerShell client, harness shim, game start (`Start-BeDDGame.ps1`), manager window (`BeDDManager.ps1`) and clone scripts (shipped next to the DLL) |
 
 When you hook a game or LeviLamina symbol, check the SDK headers under
 `%LOCALAPPDATA%\.xmake\packages\l\levilamina\<version>\<hash>\include` first. Only call `MCAPI`,
@@ -39,7 +39,7 @@ When you hook a game or LeviLamina symbol, check the SDK headers under
 1. Fork the repository and create a branch from `main`.
 2. Keep each pull request focused on one change. Describe what it does and how you tested it.
 3. Follow the existing style: C++20, the provided `.clang-format` and `.editorconfig`, English in code and comments.
-4. Test in game: `tools/dev.ps1 -Trace`, then drive the game through `HeadlessInput.psm1` and check that
+4. Test in game: `tools/dev.ps1 -Trace`, then drive the game through `BeDD.psm1` and check that
    the input works, the game never takes the foreground (`tools/out/desktop-watch.log`) and real input
    does not reach it.
 5. CI must pass before a pull request is merged.
@@ -49,8 +49,8 @@ Commit messages use the imperative mood ("Add wheel tilt", not "Added …"). Upd
 
 ## Development
 
-Material for people working on LeviHeadlessInput itself, or talking to its pipe from something
-other than `HeadlessInput.psm1`. Script authors find everything they need in the [README](README.md).
+Material for people working on Be.D.D. itself, or talking to its pipe from something
+other than `BeDD.psm1`. Script authors find everything they need in the [README](README.md).
 
 ### Building
 
@@ -58,7 +58,7 @@ You need Windows x64, [xmake](https://xmake.io), Visual Studio Build Tools with 
 
 ```powershell
 xmake f -a x64 -m release -p windows --target_type=client -y
-xmake -y        # -> bin\LeviHeadlessInput\ (DLL, manifest, HeadlessInput.psm1, harness-shim.ps1, Start-HeadlessGame.ps1, HeadlessManager.ps1, clone-instance.ps1)
+xmake -y        # -> bin\BeDD\ (DLL, manifest, BeDD.psm1, harness-shim.ps1, Start-BeDDGame.ps1, BeDDManager.ps1, clone-instance.ps1)
 ```
 
 The mod packer reads the version from `git describe`, so the repository needs at least one commit.
@@ -84,9 +84,9 @@ ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and
 ### How it works
 
 ```
- test script (pwsh)                      Minecraft.Windows.exe + LeviHeadlessInput.dll
+ test script (pwsh)                      Minecraft.Windows.exe + BeDD.dll
  ──────────────────                      ─────────────────────────────────────────────
- Send-HeadlessKey E ──JSON line──▶ \\.\pipe\LeviHeadlessInput
+ Send-BeDDKey E ──JSON line──▶ \\.\pipe\BeDD
                                           │ queue Event{WM_KEYDOWN 'E'}; PostMessage(hwnd, WM_LHI)
                                           ▼
                                    subclassed window procedure (game thread)
@@ -113,7 +113,7 @@ ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and
    has no reading for a mouse until the device reports input, so on an untouched PC the game's
    `GetCurrentReading` gets a virtual reading of that device from the mod.
 3. **The game never takes the foreground or loses focus.** Focus-loss messages are swallowed, so
-   the game does not pause or release its keys. `Start-HeadlessGame.ps1` starts the exe with
+   the game does not pause or release its keys. `Start-BeDDGame.ps1` starts the exe with
    `SW_SHOWNOACTIVATE`; the hooked `ShowWindow`/`SetWindowPos`/`SetActiveWindow`/
    `BringWindowToTop`/`SetForegroundWindow` never activate the game's windows, and the window is
    kept at the bottom of the Z order. In background mode the user32 hooks are installed in `load()`
@@ -128,9 +128,9 @@ ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and
    `GetKeyboardState`, `GetForegroundWindow`/`GetActiveWindow`/`GetFocus` (report the game window),
    `GetRawInputData`/`GetRawInputBuffer` (real raw input is dropped).
 5. **Screenshots** use `PrintWindow(PW_RENDERFULLCONTENT)`, which works while the window is covered.
-6. **The manager window** (`client/HeadlessManager.ps1`, WinForms in C# compiled by `Add-Type`, one
+6. **The manager window** (`client/BeDDManager.ps1`, WinForms in C# compiled by `Add-Type`, one
    per logon session) shows every headless game through a DWM thumbnail, which stays live while
-   the game window is off screen. `Start-HeadlessGame.ps1` starts it through WMI
+   the game window is off screen. `Start-BeDDGame.ps1` starts it through WMI
    (`Win32_Process.Create` inside `conhost --headless`), so it is not part of the caller's process
    tree or job and survives the agent or harness that happened to start it. The mod links to it in
    `load()`; a linked game creates its window as a tool window off screen (hooked
@@ -140,13 +140,13 @@ ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and
    its own (once linked, so the start-up is left alone; a game that never links joins after a
    minute): closing or killing the manager closes the games.
 
-The environment variable `LEVI_HEADLESS_RETURN_FOCUS` (a window handle, set by
-`Start-HeadlessGame.ps1` and the shim's `Start-Game`) tells the mod which window gets the foreground
+The environment variable `BEDD_RETURN_FOCUS` (a window handle, set by
+`Start-BeDDGame.ps1` and the shim's `Start-Game`) tells the mod which window gets the foreground
 back if the game still activates itself while starting.
 
 ### Pipe protocol
 
-`\\.\pipe\<pipeName>` (local only, default `LeviHeadlessInput`), UTF-8, one JSON object per line
+`\\.\pipe\<pipeName>` (local only, default `BeDD`), UTF-8, one JSON object per line
 each way. An `id` is echoed. Replies are `{"ok":true,...}` or `{"ok":false,"error":"..."}`. Input
 ops reply after the game thread has dispatched the input (`timeoutMs`, default 5000).
 
@@ -168,15 +168,15 @@ ops reply after the game thread has dispatched the input (`timeoutMs`, default 5
 
 ### Manager pipe
 
-`\\.\pipe\LeviHeadlessInput-Manager-<session id>` (current user only), served by
-`HeadlessManager.ps1`, JSON lines like the control pipe.
+`\\.\pipe\BeDD-Manager-<session id>` (current user only), served by
+`BeDDManager.ps1`, JSON lines like the control pipe.
 
 - **Clients** (one request per connection): `ping` (`games`; `ok` is false while it closes),
-  `adopt` `{pid, instance, label}` (`Start-HeadlessGame.ps1` right after starting a game), `list`
+  `adopt` `{pid, instance, label}` (`Start-BeDDGame.ps1` right after starting a game), `list`
   (`games[]`: `pid`, `instance`, `label`, `pipe`, `hwnd`, `linked`, `background`, `managed`,
   `takenOver`, `job`, `thumbnail`), `game` `{pid, action: show|hide|close}`, `shutdown`.
 - **Games** (the mod): the first line is `hello` `{protocol, pid, hwnd, pipe, instance, label,
-  background}` (`label` from `LEVI_HEADLESS_LABEL`), answered with `{"ok":true}` (a manager that
+  background}` (`label` from `BEDD_LABEL`), answered with `{"ok":true}` (a manager that
   is closing hangs up instead; the game is linked only once welcomed). The connection stays open
   and the manager sends requests on it: every control-pipe op (it polls `state` every second), plus `show` (take over:
   background off, a normal window on screen and in front; the manager calls

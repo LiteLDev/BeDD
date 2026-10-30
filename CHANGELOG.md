@@ -7,13 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Renamed to Be.D.D. (Bedrock Deep Dive), after the H.D.D. of Zenless Zone Zero.** The repository is `LiteLDev/BeDD` and the lip package `github.com/LiteLDev/BeDD`; everything else follows, with no aliases for the old names:
+  - mod folder and DLL `mods\BeDD\BeDD.dll`, build output `bin\BeDD\`, release asset `bedd-client-windows-x64.zip`;
+  - control pipe `\\.\pipe\BeDD` (config `pipeName` default) and manager pipe `\\.\pipe\BeDD-Manager-<session id>`;
+  - client `BeDD.psm1` with `Connect-BeDD`, `Disconnect-BeDD`, `Test-BeDD`, `Invoke-BeDD`, `Clear-BeDDInput` and `*-BeDD*` for every other `*-Headless*` cmdlet (`Send-BeDDKey`, `Get-BeDDState`, …); `Start-BeDDGame.ps1`, `BeDDManager.ps1`;
+  - harness shim `Install-BeDDMod`, `Uninstall-BeDDMod`, `Register-BeDDNative`;
+  - environment variables `BEDD_LABEL`, `BEDD_MANAGER`, `BEDD_PIPE`, `BEDD_RETURN_FOCUS`; harnesses use `BEDD_DIR` in place of `LEVI_HEADLESS_INPUT_DIR`.
+
 ### Added
 
 - Config `mute` (default `true`): in background mode the game is silent. The mod hides focus loss from the game, so it never paused its audio, and headless games played menu music and sounds on the user's speakers. Taking a game over makes it audible again; `state` reports `audio`.
 
 ### Fixed
 
-- A console window flashed on the desktop at every game start: LeviLamina starts its crash logger, `CrashLogger.exe`, as a console program, and the game has no console to give it. `Install-HeadlessInputMod` and `Start-HeadlessGame.ps1` (for background games) switch the instance's LeviLamina to its built-in crash logger (`modules.crashLogger.builtin`).
+- A console window flashed on the desktop at every game start: LeviLamina starts its crash logger, `CrashLogger.exe`, as a console program, and the game has no console to give it. `Install-BeDDMod` and `Start-BeDDGame.ps1` (for background games) switch the instance's LeviLamina to its built-in crash logger (`modules.crashLogger.builtin`).
 
 ## [0.2.0] - 2026-10-29
 
@@ -36,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- A logo, and a recording of three games driven at once in the background, in the [LeviMC Mods gallery](https://levimc.org/mods/github.com/LiteLDev/LeviHeadlessInput/?tab=gallery).
+- A logo, and a recording of three games driven at once in the background, in the [LeviMC Mods gallery](https://levimc.org/mods/github.com/LiteLDev/BeDD/?tab=gallery).
 
 ### Changed
 
@@ -75,9 +84,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Start-HeadlessGame.ps1` (start an instance without activating it) and `clone-instance.ps1` (cheap clone instances for parallel games).
 - Trace mode: message, API-hook and GameInput statistics, and every input event that reaches the game, marked synthetic or real.
 
-[Unreleased]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.3...v0.2.0
-[0.1.3]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/LiteLDev/LeviHeadlessInput/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/LiteLDev/LeviHeadlessInput/releases/tag/v0.1.0
+[Unreleased]: https://github.com/LiteLDev/BeDD/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/LiteLDev/BeDD/compare/v0.1.3...v0.2.0
+[0.1.3]: https://github.com/LiteLDev/BeDD/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/LiteLDev/BeDD/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/LiteLDev/BeDD/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/LiteLDev/BeDD/releases/tag/v0.1.0

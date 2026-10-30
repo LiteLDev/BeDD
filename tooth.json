@@ -1,13 +1,13 @@
 {
   "format_version": 3,
   "format_uuid": "289f771f-2c9a-4d73-9f3f-8492495a924d",
-  "tooth": "github.com/LiteLDev/LeviHeadlessInput",
+  "tooth": "github.com/LiteLDev/BeDD",
   "version": "0.2.0",
   "info": {
-    "name": "LeviHeadlessInput",
+    "name": "BeDD",
     "description": "Drive a Minecraft Bedrock Edition client from test scripts without touching the real mouse, keyboard or foreground window",
     "tags": ["platform:levilamina", "type:mod", "client", "testing", "category:developer", "automation", "input"],
-    "avatar_url": "https://raw.githubusercontent.com/LiteLDev/LeviHeadlessInput/main/docs/logo.png"
+    "avatar_url": "https://raw.githubusercontent.com/LiteLDev/BeDD/main/docs/logo.png"
   },
   "variants": [
     {
@@ -19,13 +19,13 @@
       "assets": [
         {
           "type": "zip",
-          "urls": ["https://{{tooth}}/releases/download/v{{version}}/leviheadlessinput-client-windows-x64.zip"],
+          "urls": ["https://{{tooth}}/releases/download/v{{version}}/bedd-client-windows-x64.zip"],
           "placements": [
-            { "type": "dir", "src": "LeviHeadlessInput/", "dest": "mods/LeviHeadlessInput/" }
+            { "type": "dir", "src": "BeDD/", "dest": "mods/BeDD/" }
           ]
         }
       ],
-      "preserve_files": ["mods/LeviHeadlessInput/config/*"]
+      "preserve_files": ["mods/BeDD/config/*"]
     }
   ]
 }

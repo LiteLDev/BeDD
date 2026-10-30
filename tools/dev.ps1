@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-  Launch the LeviLauncher game instance with LeviHeadlessInput deployed and keep it running for
+  Launch the LeviLauncher game instance with BeDD deployed and keep it running for
   manual poking through the control pipe (tools\out\dev.stop or closing the game ends it).
 
 .DESCRIPTION
   Takes the machine-wide e2e lock (bei-e2e.lock, shared with BEI, BeetrootSkin and
-  AlleviatedBackpacks), deploys bin\LeviHeadlessInput with a config.json, launches the game and
+  AlleviatedBackpacks), deploys bin\BeDD with a config.json, launches the game and
   watches the desktop while it runs: every change of the foreground window and of the cursor clip
   rectangle is written to tools\out\desktop-watch.log. "Minecraft" never appearing there as the
   foreground (after the launch hand-back) and the clip staying the whole desktop is the evidence
@@ -14,7 +14,7 @@
 
 .EXAMPLE
   pwsh -NoProfile -File tools/dev.ps1 -Trace          # in the background, then in another shell:
-  Import-Module .\bin\LeviHeadlessInput\HeadlessInput.psm1; Connect-HeadlessInput; Send-HeadlessKey E
+  Import-Module .\bin\BeDD\BeDD.psm1; Connect-BeDD; Send-BeDDKey E
 #>
 param(
     [switch]$Trace,
@@ -34,13 +34,13 @@ $OutDir       = Join-Path $Root 'tools\out'
 $StopFile     = Join-Path $OutDir 'dev.stop'
 $RestartFile  = Join-Path $OutDir 'dev.restart'
 $WatchLog     = Join-Path $OutDir 'desktop-watch.log'
-$ModDest      = Join-Path $ModsDir 'LeviHeadlessInput'
+$ModDest      = Join-Path $ModsDir 'BeDD'
 
-if (-not ('HiDev.Native' -as [type])) {
+if (-not ('BeDDDev.Native' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-namespace HiDev {
+namespace BeDDDev {
 public static class Native {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
@@ -72,8 +72,8 @@ function Write-Dev([string]$m) { Write-Host "[dev] $m" }
 
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 Remove-Item $StopFile -ErrorAction SilentlyContinue
-$bin = Join-Path $Root 'bin\LeviHeadlessInput'
-if (-not (Test-Path (Join-Path $bin 'LeviHeadlessInput.dll'))) { throw "Build first (xmake): $bin" }
+$bin = Join-Path $Root 'bin\BeDD'
+if (-not (Test-Path (Join-Path $bin 'BeDD.dll'))) { throw "Build first (xmake): $bin" }
 
 $lock = $null
 while (-not $lock) {
@@ -94,7 +94,7 @@ try {
             ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ModDest 'config\config.json')
         Write-Dev "deployed $bin -> $ModDest"
         # The window that has the foreground now gets it back when the game window appears.
-        $env:LEVI_HEADLESS_RETURN_FOCUS = [string][int64][HiDev.Native]::GetForegroundWindow()
+        $env:BEDD_RETURN_FOCUS = [string][int64][BeDDDev.Native]::GetForegroundWindow()
         Get-Process -Name 'LeviLauncher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         Start-Process -FilePath $Launcher -ArgumentList "--launch=`"$VersionName`""
         Write-Dev "launched $VersionName"
@@ -109,7 +109,7 @@ try {
     }
     Start-DevGame
 
-    "# $(Get-Date -Format o) dev.ps1 started; foreground: $([HiDev.Native]::Describe([HiDev.Native]::GetForegroundWindow())); clip: $([HiDev.Native]::Clip())" |
+    "# $(Get-Date -Format o) dev.ps1 started; foreground: $([BeDDDev.Native]::Describe([BeDDDev.Native]::GetForegroundWindow())); clip: $([BeDDDev.Native]::Clip())" |
         Set-Content -Encoding utf8 $WatchLog
     $deadline = (Get-Date).AddMinutes($MaxMinutes)
     $lastFg = ''; $lastClip = ''; $seenGame = $false
@@ -124,8 +124,8 @@ try {
         }
         $game = Get-Process -Name 'Minecraft.Windows' -ErrorAction SilentlyContinue
         if ($game) { $seenGame = $true } elseif ($seenGame) { Write-Dev 'game exited'; break }
-        $fg = [HiDev.Native]::Describe([HiDev.Native]::GetForegroundWindow())
-        $clip = [HiDev.Native]::Clip()
+        $fg = [BeDDDev.Native]::Describe([BeDDDev.Native]::GetForegroundWindow())
+        $clip = [BeDDDev.Native]::Clip()
         if ($fg -ne $lastFg) { "$(Get-Date -Format 'HH:mm:ss.fff') foreground: $fg" | Add-Content -Encoding utf8 $WatchLog; $lastFg = $fg }
         if ($clip -ne $lastClip) { "$(Get-Date -Format 'HH:mm:ss.fff') clip: $clip" | Add-Content -Encoding utf8 $WatchLog; $lastClip = $clip }
         Start-Sleep -Milliseconds 100
