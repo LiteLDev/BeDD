@@ -60,7 +60,7 @@ uint64_t                gOverflowFrames = 0;
 
 std::atomic<uint64_t> gDropped{}, gSent{}, gReaders{};
 
-// What the last reader was replayed (the journal's own stats live in BD2's "state").
+// What the last reader was replayed (the journal's live stats are in "state".stats.journal).
 std::mutex gJournalMutex;
 json       gLastJournal{
     {"frames",   0    },
@@ -185,6 +185,8 @@ void serveReader(HANDLE pipe) {
     gReplayFrames.clear();
     tap::ReplayFn replay = tap::gReplay.load(std::memory_order_acquire);
     if (replay) replay(&collectReplay);
+    // The journal (TapJournal.cpp) knows whether it kept everything since start_game (tapJournalMiB).
+    bool const complete = replay != nullptr && tapJournalStats().complete;
     uint64_t lastReplayed = 0, replayBytes = 0;
     for (auto& f : gReplayFrames) {
         f.flags      |= tap::Replay;
@@ -194,7 +196,7 @@ void serveReader(HANDLE pipe) {
     json journal{
         {"frames",   gReplayFrames.size()},
         {"bytes",    replayBytes         },
-        {"complete", replay != nullptr   },
+        {"complete", complete            },
     };
     {
         std::lock_guard lock(gJournalMutex);
@@ -390,9 +392,23 @@ std::string tapInfo() {
         {"hooks",    tap::netTapHooks()            },
         {"replay",   tap::gReplay.load() != nullptr},
     };
+    if (tap::gReplay.load() != nullptr) {
+        auto s       = tapJournalStats();
+        j["journal"] = {
+            {"frames",   s.frames  },
+            {"bytes",    s.bytes   },
+            {"complete", s.complete},
+        };
+    } else {
+        j["journal"] = {
+            {"frames",   0    },
+            {"bytes",    0    },
+            {"complete", false},
+        };
+    }
     {
         std::lock_guard lock(gJournalMutex);
-        j["journal"] = gLastJournal;
+        j["lastReplay"] = gLastJournal;
     }
     return j.dump();
 }
