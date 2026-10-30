@@ -192,6 +192,7 @@ function Set-BeDDButton(
     if ($ReleaseOnBlockChange) { $r.releaseOn = 'blockChange' }
     Invoke-BeDD $r
 }
+
 # Moves the local player through the game's own input pipeline (config "gameHooks": true) until
 # -TtlMs runs out: -X = left - right, -Z = forward - back, each in [-1, 1]. -TtlMs 0 stops at once.
 # -Query returns the op's state ({active, via, hooks}) instead.
@@ -199,7 +200,6 @@ function Set-BeDDInput([double]$X = 0, [double]$Z = 0, [switch]$Jump, [switch]$S
     if ($Query) { return Invoke-BeDD @{ op = 'input' } }
     Invoke-BeDD @{ op = 'input'; move = @{ x = $X; z = $Z }; jump = [bool]$Jump; sneak = [bool]$Sneak; sprint = [bool]$Sprint; ttlMs = $TtlMs }
 }
-Export-ModuleMember -Function Set-BeDDInput
 
 # The local client sends one serverbound packet (needs allowSend; ids in sendAllow only): -Base64 or
 # -Bytes is the varint header + body, as bedrock-protocol serializes it. Without either, returns the
@@ -260,12 +260,6 @@ function Save-BeDDScreenshot([Parameter(Mandatory)][string]$Path) {
     return $Path
 }
 
-Export-ModuleMember -Function Connect-BeDD, Set-BeDDPipe, Disconnect-BeDD, Test-BeDD, Invoke-BeDD,
-    Set-BeDDCrashLogger, Get-BeDDState, Set-BeDDBackground, Set-BeDDWindow, Send-BeDDKey, Send-BeDDText,
-    Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot,
-    Get-BeDDWorld, Set-BeDDLook,
-    Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton, Send-BeDDPacket
-
 # Item stack request through the local client (`stack` op, config allowStack). -Buffer: the whole
 # item_stack_request packet (varint header + body) as base64 or bytes, as bedrock-protocol serializes
 # it; the reply maps its request ids to the client's (map, requestIds). Without -Buffer: the probe
@@ -281,4 +275,8 @@ function Send-BeDDStack($Buffer, [switch]$View, [int]$TimeoutMs = 2000) {
     Invoke-BeDD $r -NoThrow:(-not $View -and $null -eq $Buffer)
 }
 
-Export-ModuleMember -Function Send-BeDDStack
+Export-ModuleMember -Function Connect-BeDD, Set-BeDDPipe, Disconnect-BeDD, Test-BeDD, Invoke-BeDD,
+    Set-BeDDCrashLogger, Get-BeDDState, Set-BeDDBackground, Set-BeDDWindow, Send-BeDDKey, Send-BeDDText,
+    Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot,
+    Get-BeDDWorld, Set-BeDDLook,
+    Set-BeDDInput, Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton, Send-BeDDPacket, Send-BeDDStack
