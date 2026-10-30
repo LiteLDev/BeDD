@@ -1,17 +1,17 @@
 <#
 .SYNOPSIS
-  Start a LeviLauncher game instance directly, without activating its window.
+  Start a LeviLauncher game instance with BeDD, headless inside the manager window.
 
 .DESCRIPTION
   Runs versions\<Instance>\Minecraft.Windows.exe with STARTUPINFO.wShowWindow = SW_SHOWNOACTIVATE,
-  so the window appears without taking the foreground (LeviLauncher is not needed: the exe loads
+  so the game never takes the foreground (LeviLauncher is not needed: the exe loads
   PreLoader/LeviLamina itself). BEDD_RETURN_FOCUS is set to the current foreground
   window, in case the game still activates itself while starting. Returns the process.
 
-  Starts the session's manager window first unless it runs (BeDDManager.ps1): the game then
-  shows up there instead of as a window of its own, and closing the manager closes it. -Label
-  names the game there (default: the project and worktree of the calling script).
-  -NoManager, or BEDD_MANAGER=0, starts the game without it.
+  The instance must have BeDD in mods\BeDD (Install-BeDDMod): a game without it would be a window of
+  its own. Starts the session's manager window first unless it runs (BeDDManager.ps1): the game
+  shows up there and nowhere else, and closing the manager closes it. -Label names the game there
+  (default: the project and worktree of the calling script).
 
   The instance is made ready first when this PC lacks something (BeDDSetup.psm1): a clone
   (<base>-hi<N>, or -Slot N) is created from its base instance, LeviLamina is installed with lip,
@@ -27,8 +27,7 @@ param(
     [string]$Instance,
     [int]$Slot = 1,
     [string]$VersionsDir,
-    [string]$Label,
-    [switch]$NoManager
+    [string]$Label
 )
 $ErrorActionPreference = 'Stop'
 
@@ -87,13 +86,13 @@ $dir = $ready.Dir
 # Always this exact name: LeviLauncher.dll's data isolation keys on it (under another name the game
 # would use the default %APPDATA%\Minecraft Bedrock profile instead of the instance's data).
 $exe = Join-Path $dir 'Minecraft.Windows.exe'
-# Only a game whose mod links to the manager (background mode, "manager" not false) goes there.
-$config = $null
-try { $config = Get-Content (Join-Path $dir 'mods\BeDD\config\config.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch { }
+if (-not (Test-Path (Join-Path $dir 'mods\BeDD\BeDD.dll'))) {
+    throw "[BeDD] $Instance has no mods\BeDD (Install-BeDDMod): a game without it would show a window of its own"
+}
 # LeviLamina's crash logger in the game process instead of CrashLogger.exe, a console program that
 # would flash a console window on the desktop as the game starts (see Set-BeDDCrashLogger in
 # BeDD.psm1).
-if ($config -and $config.background -eq $true) {
+& {
     $ll = Join-Path $dir 'mods\LeviLamina\config\Config.json'
     try {
         $c = Get-Content $ll -Raw -ErrorAction Stop | ConvertFrom-Json
@@ -107,9 +106,8 @@ if ($config -and $config.background -eq $true) {
         Write-Warning "[BeDD] could not switch LeviLamina to its built-in crash logger ($ll): $($_.Exception.Message)"
     }
 }
-$managed = -not $NoManager -and $env:BEDD_MANAGER -ne '0' -and $config -and $config.background -eq $true -and $config.manager -ne $false
-$manager = $null
-if ($managed) { $manager = & (Join-Path $PSScriptRoot 'BeDDManager.ps1') -Ensure }
+$manager = & (Join-Path $PSScriptRoot 'BeDDManager.ps1') -Ensure
+if (-not $manager) { throw "[BeDD] the manager window did not start (see $env:LOCALAPPDATA\BeDD\manager.log); not starting $Instance" }
 if (-not $Label) { $Label = if ($env:BEDD_LABEL) { $env:BEDD_LABEL } else { Get-CallerLabel } }
 # For the game only (the mod reads them): this process keeps its own environment.
 $saved = @{ label = $env:BEDD_LABEL; focus = $env:BEDD_RETURN_FOCUS }
@@ -122,5 +120,5 @@ try {
     $env:BEDD_RETURN_FOCUS = $saved.focus
 }
 # Shown in the manager from the start, also while the game loads.
-if ($manager) { & (Join-Path $PSScriptRoot 'BeDDManager.ps1') -Adopt $id -Instance $Instance -Label $Label | Out-Null }
+& (Join-Path $PSScriptRoot 'BeDDManager.ps1') -Adopt $id -Instance $Instance -Label $Label | Out-Null
 return Get-Process -Id $id

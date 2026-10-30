@@ -18,25 +18,22 @@
 // BeDD: drive a LeviLamina Minecraft Bedrock client without touching the real
 // mouse, keyboard or foreground window.
 //
-//   * Window.cpp subclasses the game window. In background mode it swallows the focus-loss
-//     messages (so the game never pauses or releases its "focus") and every *real* client-area
-//     input message (so the user's mouse and keys never reach the game), and it dispatches
-//     synthetic input posted by the control pipe straight into the game's own window procedure.
+// There is one way a game runs: headless, inside the manager window. Whenever the mod is loaded:
+//   * Window.cpp subclasses the game window. It swallows the focus-loss messages (so the game never
+//     pauses or releases its "focus") and every *real* client-area input message (so the user's
+//     mouse and keys never reach the game), and it dispatches synthetic input posted by the control
+//     pipe straight into the game's own window procedure. The window is a tool window off screen.
 //   * ApiHooks.cpp hooks the user32 calls through which the game would otherwise grab or read the
 //     real devices (ClipCursor, SetCursorPos, GetCursorPos, GetAsyncKeyState, ...): they see the
 //     virtual state below instead.
 //   * Pipe.cpp serves a JSON-lines control protocol on \\.\pipe\BeDD.
 //   * Manager.cpp links the game to the session's manager window (client/BeDDManager.ps1),
-//     which shows every headless game and closes them all when it is closed.
+//     which shows every game and closes them all when it is closed. A game it cannot link closes.
 namespace bedd {
 
 [[nodiscard]] ll::io::Logger& log();
 
 struct Options {
-    /// Shield the game from focus loss and the user's real input, and keep it out of the foreground.
-    bool        background = false;
-    /// Where the window goes once it exists: "back" (bottom of the Z order), "offscreen", "none".
-    std::string placement = "back";
     /// Client-area size to apply once the window exists (0 = leave it alone).
     int clientWidth  = 0;
     int clientHeight = 0;
@@ -44,13 +41,12 @@ struct Options {
     bool trace = false;
     /// Control pipe name (\\.\pipe\<name>); one per game instance when several run in parallel.
     std::string pipeName = "BeDD";
-    /// In background mode, keep the game on the PC: wildcard bind()s become loopback ones (no
-    /// firewall prompts) and servers off the PC are not queried (no bogus "LAN worlds").
+    /// Keep the game on the PC: wildcard bind()s become loopback ones (no firewall prompts) and
+    /// servers off the PC are not queried (no bogus "LAN worlds").
     bool loopbackOnly = true;
-    /// In background mode, register with the session's manager window when one runs: the game
-    /// window then stays off screen and off the taskbar, and the manager shows it instead.
-    bool manager = true;
-    /// In background mode, mute the game (FMOD master channel group): headless games stay silent.
+    /// BeDDManager.ps1, started (-Ensure) when no manager window runs; Install-BeDDMod writes it.
+    std::string managerScript;
+    /// Mute the game (FMOD master channel group): headless games stay silent.
     bool mute = true;
     /// Hook the client's own game systems for the world, look, input, slot, action and button ops.
     /// Off: those ops answer code:"disabled" and nothing is hooked.
@@ -76,11 +72,8 @@ struct Options {
 /// Read once in load() from <mod>/config/config.json.
 [[nodiscard]] Options& options();
 
-/// Live switch for background mode (the "background" op and the Ctrl+Shift+F12 takeover change it).
-[[nodiscard]] std::atomic<bool>& backgroundMode();
-
 // ---------------------------------------------------------------------------------------------
-// Virtual input state (what the hooked user32 calls report in background mode).
+// Virtual input state (what the hooked user32 calls report).
 // ---------------------------------------------------------------------------------------------
 namespace vstate {
 void  setKey(int vk, bool down);
@@ -116,9 +109,8 @@ private:
     std::optional<ll::thread::GlobalThreadPauser> mPauser;
 };
 
-/// In background mode already in load(): the game creates and shows its window before enable(),
-/// and a managed game's window must be created hidden (CreateWindowExW) since the game does not
-/// pump messages until then. Idempotent.
+/// Already in load(): the game creates and shows its window before enable(), and that window must
+/// be created hidden (CreateWindowExW) since the game does not pump messages until then. Idempotent.
 void installApiHooks();
 void uninstallApiHooks();
 /// "Name=calls ..." of the hooked user32 functions the game has called (trace / "state" op).
@@ -160,27 +152,22 @@ bool flush(std::chrono::milliseconds timeout);
 /// Raw-input data of a synthetic WM_INPUT handle (nullptr if the handle is a real one).
 [[nodiscard]] RAWMOUSE const* syntheticRawMouse(HRAWINPUT h);
 
-/// Size the client area and place the window, never activating it.
-std::string applyWindowLayout(int clientW, int clientH, std::string const& placement);
+/// Size the client area and keep the window off screen at the back, never activating it.
+std::string applyWindowLayout(int clientW, int clientH);
 /// Pretend the game just got the focus (WM_ACTIVATEAPP/WM_ACTIVATE/WM_SETFOCUS).
 void fakeFocusGained();
 
-/// Linked to the manager window: the game window stays off screen, off the taskbar and out of Alt+Tab.
+/// Linked to the manager window, which shows the game (the "managed" field of ping and state).
 void setManaged(bool on);
 [[nodiscard]] bool managed();
-/// A human took the game over from the manager (background off, window on screen and active).
-[[nodiscard]] bool takenOver();
-/// Hooked ShowWindow, before the game first shows a top-level window: hide it right away when managed.
+/// Hooked ShowWindow, before the game first shows a top-level window: hide it right away.
 void prepareFirstShow(HWND h);
-/// True while the manager keeps this window off screen (moves by the game are dropped).
+/// True for the hidden game window: moves by the game are dropped, it stays off screen.
 [[nodiscard]] bool keepOffScreen(HWND h);
-/// Hooked CreateWindowExW: managed games create their windows as hidden tool windows off screen.
+/// Hooked CreateWindowExW: the game creates its window as a hidden tool window off screen.
 [[nodiscard]] bool hideNewWindows();
 void               markHidden(HWND h);
 [[nodiscard]] int  offScreenLeft(int windowWidth);
-/// Manager ops: hand the game to the user's real mouse and keyboard, and take it back.
-std::string takeOver();
-std::string handBack();
 
 struct Stats {
     std::atomic<uint64_t> synthetic{};
@@ -198,19 +185,17 @@ void installGameInputHooks();
 void uninstallGameInputHooks();
 /// GameInput mouse button bits (GameInputMouseButtons).
 enum : int { kGiLeft = 0x1, kGiRight = 0x2, kGiMiddle = 0x4 };
-/// Move / scroll / press the virtual GameInput mouse (what the game reads in background mode).
+/// Move / scroll / press the virtual GameInput mouse (what the game reads).
 void gameInputMouse(int64_t dx, int64_t dy, int wheelNotches, int buttonMask, bool buttonDown);
 [[nodiscard]] uint32_t    gameInputButtons();
 [[nodiscard]] std::string gameInputStats();
 
-// Audio.cpp: the game is muted in background mode (FMOD).
+// Audio.cpp: the game is muted (FMOD, config mute).
 void installAudioHooks();
 void uninstallAudioHooks();
-/// Mute or unmute the game as background mode is now (call after changing it).
-void                      syncAudioMute();
 [[nodiscard]] std::string audioStats();
 
-// NetHooks.cpp: loopback-only network in background mode (no Windows Firewall prompts).
+// NetHooks.cpp: loopback-only network (no Windows Firewall prompts).
 void                   installNetHooks();
 void                   uninstallNetHooks();
 [[nodiscard]] uint64_t loopbackRebinds();

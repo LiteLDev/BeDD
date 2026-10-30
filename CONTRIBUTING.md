@@ -19,11 +19,11 @@ See [Development](#development) below. The code is small:
 |---|---|
 | `src/BeDD.h` | shared state and declarations of the parts below |
 | `src/Mod.cpp` | entry point, config, virtual key/cursor state |
-| `src/Window.cpp` | window discovery, subclassing, synthetic event dispatch, focus shield, placement |
+| `src/Window.cpp` | window discovery, subclassing, synthetic event dispatch, focus shield, window kept off screen |
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
-| `src/Audio.cpp` | FMOD hooks: the game's master channel group is muted in background mode (`mute`) |
-| `src/NetHooks.cpp` | loopback-only network in background mode (`loopbackOnly`: no firewall prompt, no queries to servers off the PC) |
+| `src/Audio.cpp` | FMOD hooks: the game's master channel group is muted (`mute`) |
+| `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`: no firewall prompt, no queries to servers off the PC) |
 | `src/Pipe.cpp` | control pipe and protocol |
 | `src/Manager.cpp` | link to the session's manager window |
 | `src/Trace.cpp` | trace-mode input logging |
@@ -82,7 +82,8 @@ The mod packer reads the version from `git describe`, so the repository needs at
 
 `tools\dev.ps1 [-Trace]` is a playground: it takes the shared e2e lock
 (`%APPDATA%\levilauncher.exe\bei-e2e.lock`), deploys the mod into the instance BeDD finds (set up
-first on a new PC, see the README), launches it through LeviLauncher and logs every
+first on a new PC, see the README), starts the manager window unless it runs,
+launches the game through LeviLauncher (it shows up in the manager window) and logs every
 foreground and cursor-clip change to `tools\out\desktop-watch.log` until the game exits or
 `tools\out\dev.stop` exists (`tools\out\dev.restart` redeploys and relaunches without giving up the
 lock). It always closes the game, removes the mod and releases the lock.
@@ -95,9 +96,10 @@ gallery and the README pictures.
 `tools/showcase/record.ps1 [-KeepOpen]` reproduces the desktop video: under the shared e2e lock
 (plus the `hi<N>-e2e.lock` of each clone) it prepares three clone instances (`-hi2`..`-hi4`, other
 mods moved aside), restores the `tools/showcase/fixtures/Showcase.zip` world, starts the games in
-the background, enters the world, lays the windows out in a 2x2 grid over a backdrop (`stage.ps1`)
-with Windows Terminal running `demo.ps1` in the fourth cell, and records that region of the real
-screen with ffmpeg's Desktop Duplication grabber to `tools/showcase/out/take-<n>.mkv`. With
+a manager window of its own (`BEDD_MANAGER_PIPE`, so other runs' games stay out of the take),
+enters the world, moves that manager window onto the left two thirds of a region over a backdrop
+(`stage.ps1`) with Windows Terminal running `demo.ps1` on the right third, and records that region
+of the real screen with ffmpeg's Desktop Duplication grabber to `tools/showcase/out/take-<n>.mkv`. With
 `-KeepOpen`, creating `tools/showcase/out/take` starts another take and `tools/showcase/out/stop`
 ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and poster files.
 
@@ -124,23 +126,23 @@ ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and
    (`MainGameCore::WndProc_PC::onKeyboardAction` → `HIDControllerGameCoreDesktop::onKeyDown`), so
    chat, key mappings and UI hover work. The reply is sent only after the game thread processed
    the input, so scripts are deterministic.
-2. **Mouse buttons, wheel and camera go through a virtual GameInput mouse.** Bedrock reads the
-   mouse with the GDK **GameInput** API (`GameInputRedist.dll`, interface v2), straight from the
-   device: window messages such as `WM_LBUTTONDOWN` are ignored, and without the mod your real
-   mouse would still click and turn the camera in a background game. The mod hooks
-   `IGameInputReading::GetMouseState` (and `GetKeyCount`/`GetKeyState`): in background mode the game
-   reads virtual buttons, relative position (camera), wheel and absolute position instead. GameInput
-   has no reading for a mouse until the device reports input, so on an untouched PC the game's
+2. **Mouse buttons, wheel and camera go through a virtual GameInput mouse.** Bedrock reads the mouse
+   with the GDK **GameInput** API (`GameInputRedist.dll`, interface v2), straight from the device:
+   window messages such as `WM_LBUTTONDOWN` are ignored, and without the mod your real mouse would
+   still click and turn the camera in a background game. The mod hooks
+   `IGameInputReading::GetMouseState` (and `GetKeyCount`/`GetKeyState`): the game reads virtual
+   buttons, relative position (camera), wheel and absolute position instead. GameInput has no
+   reading for a mouse until the device reports input, so on an untouched PC the game's
    `GetCurrentReading` gets a virtual reading of that device from the mod.
-3. **The game never takes the foreground or loses focus.** Focus-loss messages are swallowed, so
-   the game does not pause or release its keys. `Start-BeDDGame.ps1` starts the exe with
+3. **The game never takes the foreground or loses focus.** Focus-loss messages are swallowed, so the
+   game does not pause or release its keys. `Start-BeDDGame.ps1` starts the exe with
    `SW_SHOWNOACTIVATE`; the hooked `ShowWindow`/`SetWindowPos`/`SetActiveWindow`/
    `BringWindowToTop`/`SetForegroundWindow` never activate the game's windows, and the window is
-   kept at the bottom of the Z order. In background mode the user32 hooks are installed in `load()`
-   already: the game creates and shows its window before `enable()`. The "focus gained" messages
-   the mod sends skip the default `WM_ACTIVATE` handling (hooked `DefWindowProcW`), which would set
-   the focus and so activate the window: a game started from the user's foreground app (a terminal,
-   an agent) is allowed to take the foreground.
+   kept at the bottom of the Z order. The user32 hooks are installed in `load()` already: the game
+   creates and shows its window before `enable()`. The "focus gained" messages the mod sends skip
+   the default `WM_ACTIVATE` handling (hooked `DefWindowProcW`), which would set the focus and so
+   activate the window: a game started from the user's foreground app (a terminal, an agent) is
+   allowed to take the foreground.
 4. **Your real input never reaches the game.** Real client-area input messages are swallowed, and
    the user32 calls through which the game reads or grabs the devices see a *virtual* state:
    `ClipCursor` (no-op: your cursor is never confined), `SetCursorPos` (moves the virtual cursor
@@ -148,17 +150,19 @@ ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and
    `GetKeyboardState`, `GetForegroundWindow`/`GetActiveWindow`/`GetFocus` (report the game window),
    `GetRawInputData`/`GetRawInputBuffer` (real raw input is dropped).
 5. **Screenshots** use `PrintWindow(PW_RENDERFULLCONTENT)`, which works while the window is covered.
-6. **The manager window** (`client/BeDDManager.ps1`, WinForms in C# compiled by `Add-Type`, one
-   per logon session) shows every headless game through a DWM thumbnail, which stays live while
-   the game window is off screen. `Start-BeDDGame.ps1` starts it through WMI
+6. **The manager window** (`client/BeDDManager.ps1`, WinForms in C# compiled by `Add-Type`, one per
+   logon session) shows every game through a DWM thumbnail, which stays live while the game window
+   is off screen, and is the only place a game shows up. `Start-BeDDGame.ps1` starts it through WMI
    (`Win32_Process.Create` inside `conhost --headless`), so it is not part of the caller's process
    tree or job and survives the agent or harness that happened to start it. The mod links to it in
-   `load()`; a linked game creates its window as a tool window off screen (hooked
-   `CreateWindowExW`: the game does not pump messages before `enable()`, so the window cannot be
-   changed from outside its thread until then) and keeps it there (`SetWindowPos` moves are
-   dropped, a watcher puts it back). The manager puts each linked game into a kill-on-close job of
-   its own (once linked, so the start-up is left alone; a game that never links joins after a
-   minute): closing or killing the manager closes the games.
+   `load()`, and starts it when none runs (config `managerScript`: `pwsh -File <it> -Ensure`); a
+   game no manager links within 90 s, or that loses the link for good, closes itself. The game
+   always creates its window as a tool window off screen (hooked `CreateWindowExW`: the game does
+   not pump messages before `enable()`, so the window cannot be changed from outside its thread
+   until then) and keeps it there (`SetWindowPos` moves are dropped, a watcher puts it back). The
+   manager puts each linked game into a kill-on-close job of its own (once linked, so the start-up
+   is left alone; a game that never links joins after a minute): closing or killing the manager
+   closes the games.
 
 The environment variable `BEDD_RETURN_FOCUS` (a window handle, set by
 `Start-BeDDGame.ps1` and the shim's `Start-Game`) tells the mod which window gets the foreground
@@ -173,7 +177,7 @@ version (`ping`.`protocol`) stays 1: newer ops are found by calling them (below)
 
 | op | fields | |
 |---|---|---|
-| `ping` | | `protocol`, `pid`, `hwnd`, `background`, `client{w,h}`, `cursor{x,y}`, `realForeground`, `managed`, `takenOver` |
+| `ping` | | `protocol`, `pid`, `hwnd`, `client{w,h}`, `cursor{x,y}`, `realForeground`, `managed` |
 | `state` | | `ping` fields + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal}`, `clients` (control-pipe clients connected now), `hooks{name: installed}` (each game hook a feature installed; `false` while the feature is off) |
 | `key` | `key` (name) or `vk`; `action` press\|down\|up; `holdMs` | names: letters, digits, ESC, ENTER, BACK, TAB, SPACE, SHIFT, CTRL, ALT, LEFT/UP/RIGHT/DOWN, HOME, END, PGUP, PGDN, INSERT, DELETE, F1..F24, SLASH, GRAVE, MINUS, EQUALS |
 | `text` | `text`; `delayMs` | one `WM_CHAR` per UTF-16 unit |
@@ -181,8 +185,7 @@ version (`ping`.`protocol`) stays 1: newer ops are found by calling them (below)
 | `raw` | `action` move\|down\|up\|click\|wheel; `dx`,`dy` (mouse counts); `steps`; `button`; `notches`; `holdMs` | virtual GameInput mouse: camera while the mouse is grabbed |
 | `release` | | releases every held key and button, whoever pressed it, and ends the `input` move override |
 | `focus` | | re-sends the "focus gained" messages |
-| `window` | `clientWidth`, `clientHeight`, `placement` back\|offscreen\|none | never activates the window |
-| `background` | `on` | background mode on/off |
+| `window` | `clientWidth`, `clientHeight` | never activates the window; it stays off screen |
 | `flush` | | waits until everything posted was dispatched |
 
 #### Several clients
@@ -260,7 +263,7 @@ of every op is read-only.
     The client sends `mob_equipment` itself. Replies `slot` and `via` callback\|keys.
   - `action`: the matching `ClientInputCallbacks::handle*ButtonPress` (inventory with
     `CraftingType::Inventory`).
-  - `button`: left/right/middle on the virtual GameInput mouse (needs background mode), released
+  - `button`: left/right/middle on the virtual GameInput mouse, released
     by the tick listener after `holdTicks` (click: default 2) or, with `releaseOn:"blockChange"`,
     once the block the client's hit result pointed at when it went down changes, turns to air or is
     no longer targeted (`refused` when no block is targeted). `up` applies at once. Never blocks
@@ -463,17 +466,18 @@ their seq and order and carry flag `replay`.
 
 `\\.\pipe\BeDD-Manager-<session id>` (current user only), served by
 `BeDDManager.ps1`, JSON lines like the control pipe.
+`BEDD_MANAGER_PIPE` names another manager's pipe instead (scripts and games read it).
 
 - **Clients** (one request per connection): `ping` (`games`; `ok` is false while it closes),
   `adopt` `{pid, instance, label}` (`Start-BeDDGame.ps1` right after starting a game), `list`
-  (`games[]`: `pid`, `instance`, `label`, `pipe`, `hwnd`, `linked`, `background`, `managed`,
-  `takenOver`, `job`, `thumbnail`), `game` `{pid, action: show|hide|close}`, `shutdown`.
-- **Games** (the mod): the first line is `hello` `{protocol, pid, hwnd, pipe, instance, label,
-  background}` (`label` from `BEDD_LABEL`), answered with `{"ok":true}` (a manager that
-  is closing hangs up instead; the game is linked only once welcomed). The connection stays open
-  and the manager sends requests on it: every control-pipe op (it polls `state` every second), plus `show` (take over:
-  background off, a normal window on screen and in front; the manager calls
-  `AllowSetForegroundWindow` first), `hide` (hand back) and `close` (`WM_CLOSE` to the game window).
+  (`games[]`: `pid`, `instance`, `label`, `pipe`, `hwnd`, `linked`, `managed`, `job`,
+  `thumbnail`), `game` `{pid, action: close}`, `shutdown`.
+- **Games** (the mod): the first line is `hello` `{protocol, pid, hwnd, pipe, instance, label}`
+  (`label` from `BEDD_LABEL`), answered with `{"ok":true}` (a manager that is closing hangs up
+  instead; the game is linked only once welcomed). The connection stays open and the manager sends
+  requests on it: every control-pipe op (it polls `state` every second), plus `close` (`WM_CLOSE` to
+  the game window). A game with no manager starts one (config `managerScript`); one that no manager
+  links within 90 s, or that loses the link for good, closes itself.
 
 ## License
 

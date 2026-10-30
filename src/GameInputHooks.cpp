@@ -1,13 +1,13 @@
 // GameInput (GDK) hooks. Bedrock reads the mouse (and possibly the keyboard) through GameInput
 // v2, which talks to the devices directly: neither window messages nor focus are involved, so the
-// user's real mouse would still move the camera and click in a background game. In background
-// mode IGameInputReading::GetMouseState / GetKeyCount / GetKeyState report the virtual state
+// user's real mouse would still move the camera and click in the game.
+// IGameInputReading::GetMouseState / GetKeyCount / GetKeyState report the virtual state
 // instead (driven by the "raw" op for the mouse, and by synthetic key events for the keyboard).
 //
 // GameInput has a reading for a mouse only once the device reported input. While nobody touches
 // the real mouse (an unattended run), the game's GetCurrentReading fails, it sees no mouse state at
-// all and virtual clicks are lost (the cursor still hovers: that goes through window messages). In
-// background mode such a miss is answered with a virtual reading of that device instead.
+// all and virtual clicks are lost (the cursor still hovers: that goes through window messages).
+// Such a miss is answered with a virtual reading of that device instead.
 //
 // Only the vtable slots used here are declared (GameInput v2, GameInput.h of Microsoft.GameInput
 // 2.x): IGameInput 3 GetCurrentTimestamp, 4 GetCurrentReading, 5 GetNextReading,
@@ -28,8 +28,6 @@
 namespace bedd {
 
 namespace {
-
-bool bg() { return backgroundMode().load(std::memory_order_relaxed); }
 
 // {BBAA66D2-837A-40F7-A303-917D500955F4} = GameInput::v2::IGameInput
 constexpr GUID kIID_IGameInputV2{0xbbaa66d2, 0x837a, 0x40f7, {0xa3, 0x03, 0x91, 0x7d, 0x50, 0x09, 0x55, 0xf4}};
@@ -143,9 +141,8 @@ bool hookSlot(HookBatch& batch, void* target, void* detour, void** original, cha
     return true;
 }
 
-uint32_t STDMETHODCALLTYPE d_GetKeyCount(void* self) {
+uint32_t STDMETHODCALLTYPE d_GetKeyCount(void* /*self*/) {
     gKeyReads.fetch_add(1, std::memory_order_relaxed);
-    if (!bg()) return o_GetKeyCount(self);
     uint32_t n = 0;
     for (int vk = 8; vk < 256; ++vk) {
         if (vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU) continue; // GameInput reports the L/R keys
@@ -154,8 +151,7 @@ uint32_t STDMETHODCALLTYPE d_GetKeyCount(void* self) {
     return n;
 }
 
-uint32_t STDMETHODCALLTYPE d_GetKeyState(void* self, uint32_t count, GiKeyState* states) {
-    if (!bg()) return o_GetKeyState(self, count, states);
+uint32_t STDMETHODCALLTYPE d_GetKeyState(void* /*self*/, uint32_t count, GiKeyState* states) {
     uint32_t n = 0;
     for (int vk = 8; vk < 256 && n < count; ++vk) {
         if (vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU || !vstate::keyDown(vk)) continue;
@@ -217,7 +213,7 @@ void virtualMouseState(void* device, bool real, GiMouseState* state) {
 bool STDMETHODCALLTYPE d_GetMouseState(void* self, GiMouseState* state) {
     gMouseReads.fetch_add(1, std::memory_order_relaxed);
     bool ok = o_GetMouseState(self, state);
-    if (!bg() || !state) return ok;
+    if (!state) return ok;
 
     void* device = nullptr;
     reinterpret_cast<GetDeviceFn>(vtableOf(self)[5])(self, &device);
@@ -293,7 +289,7 @@ bool isVirtualReading(void* reading) { return reading && *static_cast<void**>(re
 
 // The game asked for a mouse reading GameInput does not have: hand it a virtual one.
 bool virtualReadingFor(HRESULT hr, uint32_t kind, void* device, void** reading) {
-    if (SUCCEEDED(hr) || hr == kDeviceDisconnected || kind != kKindMouse || !device || !reading || !bg()) return false;
+    if (SUCCEEDED(hr) || hr == kDeviceDisconnected || kind != kKindMouse || !device || !reading) return false;
     if (gVirtualReadings.fetch_add(1) == 0) {
         log().info(
             "GameInput: no mouse reading yet (0x{:08X}); the game reads the virtual mouse until the real one reports",

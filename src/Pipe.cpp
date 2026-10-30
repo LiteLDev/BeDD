@@ -224,9 +224,7 @@ json windowInfo() {
     HWND h = gameWindow();
     json j{
         {"hwnd",       reinterpret_cast<uintptr_t>(h)},
-        {"background", backgroundMode().load()     },
         {"managed",    managed()                   },
-        {"takenOver",  takenOver()                 },
     };
     if (h) {
         POINT s     = clientSize();
@@ -285,15 +283,8 @@ json handle(json const& j) {
             {"resets",    jn.resets   },
             {"replays",   jn.replays  },
         };
-    } else if (op == "background") {
-        bool on = j.value("on", true);
-        backgroundMode() = on;
-        syncAudioMute();
-        if (!on) vstate::releaseAll();
-        log().info("background mode {} (control pipe)", on ? "on" : "off");
-        r.update(windowInfo());
     } else if (op == "window") {
-        r["result"] = applyWindowLayout(j.value("clientWidth", 0), j.value("clientHeight", 0), j.value("placement", "none"));
+        r["result"] = applyWindowLayout(j.value("clientWidth", 0), j.value("clientHeight", 0));
         r.update(windowInfo());
     } else if (op == "focus") {
         fakeFocusGained();

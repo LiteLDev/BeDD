@@ -1,10 +1,10 @@
 # 配置
 
 模块读取 `mods\BeDD\config\config.json`，一般由测试框架写入（`Install-BeDDMod` 会写）。
-没有这个文件时模块是被动的：后台模式关闭，管道照样能用。
+没有这个文件时游戏照样无头运行，只是用默认值、没有 `managerScript`（所以只能进已经开着的管理窗口）。
 
 ```json
-{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "BeDD" }
+{ "clientWidth": 1600, "clientHeight": 900, "pipeName": "BeDD", "managerScript": "C:\\BeDD\\BeDDManager.ps1" }
 ```
 
 `Install-BeDDMod` 和 `Start-BeDDGame.ps1` 还会把实例的 LeviLamina 切到内置崩溃记录器（`mods\LeviLamina\config\Config.json`
@@ -14,13 +14,11 @@
 
 | 键 | |
 |---|---|
-| `background` | 让游戏待在后台，不受你真鼠标键盘的影响 |
-| `placement` | `back`（放到你的窗口后面）、`offscreen`（移出屏幕）或 `none` |
 | `clientWidth`、`clientHeight` | 游戏窗口大小（0 表示不改），每次运行点击位置都一样 |
 | `pipeName` | 多开时每个实例一个 |
 | `loopbackOnly` | 默认 `true`：游戏只在本机通信，新实例不会弹 Windows 防火墙提示，也不会去查询本机以外的游戏服务器（否则它们可能以"局域网世界"出现在测试存档前面）。测试框架自己启动的专用服务器每个服务器目录还是会问一次，点**取消**即可 |
-| `manager` | 默认 `true`：后台模式下，有管理窗口时游戏显示在管理窗口里，自己的窗口留在屏幕外、不进任务栏 |
-| `mute` | 默认 `true`：后台模式下游戏不出声（你接管游戏时恢复声音） |
+| `managerScript` | `BeDDManager.ps1` 的路径（`Install-BeDDMod` 会写）：没有管理窗口时游戏用它启动[管理窗口](/zh/guide/several-games#管理窗口) |
+| `mute` | 默认 `true`：游戏不出声 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
 | `pipeInstances` | 默认 `4`：可同时使用游戏管道的脚本数（某个脚本断开时，它按住的键、鼠标按钮和 `input` 移动覆盖都会松开）；`1` 表示一次一个 |
 
@@ -44,7 +42,7 @@
 | 变量 | 谁读取 | |
 |---|---|---|
 | `BEDD_PIPE` | `BeDD.psm1` | `Connect-BeDD` 不带 `-PipeName` 时用的管道（默认 `BeDD`） |
-| `BEDD_MANAGER` | `Start-BeDDGame.ps1`、框架垫片 | `0`：不用管理窗口 |
+| `BEDD_MANAGER_PIPE` | `BeDDManager.ps1`、模块 | 用另一个管理窗口（而不是本会话的那个）的管道，比如录制时专用的那个；设了它启动的游戏显示在那里 |
 | `BEDD_LABEL` | 模块 | 游戏在管理窗口里的名字（`Start-BeDDGame.ps1 -Label` 会设置它） |
 | `BEDD_RETURN_FOCUS` | 模块 | 一个窗口句柄：游戏启动时若仍激活了自己，前台还给这个窗口（`Start-BeDDGame.ps1` 和垫片的 `Start-Game` 会设置它） |
 | `BEDD_DIR` | 你的测试框架 | Be.D.D. 解压的位置（[安装](/zh/guide/installation#让测试框架自己下载)） |

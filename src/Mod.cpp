@@ -32,13 +32,12 @@ private:
     ll::mod::NativeMod& mSelf;
 };
 
-Options           gOptions;
-std::atomic<bool> gBackground{false};
+Options gOptions;
 
 void readOptions(std::filesystem::path const& file) {
     std::ifstream in(file);
     if (!in) {
-        log().info("No {} (background mode off; the e2e harness writes it)", file.string());
+        log().warn("No {} (Install-BeDDMod writes it): defaults, and no manager script to start", file.string());
         return;
     }
     auto j = nlohmann::json::parse(in, nullptr, false, true);
@@ -46,14 +45,12 @@ void readOptions(std::filesystem::path const& file) {
         log().error("{} is not a JSON object; using defaults", file.string());
         return;
     }
-    gOptions.background   = j.value("background", gOptions.background);
-    gOptions.placement    = j.value("placement", gOptions.placement);
     gOptions.clientWidth  = j.value("clientWidth", gOptions.clientWidth);
     gOptions.clientHeight = j.value("clientHeight", gOptions.clientHeight);
     gOptions.trace        = j.value("trace", gOptions.trace);
     gOptions.pipeName     = j.value("pipeName", gOptions.pipeName);
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
-    gOptions.manager      = j.value("manager", gOptions.manager);
+    gOptions.managerScript = j.value("managerScript", gOptions.managerScript);
     gOptions.mute         = j.value("mute", gOptions.mute);
     gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
     gOptions.tap          = j.value("tap", gOptions.tap);
@@ -74,23 +71,20 @@ bool Mod::load() {
     // Flush every message so the harness sees them immediately.
     getSelf().getLogger().setFlushLevel(ll::io::LogLevel::Trace);
     readOptions(getSelf().getConfigDir() / "config.json");
-    gBackground = gOptions.background;
     // Before the game sets up its network (load() runs before enable()).
-    if (gOptions.background && gOptions.loopbackOnly) installNetHooks();
-    // Also before the game window exists: a managed game's window never shows on the taskbar.
+    if (gOptions.loopbackOnly) installNetHooks();
+    // Also before the game window exists: it never shows on the taskbar or the screen.
     startManagerLink();
-    if (gOptions.background) installApiHooks();
+    installApiHooks();
     // Before the game sets up its audio: not a sound, not even while it loads.
     if (gOptions.mute) installAudioHooks();
     log().info(
-        "BeDD loaded: background={} placement={} client={}x{} trace={} pipe={} manager={} mute={}",
-        gOptions.background,
-        gOptions.placement,
+        "BeDD loaded: client={}x{} trace={} pipe={} manager={} mute={}",
         gOptions.clientWidth,
         gOptions.clientHeight,
         gOptions.trace,
         gOptions.pipeName,
-        gOptions.manager,
+        gOptions.managerScript,
         gOptions.mute
     );
     return true;
@@ -142,8 +136,6 @@ bool Mod::disable() {
 ll::io::Logger& log() { return Mod::getInstance().getSelf().getLogger(); }
 
 Options& options() { return gOptions; }
-
-std::atomic<bool>& backgroundMode() { return gBackground; }
 
 // ---------------------------------------------------------------------------------------------
 // Virtual input state

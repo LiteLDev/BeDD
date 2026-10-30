@@ -1,25 +1,28 @@
 <#
 .SYNOPSIS
-  The manager window: one per logon session, it shows every headless game and closes them all
-  when it is closed.
+  The manager window: one per logon session, it shows every BeDD game and closes them all
+  when it is closed. It is the only place a BeDD game shows up.
 
 .DESCRIPTION
   Start-BeDDGame.ps1 (and the harness shim's Start-Game) start the manager with -Ensure when
-  it does not run yet, so the first test run of the session opens it and later runs reuse it. Every
-  game with BeDD in background mode links to it: the game window then stays off
-  screen, off the taskbar and out of Alt+Tab, and the manager shows a live picture of it instead.
-  Many agents starting and closing games no longer make windows pop up and vanish on the desktop.
+  it does not run yet, so the first test run of the session opens it and later runs reuse it (a game
+  that finds none starts it too). Every game with BeDD links to it: the game window always stays off
+  screen, off the taskbar and out of Alt+Tab, and the manager shows a live picture of it instead. A
+  game that cannot link closes. Many agents starting and closing games never make windows pop up and
+  vanish on the desktop.
 
   Closing the manager window closes every game it shows (it asks first). Each game is put into a
   kill-on-close job of the manager, so the games also go when the manager is killed. Right-click a
-  game for more: take it over with your own mouse and keyboard, hand it back, close it, open its
-  log. Double-click a game to show only that one.
+  game for more: close it, open its log or instance folder. Double-click a game to show only that
+  one.
 
   The manager runs outside the caller's process tree (started through WMI), so the agent or
   harness that happened to start it can finish without taking the other agents' games along.
   It needs PowerShell 7 (pwsh). The client switches below also work in Windows PowerShell.
 
-  Talks JSON lines on \\.\pipe\BeDD-Manager-<session id> (see CONTRIBUTING.md).
+  Talks JSON lines on \\.\pipe\BeDD-Manager-<session id> (see CONTRIBUTING.md). -PipeName, or
+  BEDD_MANAGER_PIPE in the environment of the scripts and games, names another manager window
+  instead, e.g. one of its own for a recording; games started with it set link to that one.
   Logs to %LOCALAPPDATA%\BeDD\manager.log.
 
 .EXAMPLE
@@ -38,15 +41,18 @@ param(
     [switch]$List,
     # Close the manager and every game it shows, without asking.
     [switch]$Shutdown,
-    # What the right-click menu does to one game: show (take it over with the real mouse and
-    # keyboard), hide (hand it back to the script), close.
+    # Close one game (what its right-click menu does).
     [int]$Game = 0,
-    [ValidateSet('show', 'hide', 'close')][string]$Action = 'show',
-    [int]$TimeoutSeconds = 30
+    [ValidateSet('close')][string]$Action = 'close',
+    [int]$TimeoutSeconds = 30,
+    # The manager's pipe: default BEDD_MANAGER_PIPE, else the session's manager.
+    [string]$PipeName
 )
 $ErrorActionPreference = 'Stop'
 
-$PipeName = "BeDD-Manager-$([Diagnostics.Process]::GetCurrentProcess().SessionId)"
+if (-not $PipeName) {
+    $PipeName = if ($env:BEDD_MANAGER_PIPE) { $env:BEDD_MANAGER_PIPE } else { "BeDD-Manager-$([Diagnostics.Process]::GetCurrentProcess().SessionId)" }
+}
 
 # One request, one reply (or $null when no manager answers).
 function Invoke-Manager([hashtable]$Request, [int]$TimeoutMs = 2000) {
@@ -86,8 +92,8 @@ function Start-Manager {
         try { $owned = $mutex.WaitOne($TimeoutSeconds * 1000) } catch [System.Threading.AbandonedMutexException] { $owned = $true }
         if (Test-Manager) { return $PipeName }
         $pwsh = Get-Pwsh
-        if (-not $pwsh) { Write-Warning '[BeDD] the manager window needs PowerShell 7 (pwsh); games run without it'; return $null }
-        $argLine = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+        if (-not $pwsh) { Write-Warning '[BeDD] the manager window needs PowerShell 7 (pwsh); no game can start without it'; return $null }
+        $argLine = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$PSCommandPath`" -PipeName `"$PipeName`""
         # Through WMI, so the manager is not part of this process tree or its job (an agent's shell
         # may close its job, and the manager would take every other agent's games with it), and
         # inside a headless console host, so no console window shows up.
@@ -110,7 +116,7 @@ function Start-Manager {
             if (Test-Manager) { return $PipeName }
             Start-Sleep -Milliseconds 250
         }
-        Write-Warning "[BeDD] the manager window did not start within $TimeoutSeconds s (see $env:LOCALAPPDATA\BeDD\manager.log); games run without it"
+        Write-Warning "[BeDD] the manager window did not start within $TimeoutSeconds s (see $env:LOCALAPPDATA\BeDD\manager.log); no game can start without it"
         return $null
     } finally {
         if ($owned) { $mutex.ReleaseMutex() }
@@ -129,13 +135,6 @@ if ($List) {
     return @($r.games)
 }
 if ($Game) {
-    if ($Action -eq 'show') {
-        # Let the game come to the front (this process may hold the foreground right now).
-        if (-not ('BeDD.Fg' -as [type])) {
-            Add-Type -Namespace BeDD -Name Fg -MemberDefinition '[DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int pid);'
-        }
-        [BeDD.Fg]::AllowSetForegroundWindow($Game) | Out-Null
-    }
     return Invoke-Manager @{ op = 'game'; pid = $Game; action = $Action } 15000
 }
 if ($Shutdown) {
@@ -235,7 +234,6 @@ static class Native {
     }
 
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
-    [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int pid);
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern int SetCurrentProcessExplicitAppUserModelID(string id);
 }
 
@@ -304,7 +302,7 @@ sealed class Game {
     public Link Link;
     public bool EverLinked;
     public IntPtr Hwnd;
-    public bool Background = true, Managed, TakenOver;
+    public bool Managed;
     public long Synthetic = -1;
     public DateTime Started = DateTime.Now, LastInput = DateTime.MinValue;
     public bool Closing;
@@ -326,13 +324,13 @@ public sealed class ManagerForm : Form {
     int focusPid;
 
     static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BeDD");
-    static readonly string SettingsFile = Path.Combine(DataDir, "manager.json");
+    static string SettingsFile = Path.Combine(DataDir, "manager.json");
     static readonly string LogFile = Path.Combine(DataDir, "manager.log");
     static readonly object logGate = new object();
 
     static readonly Color Back = Color.FromArgb(24, 24, 27), CaptionBack = Color.FromArgb(39, 39, 42), BodyBack = Color.Black;
     static readonly Color Text1 = Color.FromArgb(244, 244, 245), Text2 = Color.FromArgb(161, 161, 170);
-    static readonly Color Active = Color.FromArgb(74, 222, 128), Idle = Color.FromArgb(113, 113, 122), Warn = Color.FromArgb(251, 191, 36), Bad = Color.FromArgb(248, 113, 113);
+    static readonly Color Active = Color.FromArgb(74, 222, 128), Idle = Color.FromArgb(113, 113, 122), Bad = Color.FromArgb(248, 113, 113);
 
     public static void Log(string message) {
         try {
@@ -348,9 +346,12 @@ public sealed class ManagerForm : Form {
             Directory.CreateDirectory(DataDir);
             if (File.Exists(LogFile) && new FileInfo(LogFile).Length > (1 << 20)) File.Delete(LogFile);
         } catch { }
-        // One manager per logon session. A manager that is closing still holds this for a moment:
-        // wait for it rather than give up (the run that started us waits for the pipe).
-        using (Mutex single = new Mutex(false, @"Local\BeDD.Manager")) {
+        // One manager per logon session (and per other pipe name). A manager that is closing still
+        // holds this for a moment: wait for it rather than give up (the run that started us waits
+        // for the pipe).
+        bool session = pipeName == "BeDD-Manager-" + Process.GetCurrentProcess().SessionId;
+        if (!session) SettingsFile = Path.Combine(DataDir, "manager-" + pipeName + ".json");
+        using (Mutex single = new Mutex(false, session ? @"Local\BeDD.Manager" : @"Local\BeDD.Manager." + pipeName)) {
             bool owned;
             try { owned = single.WaitOne(30000); } catch (AbandonedMutexException) { owned = true; }
             if (!owned) { Log("another manager runs in this session; exiting"); return 1; }
@@ -506,8 +507,8 @@ public sealed class ManagerForm : Form {
             foreach (Game g in games) {
                 a.Add(new JsonObject {
                     ["pid"] = g.Pid, ["instance"] = g.Instance, ["label"] = g.Label, ["pipe"] = g.PipeName,
-                    ["hwnd"] = g.Hwnd.ToInt64(), ["linked"] = g.Link != null && g.Link.Alive, ["background"] = g.Background,
-                    ["managed"] = g.Managed, ["takenOver"] = g.TakenOver, ["job"] = g.Job != IntPtr.Zero, ["jobNote"] = g.JobNote, ["thumbnail"] = g.Thumb != IntPtr.Zero,
+                    ["hwnd"] = g.Hwnd.ToInt64(), ["linked"] = g.Link != null && g.Link.Alive,
+                    ["managed"] = g.Managed, ["job"] = g.Job != IntPtr.Zero, ["jobNote"] = g.JobNote, ["thumbnail"] = g.Thumb != IntPtr.Zero,
                 });
             }
         }
@@ -629,9 +630,7 @@ public sealed class ManagerForm : Form {
                     continue;
                 }
                 g.Hwnd = new IntPtr(Long(r["hwnd"], 0));
-                g.Background = Bool(r["background"], true);
                 g.Managed = Bool(r["managed"], false);
-                g.TakenOver = Bool(r["takenOver"], false);
                 long synthetic = Long(r["stats"] != null ? r["stats"]["synthetic"] : null, -1);
                 if (g.Synthetic >= 0 && synthetic != g.Synthetic) g.LastInput = DateTime.Now;
                 g.Synthetic = synthetic;
@@ -645,16 +644,8 @@ public sealed class ManagerForm : Form {
         lock (sync) g = games.FirstOrDefault(x => x.Pid == pid);
         if (g == null) return new JsonObject { ["ok"] = false, ["error"] = "no game with pid " + pid };
         if (action == "close") { CloseGame(g); return new JsonObject { ["ok"] = true }; }
-        if (action != "show" && action != "hide") return new JsonObject { ["ok"] = false, ["error"] = "unknown action '" + action + "'" };
-        Link link = g.Link;
-        if (link == null) return new JsonObject { ["ok"] = false, ["error"] = "the game is not linked" };
-        if (action == "show") Native.AllowSetForegroundWindow(pid);
-        JsonObject r = link.Call(new JsonObject { ["op"] = action }, 10000);
-        PollSoon();
-        return r ?? new JsonObject { ["ok"] = false, ["error"] = "no answer from the game" };
+        return new JsonObject { ["ok"] = false, ["error"] = "unknown action '" + action + "'" };
     }
-
-    void PollSoon() { Task.Run(() => { try { PollOnce(); } catch { } }); }
 
     // Ask the game to close (its window gets WM_CLOSE), kill it if it does not.
     void CloseGame(Game g) {
@@ -824,7 +815,6 @@ public sealed class ManagerForm : Form {
             if (!g.EverLinked) { text = g.Hwnd == IntPtr.Zero ? "starting" : "not linked (BeDD not loaded?)"; dot = Idle; return; }
             text = "link lost"; dot = Bad; return;
         }
-        if (g.TakenOver || !g.Background) { text = "yours: real mouse and keyboard"; dot = Warn; return; }
         if (g.Hwnd == IntPtr.Zero) { text = "starting"; dot = Idle; return; }
         if (g.LastInput != DateTime.MinValue && (DateTime.Now - g.LastInput).TotalSeconds < 5) { text = "input"; dot = Active; return; }
         text = "idle " + Ago(g.LastInput != DateTime.MinValue ? g.LastInput : g.Started);
@@ -850,7 +840,7 @@ public sealed class ManagerForm : Form {
                 TextRenderer.DrawText(gr, "Closing this window closes every game in it", small, new Rectangle(header.Width / 2, 0, header.Width / 2 - S(12), header.Height), Text2, TextFormatFlags.VerticalCenter | TextFormatFlags.Right | TextFormatFlags.EndEllipsis);
                 if (n == 0) {
                     Rectangle body = Rectangle.FromLTRB(0, header.Bottom, ClientSize.Width, ClientSize.Height);
-                    TextRenderer.DrawText(gr, "Games started with Start-BeDDGame.ps1 show up here.\nRight-click a game to take it over, double-click to enlarge.", Font, body, Text2,
+                    TextRenderer.DrawText(gr, "Games started with Start-BeDDGame.ps1 show up here.\nDouble-click a game to enlarge it, right-click it for more.", Font, body, Text2,
                         TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
                     return;
                 }
@@ -903,12 +893,6 @@ public sealed class ManagerForm : Form {
         ContextMenuStrip menu = new ContextMenuStrip();
         menu.Items.Add(focusPid == g.Pid ? "Show all games" : "Show only this game", null, (s, a) => { focusPid = focusPid == g.Pid ? 0 : g.Pid; Relayout(); });
         menu.Items.Add(new ToolStripSeparator());
-        bool linked = g.Link != null;
-        ToolStripItem take = menu.Items.Add("Take over with my mouse and keyboard", null, (s, a) => RunAction(g, "show"));
-        take.Enabled = linked && !g.TakenOver;
-        ToolStripItem back = menu.Items.Add("Hand back to the script", null, (s, a) => RunAction(g, "hide"));
-        back.Enabled = linked && (g.TakenOver || !g.Background);
-        menu.Items.Add(new ToolStripSeparator());
         ToolStripItem log = menu.Items.Add("Open latest.log", null, (s, a) => OpenPath(Path.Combine(Path.GetDirectoryName(g.ExePath) ?? "", "logs", "latest.log")));
         log.Enabled = g.ExePath.Length > 0;
         ToolStripItem folder = menu.Items.Add("Open instance folder", null, (s, a) => OpenPath(Path.GetDirectoryName(g.ExePath) ?? ""));
@@ -918,14 +902,6 @@ public sealed class ManagerForm : Form {
         menu.Items.Add("Close this game", null, (s, a) => CloseGame(g)).Enabled = !g.Closing;
         menu.Closed += (s, a) => BeginInvoke(new Action(menu.Dispose));
         menu.Show(this, e.Location);
-    }
-
-    void RunAction(Game g, string action) {
-        if (action == "show") Native.AllowSetForegroundWindow(g.Pid);
-        Task.Run(() => {
-            JsonObject r = GameAction(g.Pid, action);
-            if (!Bool(r["ok"], false)) Log("game " + g.Pid + " " + action + ": " + Str(r, "error"));
-        });
     }
 
     static void OpenPath(string path) {

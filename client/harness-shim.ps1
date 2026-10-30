@@ -29,26 +29,25 @@ if (-not (Get-Variable -Name WindowH -Scope Script -ErrorAction SilentlyContinue
 
 # --- deployment ---------------------------------------------------------------------------------
 
-# Copies the mod into <ModsDir>\BeDD with a config.json that turns background mode
-# on. Call it after the harness has deployed its own mod and moved other mods aside. -NoManager:
-# the game keeps a window of its own instead of showing up in the session's manager window.
-function Install-BeDDMod([Parameter(Mandatory)][string]$ModsDir, [switch]$Trace, [string]$PipeName = 'BeDD',
-        [ValidateSet('back', 'offscreen', 'none')][string]$Placement = 'back', [switch]$NoManager) {
+# Copies the mod into <ModsDir>\BeDD with its config.json. Call it after the harness has deployed
+# its own mod and moved other mods aside. The game then runs headless inside the session's manager
+# window (the mod starts the manager if none runs).
+function Install-BeDDMod([Parameter(Mandatory)][string]$ModsDir, [switch]$Trace, [string]$PipeName = 'BeDD') {
     $dest = Join-Path $ModsDir 'BeDD'
     if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
     New-Item -ItemType Directory -Force (Join-Path $dest 'config') | Out-Null
     foreach ($f in 'BeDD.dll', 'manifest.json') { Copy-Item (Join-Path $script:BeDDDir $f) $dest }
-    @{ background = $true; placement = $Placement; clientWidth = $script:WindowW; clientHeight = $script:WindowH; trace = [bool]$Trace; pipeName = $PipeName; manager = -not $NoManager } |
+    @{ clientWidth = $script:WindowW; clientHeight = $script:WindowH; trace = [bool]$Trace; pipeName = $PipeName
+        managerScript = Join-Path $script:BeDDDir 'BeDDManager.ps1' } |
         ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $dest 'config\config.json')
-    $script:BeDDNoManager = [bool]$NoManager
     # No console window flashing up as the game starts (LeviLamina's CrashLogger.exe).
     Set-BeDDCrashLogger $ModsDir
     Set-BeDDPipe $PipeName
     Write-Host "[e2e] headless input: deployed BeDD (the game will not take the mouse, keyboard or foreground)"
 }
 
-# Removes the mod again (retrying while the game still holds the DLL). A leftover would keep a
-# normally started game deaf to the real mouse and keyboard, so harnesses call this in `finally`.
+# Removes the mod again (retrying while the game still holds the DLL). A leftover would put a
+# normally started game into the manager window too, so harnesses call this in `finally`.
 function Uninstall-BeDDMod([Parameter(Mandatory)][string]$ModsDir) {
     Disconnect-BeDD
     $dest = Join-Path $ModsDir 'BeDD'
@@ -222,7 +221,7 @@ if (Get-Command Start-Game -CommandType Function -ErrorAction SilentlyContinue) 
     function Start-Game {
         Enter-SignalingLock -Exclusive:([bool]$script:ExclusiveSignaling)
         Set-RecentWorldsSinglePlayer
-        if (-not $script:BeDDNoManager -and $env:BEDD_MANAGER -ne '0') { & (Join-Path $script:BeDDDir 'BeDDManager.ps1') -Ensure | Out-Null }
+        if (-not (& (Join-Path $script:BeDDDir 'BeDDManager.ps1') -Ensure)) { throw '[e2e] the BeDD manager window did not start (it needs PowerShell 7, pwsh)' }
         $env:BEDD_RETURN_FOCUS = [string][int64][BeDD.Foreground]::Get()
         & $script:BeDDOriginalStartGame @args
     }
@@ -252,7 +251,7 @@ function Assert-GameForeground { Connect-BeDD -TimeoutSeconds 60 | Out-Null }
 
 function Set-GameWindowSize([int]$ClientW = $script:WindowW, [int]$ClientH = $script:WindowH) {
     Connect-BeDD | Out-Null
-    Set-BeDDWindow -ClientWidth $ClientW -ClientHeight $ClientH -Placement back | Out-Null
+    Set-BeDDWindow -ClientWidth $ClientW -ClientHeight $ClientH | Out-Null
     Start-Sleep -Milliseconds 800
 }
 

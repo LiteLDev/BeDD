@@ -7,14 +7,12 @@ change. Dot-source it right after the harness's own `lib.ps1`, at script level:
 
 ```powershell
 . "$PSScriptRoot/lib.ps1"
-if (-not $Foreground) {
-    . "$beddDir\harness-shim.ps1"
-    Register-BeDDNative ([MyE2E.Native])   # optional, see below
-}
+. "$beddDir\harness-shim.ps1"
+Register-BeDDNative ([MyE2E.Native])   # optional, see below
 # after deploying your mod and moving the other mods aside:
-if ($script:Headless) { Install-BeDDMod -ModsDir $script:ModsDir -PipeName 'BeDD-<instance>' }
+Install-BeDDMod -ModsDir $script:ModsDir -PipeName 'BeDD-<instance>'
 # ... and in finally, once the game is closed:
-if ($script:Headless) { Uninstall-BeDDMod -ModsDir $script:ModsDir }
+Uninstall-BeDDMod -ModsDir $script:ModsDir
 ```
 
 `$beddDir` is where Be.D.D. is unpacked; the harness can [fetch it itself](/guide/installation#let-the-harness-fetch-it).
@@ -23,17 +21,17 @@ if ($script:Headless) { Uninstall-BeDDMod -ModsDir $script:ModsDir }
 
 Start games with `Start-BeDDGame.ps1` rather than the launcher, and keep `BeDD` out of any "move other mods aside"
 step: it is installed fresh each run and removed afterwards (a leftover copy would make a normally started game
-ignore your mouse and keyboard).
+show up in the manager window too).
 
 ## What the shim adds
 
 | Function | |
 |---|---|
-| `Install-BeDDMod -ModsDir <dir> [-PipeName p] [-Placement back\|offscreen\|none] [-Trace] [-NoManager]` | copies the module into `<dir>\BeDD` with a `config.json` that turns background mode on (window size from `$script:WindowW`/`$script:WindowH`, default 1600×900), switches LeviLamina to its built-in crash logger and points the client at the pipe |
+| `Install-BeDDMod -ModsDir <dir> [-PipeName p] [-Trace]` | copies the module into `<dir>\BeDD` with its `config.json` (window size from `$script:WindowW`/`$script:WindowH`, default 1600×900; `managerScript` for starting the manager window), the game then runs headless inside the manager window, switches LeviLamina to its built-in crash logger and points the client at the pipe |
 | `Uninstall-BeDDMod -ModsDir <dir>` | removes the module again, retrying while the game still holds the DLL. Call it in `finally` |
 | `Set-WorldSinglePlayer <worldDir>` | makes a test world single-player (no multiplayer, LAN, Xbox Live or platform broadcast). Call it right after restoring a test world |
 | `Register-BeDDNative <type>` | redirects the input methods of the harness's own native class (below) |
-| `Start-Game` / `Stop-Game` | wrapped: the game holds the shared signaling lock (exclusive with `$script:ExclusiveSignaling = $true`) while it runs, the manager window is started unless it runs, and the foreground goes back to where you were if the game takes it while starting |
+| `Start-Game` / `Stop-Game` | wrapped: the game holds the shared signaling lock (exclusive with `$script:ExclusiveSignaling = $true`) while it runs, the manager window is started unless it runs (`Start-Game` throws if it does not start), and the foreground goes back to where you were if the game takes it while starting |
 
 ## A harness's own input class
 

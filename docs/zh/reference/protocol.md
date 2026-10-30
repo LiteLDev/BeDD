@@ -11,7 +11,7 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 
 | op | 字段 | |
 |---|---|---|
-| `ping` | | `protocol`、`pid`、`hwnd`、`background`、`client{w,h}`、`cursor{x,y}`、`realForeground`、`managed`、`takenOver` |
+| `ping` | | `protocol`、`pid`、`hwnd`、`client{w,h}`、`cursor{x,y}`、`realForeground`、`managed` |
 | `state` | | `ping` 的字段 + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal}`、`clients`（当前连接的控制管道客户端数）、`hooks{name: installed}`（各功能安装的每个游戏钩子；功能关闭时为 `false`） |
 | `key` | `key`（名字）或 `vk`；`action` press\|down\|up；`holdMs` | 名字：字母、数字、ESC、ENTER、BACK、TAB、SPACE、SHIFT、CTRL、ALT、LEFT/UP/RIGHT/DOWN、HOME、END、PGUP、PGDN、INSERT、DELETE、F1..F24、SLASH、GRAVE、MINUS、EQUALS |
 | `text` | `text`；`delayMs` | 每个 UTF-16 单元一个 `WM_CHAR` |
@@ -19,8 +19,7 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 | `raw` | `action` move\|down\|up\|click\|wheel；`dx`,`dy`（鼠标计数）；`steps`；`button`；`notches`；`holdMs` | 虚拟 GameInput 鼠标：鼠标被锁定时转视角 |
 | `release` | | 松开所有按住的键和按钮（不管是谁按的），并结束 `input` 移动覆盖 |
 | `focus` | | 重新发送"获得焦点"消息 |
-| `window` | `clientWidth`、`clientHeight`、`placement` back\|offscreen\|none | 从不激活窗口 |
-| `background` | `on` | 后台模式开/关 |
+| `window` | `clientWidth`、`clientHeight` | 从不激活窗口；窗口留在屏幕外 |
 | `flush` | | 等到所有已投递的输入都分发完 |
 
 ## 多个客户端
@@ -75,7 +74,7 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
   - `slot`：`ClientInputCallbacks::handleSlotSelectButtonPress`；它不改格子时（1.26.51 里键盘玩家就是这样）改用默认键位的快捷栏键 `1`..`9`。
     客户端自己发送 `mob_equipment`。回复 `slot` 和 `via` callback\|keys。
   - `action`：对应的 `ClientInputCallbacks::handle*ButtonPress`（背包用 `CraftingType::Inventory`）。
-  - `button`：虚拟 GameInput 鼠标上的左/中/右键（需要后台模式），由刻监听器在 `holdTicks` 后松开（click 默认 2），或者带
+  - `button`：虚拟 GameInput 鼠标上的左/中/右键，由刻监听器在 `holdTicks` 后松开（click 默认 2），或者带
     `releaseOn:"blockChange"` 时，在按下时客户端命中结果指向的方块改变、变成空气或不再被指向时松开（没有指向方块时为 `refused`）。
     `up` 立即生效。从不阻塞管道。回复 `held` 和 `block{x,y,z}`。
 - **`send`**：`buf` 是一个服务端方向数据包的 base64（varint 头 + 包体，与 bedrock-protocol 的序列化一致）。它在客户端线程上重建
@@ -130,11 +129,12 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 ## 管理管道
 
 `\\.\pipe\BeDD-Manager-<会话 id>`（仅当前用户），由 `BeDDManager.ps1` 提供，和控制管道一样是 JSON 行。
+`BEDD_MANAGER_PIPE` 可以改用另一个管理窗口的管道（脚本和游戏都读它）。
 
 - **客户端**（每个连接一个请求）：`ping`（`games`；关闭中时 `ok` 为 false）、`adopt` `{pid, instance, label}`（`Start-BeDDGame.ps1` 启动游戏后立即调用）、
-  `list`（`games[]`：`pid`、`instance`、`label`、`pipe`、`hwnd`、`linked`、`background`、`managed`、`takenOver`、`job`、`thumbnail`）、
-  `game` `{pid, action: show|hide|close}`、`shutdown`。
-- **游戏**（模块）：第一行是 `hello` `{protocol, pid, hwnd, pipe, instance, label, background}`（`label` 来自 `BEDD_LABEL`），回复
+  `list`（`games[]`：`pid`、`instance`、`label`、`pipe`、`hwnd`、`linked`、`managed`、`job`、`thumbnail`）、
+  `game` `{pid, action: close}`、`shutdown`。
+- **游戏**（模块）：第一行是 `hello` `{protocol, pid, hwnd, pipe, instance, label}`（`label` 来自 `BEDD_LABEL`），回复
   `{"ok":true}`（正在关闭的管理窗口会直接挂断；游戏只有被欢迎后才算已连接）。连接保持打开，管理窗口在上面发送请求：每个控制管道操作
-  （它每秒轮询一次 `state`），外加 `show`（接管：关闭后台模式，窗口正常显示在屏幕上并置于前面；管理窗口先调用 `AllowSetForegroundWindow`）、
-  `hide`（交还）和 `close`（向游戏窗口发 `WM_CLOSE`）。
+  （它每秒轮询一次 `state`），外加 `close`（向游戏窗口发 `WM_CLOSE`）。没有管理窗口的游戏会启动一个（配置 `managerScript`）；
+  90 秒内没有管理窗口连上、或者彻底失去连接的游戏会自行关闭。

@@ -20,7 +20,8 @@ The mod packer reads the version from `git describe`, so the repository needs at
 
 `tools\dev.ps1 [-Trace]` is a playground: it takes the shared e2e lock
 (`%APPDATA%\levilauncher.exe\bei-e2e.lock`), deploys the mod into the instance BeDD finds (set up
-first on a new PC, see [Setting up a new PC](/guide/new-pc)), launches it through LeviLauncher and logs every
+first on a new PC, see [Setting up a new PC](/guide/new-pc)), starts the manager window unless it runs,
+launches the game through LeviLauncher (it shows up in the manager window) and logs every
 foreground and cursor-clip change to `tools\out\desktop-watch.log` until the game exits or
 `tools\out\dev.stop` exists (`tools\out\dev.restart` redeploys and relaunches without giving up the
 lock). It always closes the game, removes the mod and releases the lock.
@@ -33,9 +34,10 @@ gallery and the README pictures.
 `tools/showcase/record.ps1 [-KeepOpen]` reproduces the desktop video: under the shared e2e lock
 (plus the `hi<N>-e2e.lock` of each clone) it prepares three clone instances (`-hi2`..`-hi4`, other
 mods moved aside), restores the `tools/showcase/fixtures/Showcase.zip` world, starts the games in
-the background, enters the world, lays the windows out in a 2x2 grid over a backdrop (`stage.ps1`)
-with Windows Terminal running `demo.ps1` in the fourth cell, and records that region of the real
-screen with ffmpeg's Desktop Duplication grabber to `tools/showcase/out/take-<n>.mkv`. With
+a manager window of its own (`BEDD_MANAGER_PIPE`, so other runs' games stay out of the take),
+enters the world, moves that manager window onto the left two thirds of a region over a backdrop
+(`stage.ps1`) with Windows Terminal running `demo.ps1` on the right third, and records that region
+of the real screen with ffmpeg's Desktop Duplication grabber to `tools/showcase/out/take-<n>.mkv`. With
 `-KeepOpen`, creating `tools/showcase/out/take` starts another take and `tools/showcase/out/stop`
 ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and poster files.
 
@@ -45,11 +47,11 @@ ends the session. `tools/showcase/encode.ps1` cuts a take into the MP4, WebP and
 |---|---|
 | `src/BeDD.h` | shared state and declarations of the parts below |
 | `src/Mod.cpp` | entry point, config, virtual key/cursor state |
-| `src/Window.cpp` | window discovery, subclassing, synthetic event dispatch, focus shield, placement |
+| `src/Window.cpp` | window discovery, subclassing, synthetic event dispatch, focus shield, window kept off screen |
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
-| `src/Audio.cpp` | FMOD hooks: the game's master channel group is muted in background mode (`mute`) |
-| `src/NetHooks.cpp` | loopback-only network in background mode (`loopbackOnly`: no firewall prompt, no queries to servers off the PC) |
+| `src/Audio.cpp` | FMOD hooks: the game's master channel group is muted (`mute`) |
+| `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`: no firewall prompt, no queries to servers off the PC) |
 | `src/Pipe.cpp` | control pipe and protocol |
 | `src/Manager.cpp` | link to the session's manager window |
 | `src/Trace.cpp` | trace-mode input logging |

@@ -10,11 +10,13 @@
   the games without activating them, enters the world in each and stages the scene through chat
   commands.
 
-  A take then shows a backdrop over a 1920x1080 (physical pixels) region in the middle of the
-  primary screen, moves the three game windows into a 2x2 grid on it, opens Windows Terminal in the
-  fourth cell running demo.ps1 (the script viewers read), records the region with ffmpeg
-  (Desktop Duplication, i.e. what is really on the screen) and puts everything back. The windows
-  are topmost only while a take runs.
+  The games run as every BeDD game does: headless, shown only in a manager window. The recording
+  has a manager window of its own (BEDD_MANAGER_PIPE), so other runs' games stay out of the take. A
+  take shows a backdrop over a 1920x1080 (physical pixels) region in the middle of the primary
+  screen, moves that manager window onto its left two thirds and opens Windows Terminal in the right
+  third running demo.ps1 (the script viewers read), records the region with ffmpeg (Desktop
+  Duplication, i.e. what is really on the screen) and puts the manager back. The two windows are
+  topmost only while a take runs.
 
   -KeepOpen keeps the games running after the first take: create tools\showcase\out\take for
   another take (demo.ps1 is re-read), tools\showcase\out\stop to end. Cleanup always closes the
@@ -41,7 +43,7 @@ $Out       = Join-Path $PSScriptRoot 'out'
 $WorldZip  = Join-Path $PSScriptRoot 'fixtures\Showcase.zip'
 $WorldName = 'LHI-Showcase'
 $Aside     = 'mods.lhi-showcase-aside'
-# Game client size in the grid (16:9) and the recorded region (physical pixels).
+# Game client size (16:9, as the manager window shows it) and the recorded region (physical pixels).
 $ClientW = 848; $ClientH = 477
 $RegionW = 1920; $RegionH = 1080
 
@@ -123,7 +125,7 @@ $Games = @(for ($i = 0; $i -lt $Slots.Count; $i++) {
         Dir = Join-Path $VersionsDir $ver
         Pipe = "BeDD-$ver"
         Lock = Join-Path $Data "hi$($Slots[$i])-e2e.lock"
-        Options = $null; Hwnd = [IntPtr]::Zero
+        Options = $null
     }
 })
 
@@ -189,8 +191,7 @@ function Initialize-Instance($g) {
         Move-Item $d.FullName (Join-Path $aside $d.Name)
     }
     $script:WindowW = 1600; $script:WindowH = 900
-    # Recorded on the real screen: the games keep their own windows (no manager window).
-    Install-BeDDMod -ModsDir (Join-Path $g.Dir 'mods') -PipeName $g.Pipe -Placement offscreen -NoManager
+    Install-BeDDMod -ModsDir (Join-Path $g.Dir 'mods') -PipeName $g.Pipe
 
     $worlds = Get-WorldsDir $g
     if (-not $worlds) { throw "No worlds folder in $($g.Dir) (start the instance once)" }
@@ -287,10 +288,22 @@ function Set-Scene($g) {
     Disconnect-BeDD   # the pipe serves one client at a time: leave it to demo.ps1
 }
 
+# The recording's own manager window (BeDDManager.ps1 -PipeName $ManagerPipe, in pwsh).
+$ManagerPipe = "BeDD-Manager-showcase-$PID"
+function Get-ManagerWindow {
+    $p = Get-CimInstance Win32_Process -Filter "Name = 'pwsh.exe'" | Where-Object {
+        $_.CommandLine -match 'BeDDManager\.ps1' -and $_.CommandLine -like "*$ManagerPipe*" -and $_.CommandLine -notmatch ' -(Ensure|List|Adopt|Game|Shutdown)' }
+    foreach ($m in $p) {
+        $h = (Get-Process -Id $m.ProcessId -ErrorAction SilentlyContinue).MainWindowHandle
+        if ($h -and $h -ne [IntPtr]::Zero) { return $h }
+    }
+    throw 'the BeDD manager window was not found'
+}
+
 function Show-Take([int]$Take) {
     $x0 = [int](([LhiShow.Win]::GetSystemMetrics(0) - $RegionW) / 2)
     $y0 = [int](([LhiShow.Win]::GetSystemMetrics(1) - $RegionH) / 2)
-    $cellW = $RegionW / 2; $cellH = $RegionH / 2
+    $managerW = [int]($RegionW * 2 / 3)
 
     if (Test-Path $sceneFile) { . $sceneFile }
     Write-Show "take ${Take}: staging the scene"
@@ -301,21 +314,14 @@ function Show-Take([int]$Take) {
     $stage = Start-Process pwsh -PassThru -WindowStyle Hidden -ArgumentList @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'stage.ps1'),
         '-X', $x0, '-Y', $y0, '-W', $RegionW, '-H', $RegionH)
     $wt = $null
+    $mh = Get-ManagerWindow
+    $saved = New-Object LhiShow.Win+RECT; [LhiShow.Win]::GetWindowRect($mh, [ref]$saved) | Out-Null
     try {
         Start-Sleep -Seconds 2
-        foreach ($g in $Games) {
-            Use-Game $g
-            $h = [IntPtr][int64](Invoke-BeDD @{ op = 'ping' }).hwnd
-            $g.Hwnd = $h
-            [LhiShow.Win]::SetWindowText($h, "Minecraft - game $($g.N)") | Out-Null
-            $col = ($g.N - 1) % 2; $row = [math]::Floor(($g.N - 1) / 2)
-            $f = [LhiShow.Win]::Frame($h); $wr = New-Object LhiShow.Win+RECT; [LhiShow.Win]::GetWindowRect($h, [ref]$wr) | Out-Null
-            $fw = $f.Right - $f.Left; $fh = $f.Bottom - $f.Top
-            $x = $x0 + $col * $cellW + [int](($cellW - $fw) / 2) - ($f.Left - $wr.Left)
-            $y = $y0 + $row * $cellH + [int](($cellH - $fh) / 2) - ($f.Top - $wr.Top)
-            [LhiShow.Win]::SetWindowPos($h, $HWND_TOPMOST, $x, $y, 0, 0, $SWP_NOSIZE -bor $SWP_NOACTIVATE) | Out-Null
-        }
-        Disconnect-BeDD
+        # Its visible frame on the left two thirds of the region.
+        $f = [LhiShow.Win]::Frame($mh)
+        $padL = $f.Left - $saved.Left; $padT = $f.Top - $saved.Top; $padR = $saved.Right - $f.Right; $padB = $saved.Bottom - $f.Bottom
+        [LhiShow.Win]::SetWindowPos($mh, $HWND_TOPMOST, $x0 - $padL, $y0 - $padT, $managerW + $padL + $padR, $RegionH + $padT + $padB, $SWP_NOACTIVATE) | Out-Null
 
         # The terminal: the window the "user" works in; it takes the focus like any app you open.
         Remove-Item (Join-Path $Out 'go') -ErrorAction SilentlyContinue
@@ -329,10 +335,9 @@ function Show-Take([int]$Take) {
         Start-Sleep -Seconds 1
         $f = [LhiShow.Win]::Frame($th); $wr = New-Object LhiShow.Win+RECT; [LhiShow.Win]::GetWindowRect($th, [ref]$wr) | Out-Null
         $padL = $f.Left - $wr.Left; $padT = $f.Top - $wr.Top; $padR = $wr.Right - $f.Right; $padB = $wr.Bottom - $f.Bottom
-        # Same visible frame as the game windows, centred in the last cell.
-        $gf = [LhiShow.Win]::Frame($Games[0].Hwnd); $fw = $gf.Right - $gf.Left; $fh = $gf.Bottom - $gf.Top
-        [LhiShow.Win]::SetWindowPos($th, $HWND_TOPMOST, $x0 + $cellW + [int](($cellW - $fw) / 2) - $padL, $y0 + $cellH + [int](($cellH - $fh) / 2) - $padT,
-            $fw + $padL + $padR, $fh + $padT + $padB, 0) | Out-Null
+        # The right third of the region.
+        [LhiShow.Win]::SetWindowPos($th, $HWND_TOPMOST, $x0 + $managerW - $padL, $y0 - $padT,
+            $RegionW - $managerW + $padL + $padR, $RegionH + $padT + $padB, 0) | Out-Null
         Start-Sleep -Seconds 2
 
         $file = Join-Path $Out "take-$Take.mkv"
@@ -344,11 +349,7 @@ function Show-Take([int]$Take) {
         Write-Show "take ${Take}: recording $TakeSeconds s -> $file"
         if (-not $ff.WaitForExit(($TakeSeconds + 30) * 1000)) { $ff.Kill(); throw "ffmpeg did not finish the take" }
     } finally {
-        foreach ($g in $Games) {
-            if ($g.Hwnd -ne [IntPtr]::Zero) {
-                [LhiShow.Win]::SetWindowPos($g.Hwnd, $HWND_NOTOPMOST, -4000, 100, 0, 0, $SWP_NOSIZE -bor $SWP_NOACTIVATE) | Out-Null
-            }
-        }
+        [LhiShow.Win]::SetWindowPos($mh, $HWND_NOTOPMOST, $saved.Left, $saved.Top, $saved.Right - $saved.Left, $saved.Bottom - $saved.Top, $SWP_NOACTIVATE) | Out-Null
         if ($stage -and -not $stage.HasExited) { $stage.Kill() }
         $th = [LhiShow.Win]::FindByTitle('e2e - my-client-mod')
         if ($th -ne [IntPtr]::Zero) { [LhiShow.Win]::SetWindowPos($th, $HWND_NOTOPMOST, 0, 0, 0, 0, $SWP_NOSIZE -bor $SWP_NOMOVE -bor $SWP_NOACTIVATE) | Out-Null }
@@ -381,9 +382,12 @@ try {
     Write-Show 'locks acquired'
     foreach ($g in $Games) { Initialize-Instance $g }
     Enter-SignalingLock
+    # Inherited by the scripts below and the games they start: they all use the recording's manager.
+    $env:BEDD_MANAGER_PIPE = $ManagerPipe
+    if (-not (& (Join-Path $Bin 'BeDDManager.ps1') -Ensure)) { throw 'the manager window did not start' }
 
     foreach ($g in $Games) {
-        & (Join-Path $Bin 'Start-BeDDGame.ps1') -Instance $g.Version -NoManager | Out-Null
+        & (Join-Path $Bin 'Start-BeDDGame.ps1') -Instance $g.Version -Label "game $($g.N)" | Out-Null
         Write-Show "started $($g.Version)"
         Start-Sleep -Seconds 3
     }
@@ -404,7 +408,7 @@ try {
     foreach ($g in $Games) {
         Use-Game $g
         Invoke-Chat $g '/gamerule sendcommandfeedback false'
-        Set-BeDDWindow -ClientWidth $ClientW -ClientHeight $ClientH -Placement none | Out-Null
+        Set-BeDDWindow -ClientWidth $ClientW -ClientHeight $ClientH | Out-Null
         Save-Shot $g 'in-world'
     }
     Disconnect-BeDD
@@ -423,6 +427,7 @@ try {
 } finally {
     Disconnect-BeDD
     foreach ($g in $Games) { Reset-Instance $g }
+    if ($env:BEDD_MANAGER_PIPE -eq $ManagerPipe) { & (Join-Path $Bin 'BeDDManager.ps1') -Shutdown | Out-Null; $env:BEDD_MANAGER_PIPE = $null }
     Exit-SignalingLock
     foreach ($s in $locks) { $s.Dispose() }
     Remove-Item (Join-Path $Out 'stop'), (Join-Path $Out 'go') -ErrorAction SilentlyContinue

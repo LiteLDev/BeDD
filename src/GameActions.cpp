@@ -245,7 +245,7 @@ void onTick() {
     for (size_t b = 0; b < kButtons.size(); ++b) {
         Held& h = gHeld[b];
         if (!h.down) continue;
-        if (!vstate::keyDown(kButtons[b].vk)) { // released by the `release` op or background off
+        if (!vstate::keyDown(kButtons[b].vk)) { // released by the `release` op
             h = {};
             continue;
         }
@@ -347,9 +347,6 @@ nlohmann::json gameActionOp(std::string const& op, nlohmann::json const& req) {
             releaseHeld(buttonIndex(b.get<std::string>()));
             return {{"ok", true}, {"button", b}, {"held", heldNames()}};
         }
-        // The game reads the virtual mouse only in background mode (GameInputHooks.cpp).
-        if (!backgroundMode().load())
-            return fail("disabled", "button drives the virtual GameInput mouse, which needs background mode (\"background\": true)");
         json full      = req;
         full["action"] = action;
         return run(op, full);

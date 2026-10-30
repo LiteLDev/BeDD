@@ -22,9 +22,8 @@ that set up, clone and start the games. **Documentation: <https://docs.levimc.or
 <p align="center"><img src="docs/public/showcase/desktop.webp" alt="Three Minecraft windows react to a test script while the terminal in front keeps the focus" width="100%"></p>
 
 > [!WARNING]
-> This is a **testing tool**. While background mode is on, the game ignores your real mouse and
-> keyboard. Do not leave it in a game you play (**Ctrl+Shift+F12** in the game window turns
-> background mode off).
+> This is a **testing tool**. A game with Be.D.D. in its `mods\` folder ignores your real mouse
+> and keyboard and shows up only in the manager window. Do not leave it in a game you play.
 
 ## Features
 
@@ -37,7 +36,7 @@ that set up, clone and start the games. **Documentation: <https://docs.levimc.or
 - **Plays like a player.** Keys, chat, key bindings, menus, hover tooltips, clicks and the camera
   all work as with a real mouse and keyboard.
 - **Deterministic.** Every call returns once the game has handled the input, so no guessing sleeps.
-- **Screenshots of covered windows.** The game can sit behind your other windows.
+- **Screenshots of covered windows.** The manager window can sit behind your other windows.
 - **Drop-in for existing harnesses.** One file replaces the usual `Click`, `Press-Key`, `Focus-Game`
   helpers of LeviLauncher harnesses; scenarios stay as they are.
 
@@ -114,7 +113,6 @@ Save-BeDDScreenshot C:\temp\shot.png       # works while the window is covered
 | `Clear-BeDDInput` | release every key and button still held |
 | `Save-BeDDScreenshot path.png` / `Get-BeDDBitmap` | the game's picture, even when covered |
 | `Set-BeDDWindow 1600 900` | resize the game window without bringing it forward |
-| `Set-BeDDBackground $false` | hand the game back to your real mouse and keyboard |
 | `Get-BeDDState` | is the game up, how much input arrived, did it ever get the foreground |
 | `Get-BeDDWorld` | in a world? which screen, mouse grabbed, menu open, the player's position and rotation (`gameHooks`) |
 | `Set-BeDDLook 90 -30` | turn the player to a yaw and pitch in degrees (`gameHooks`) |
@@ -154,22 +152,23 @@ tripping over each other:
 ### The manager window
 
 The first `Start-BeDDGame.ps1` of your logon session opens the **manager window**, and every
-later run (from any terminal, harness or agent) reuses it. Each headless game then shows up there as
-a live picture instead of as a window of its own: no taskbar buttons, nothing in Alt+Tab, no windows
-popping up and vanishing while several runs start and close games. It never takes the focus.
+later run (from any terminal, harness or agent) reuses it. Every game shows up there as a live
+picture, and nowhere else: its own window stays off screen, with no taskbar button and nothing in
+Alt+Tab, so no windows pop up and vanish while several runs start and close games. It never takes
+the focus.
 
 - Each game is labelled with the project (and worktree) of the script that started it, its
   instance and pid, and whether input is arriving. `-Label` on `Start-BeDDGame.ps1` names it.
 - **Closing the manager window closes every game in it** (it asks first). The games also go if the
   manager is killed, so nothing is left running in the background.
-- Double-click a game to show only that one. Right-click it to take it over with your own mouse and
-  keyboard (and hand it back to the script), open its `latest.log` or instance folder, or close it.
-- From a script: `BeDDManager.ps1 -List` lists the games, `-Game <pid> -Action show|hide|close`
-  does what the right-click menu does, `-Shutdown` closes the manager and every game without asking.
+- Double-click a game to show only that one. Right-click it to open its `latest.log` or instance
+  folder, or to close it.
+- From a script: `BeDDManager.ps1 -List` lists the games, `-Game <pid> -Action close` closes one,
+  `-Shutdown` closes the manager and every game without asking.
 
-It needs PowerShell 7 (`pwsh`). `Start-BeDDGame.ps1 -NoManager` (or `BEDD_MANAGER=0`)
-starts a game without starting the manager, and `Install-BeDDMod -NoManager` (config
-`"manager": false`) keeps a game out of a running one, for example to record the real screen.
+It needs PowerShell 7 (`pwsh`). A game never runs without it: a game that finds no manager window
+starts one (`managerScript` in its config), and a game that no manager links within 90 s, or that
+loses its manager for good, closes itself (the reason is in its `latest.log`).
 
 ### Plug it into a harness
 
@@ -179,19 +178,17 @@ starts a game without starting the manager, and `Install-BeDDMod -NoManager` (co
 
 ```powershell
 . "$PSScriptRoot/lib.ps1"
-if (-not $Foreground) {
-    . "$beddDir\harness-shim.ps1"
-    Register-BeDDNative ([MyE2E.Native])   # optional, see below
-}
+. "$beddDir\harness-shim.ps1"
+Register-BeDDNative ([MyE2E.Native])   # optional, see below
 # after deploying your mod and moving the other mods aside:
-if ($script:Headless) { Install-BeDDMod -ModsDir $script:ModsDir -PipeName 'BeDD-<instance>' }
+Install-BeDDMod -ModsDir $script:ModsDir -PipeName 'BeDD-<instance>'
 # ... and in finally, once the game is closed:
-if ($script:Headless) { Uninstall-BeDDMod -ModsDir $script:ModsDir }
+Uninstall-BeDDMod -ModsDir $script:ModsDir
 ```
 
 Start games with `Start-BeDDGame.ps1` rather than the launcher, and keep `BeDD`
 out of any "move other mods aside" step: it is installed fresh each run and removed afterwards (a
-leftover copy would make a normally started game ignore your mouse and keyboard).
+leftover copy would put a normally started game into the manager window too).
 
 If your scenarios call the harness's own input class directly (`[MyE2E.Native]::Key(0x10, $false)`
 and friends), give it these fields and a one-line guard at the top of each method;
@@ -213,25 +210,24 @@ complete harnesses to copy from.
 ## Settings
 
 `mods\BeDD\config\config.json`, usually written by the harness
-(`Install-BeDDMod` does it). Without it the mod stays passive: background mode off, the
-pipe still answers. `Install-BeDDMod` and `Start-BeDDGame.ps1` also switch the
-instance's LeviLamina to its built-in crash logger (`modules.crashLogger.builtin` in
-`mods\LeviLamina\config\Config.json`): the default `CrashLogger.exe` is a console program, and its
-console window would flash on the desktop at every game start.
+(`Install-BeDDMod` does it). Without it the game still runs headless, with the defaults and no
+`managerScript` (so only in a manager window that already runs). `Install-BeDDMod` and
+`Start-BeDDGame.ps1` also switch the instance's LeviLamina to its built-in crash logger
+(`modules.crashLogger.builtin` in `mods\LeviLamina\config\Config.json`): the default
+`CrashLogger.exe` is a console program, and its console window would flash on the desktop at every
+game start.
 
 ```json
-{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "BeDD" }
+{ "clientWidth": 1600, "clientHeight": 900, "pipeName": "BeDD", "managerScript": "C:\\BeDD\\BeDDManager.ps1" }
 ```
 
 | Key | |
 |---|---|
-| `background` | keep the game in the background and away from your real mouse and keyboard |
-| `placement` | `back` (behind your windows), `offscreen` or `none` |
 | `clientWidth`, `clientHeight` | game window size (0 = leave it), so clicks land in the same place every run |
 | `pipeName` | one per game instance when several run at once |
 | `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new instance, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). Dedicated servers your harness starts still ask once per server folder; **Cancel** is fine |
-| `manager` | default `true`: in background mode the game shows up in the manager window when one runs, and its own window stays off screen and off the taskbar |
-| `mute` | default `true`: in background mode the game makes no sound (it is audible again while you take it over) |
+| `managerScript` | path of `BeDDManager.ps1` (`Install-BeDDMod` writes it): the game starts the manager window with it when none runs |
+| `mute` | default `true`: the game makes no sound |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
 | `pipeInstances` | default `4`: scripts that may use the game's pipe at once (each one's held keys, buttons and `input` override are released when it disconnects); `1` = one at a time |
 | `gameHooks` | default `false`: hook the game's own systems for the ops bedboo uses: `world` and `look` (`Get-BeDDWorld`, `Set-BeDDLook`), `input` (`Set-BeDDInput`: walk, jump, sneak and sprint whatever the key bindings), `slot`, `action` and `button` (`Set-BeDDSlot`, `Invoke-BeDDAction`, `Set-BeDDButton`: hotbar, drop/inventory/perspective/pause, attack/use/pick held for game ticks or until the targeted block breaks); see CONTRIBUTING.md |

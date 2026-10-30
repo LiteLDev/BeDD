@@ -18,8 +18,8 @@ Be.D.D. 是一套测试工具，不是给玩家装的模组：测试框架在每
 <p align="center"><img src="docs/public/showcase/desktop.webp" alt="三个 Minecraft 窗口跟着测试脚本动，前面的终端一直保持焦点" width="100%"></p>
 
 > [!WARNING]
-> 这是**测试工具**。后台模式开着时，游戏不理会你真实的鼠标和键盘。别把它留在平时玩的游戏里
-> （在游戏窗口按 **Ctrl+Shift+F12** 可以关掉后台模式）。
+> 这是**测试工具**。`mods\` 目录里有 Be.D.D. 的游戏不理会你真实的鼠标和键盘，而且只显示在管理窗口里。
+> 别把它留在平时玩的游戏里。
 
 ## 功能
 
@@ -28,7 +28,7 @@ Be.D.D. 是一套测试工具，不是给玩家装的模组：测试框架在每
 - **一个窗口看全部。** 电脑上所有测试的游戏都实时显示在同一个管理窗口里，不会在桌面上弹来弹去；关掉它就关掉全部游戏。
 - **跟真人玩一样。** 按键、聊天、键位绑定、菜单、悬停提示、点击、转视角都和真鼠标键盘一样生效。
 - **结果确定。** 每个调用都等游戏处理完输入才返回，不用靠猜的 `sleep`。
-- **窗口被挡住也能截图。** 游戏可以躲在你其他窗口后面。
+- **窗口被挡住也能截图。** 管理窗口可以躲在你其他窗口后面。
 - **直接接进现有测试框架。** 一个文件替换掉 LeviLauncher 测试框架里常见的 `Click`、`Press-Key`、`Focus-Game` 等函数，测试场景一行不用改。
 
 <p align="center"><img src="docs/public/showcase/how-it-feels.svg" alt="你的输入只到你自己的应用；脚本通过各自的管道驱动三个后台游戏" width="100%"></p>
@@ -97,7 +97,6 @@ Save-BeDDScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 | `Clear-BeDDInput` | 松开所有还按着的键和鼠标按钮 |
 | `Save-BeDDScreenshot path.png` / `Get-BeDDBitmap` | 游戏画面，被挡住也照样截 |
 | `Set-BeDDWindow 1600 900` | 调整游戏窗口大小，不会把它提到前面 |
-| `Set-BeDDBackground $false` | 把游戏交还给你的真鼠标和键盘 |
 | `Get-BeDDState` | 游戏是否在线、收到了多少输入、是否抢过前台 |
 | `Get-BeDDWorld` | 是否在世界中、当前界面、鼠标是否锁定、是否打开菜单、玩家位置与朝向（`gameHooks`） |
 | `Set-BeDDLook 90 -30` | 把玩家转到指定的偏航角和俯仰角（度，`gameHooks`） |
@@ -132,17 +131,17 @@ Connect-BeDD -PipeName BeDD-1.26.51.01-hi2   # 该实例配置里的 pipeName
 ### 管理窗口
 
 本次登录后第一次运行 `Start-BeDDGame.ps1` 时会打开**管理窗口**，之后的运行（不管来自哪个终端、测试框架或 agent）都复用它。
-每个后台游戏都以实时画面显示在里面，不再有自己的窗口：任务栏上没有按钮，Alt+Tab 里也没有，多个测试同时启动、关闭游戏时
-桌面上不会有窗口弹出又消失。它也从不抢焦点。
+每个游戏都以实时画面显示在里面，也只显示在里面：游戏自己的窗口留在屏幕外，任务栏上没有按钮，Alt+Tab 里也没有，
+多个测试同时启动、关闭游戏时桌面上不会有窗口弹出又消失。它也从不抢焦点。
 
 - 每个游戏标注启动它的脚本所在的项目（和 worktree）、实例名、pid，以及是否正在收到输入。`Start-BeDDGame.ps1 -Label` 可以自己起名。
 - **关掉管理窗口会关掉里面所有的游戏**（会先确认）。管理窗口被强制结束时游戏也会一起退出，不会在后台留下游戏。
-- 双击某个游戏只看它一个。右键可以用自己的鼠标键盘接管它（以及交还给脚本）、打开它的 `latest.log` 或实例目录、或者关掉它。
-- 脚本里：`BeDDManager.ps1 -List` 列出游戏，`-Game <pid> -Action show|hide|close` 做右键菜单的事，
+- 双击某个游戏只看它一个。右键可以打开它的 `latest.log` 或实例目录，或者关掉它。
+- 脚本里：`BeDDManager.ps1 -List` 列出游戏，`-Game <pid> -Action close` 关掉一个游戏，
   `-Shutdown` 不经确认关掉管理窗口和所有游戏。
 
-需要 PowerShell 7（`pwsh`）。`Start-BeDDGame.ps1 -NoManager`（或 `BEDD_MANAGER=0`）启动游戏时不启动管理窗口；
-`Install-BeDDMod -NoManager`（配置 `"manager": false`）让游戏不进已经开着的管理窗口，比如要录制真实屏幕的时候。
+需要 PowerShell 7（`pwsh`）。游戏从不脱离管理窗口运行：找不到管理窗口的游戏会自己启动一个（配置里的 `managerScript`）；
+90 秒内没有管理窗口连上、或者彻底失去管理窗口的游戏会自行关闭（原因写在它的 `latest.log` 里）。
 
 ### 接入测试框架
 
@@ -152,18 +151,16 @@ Connect-BeDD -PipeName BeDD-1.26.51.01-hi2   # 该实例配置里的 pipeName
 
 ```powershell
 . "$PSScriptRoot/lib.ps1"
-if (-not $Foreground) {
-    . "$beddDir\harness-shim.ps1"
-    Register-BeDDNative ([MyE2E.Native])   # 可选，见下文
-}
+. "$beddDir\harness-shim.ps1"
+Register-BeDDNative ([MyE2E.Native])   # 可选，见下文
 # 部署完你的模组、把其他模组挪开之后：
-if ($script:Headless) { Install-BeDDMod -ModsDir $script:ModsDir -PipeName 'BeDD-<实例名>' }
+Install-BeDDMod -ModsDir $script:ModsDir -PipeName 'BeDD-<实例名>'
 # ……在 finally 里、游戏关掉之后：
-if ($script:Headless) { Uninstall-BeDDMod -ModsDir $script:ModsDir }
+Uninstall-BeDDMod -ModsDir $script:ModsDir
 ```
 
 游戏用 `Start-BeDDGame.ps1` 启动，不要走启动器；"把其他模组挪开"那一步要跳过 `BeDD`：它每次运行都重新装、
-结束就删（留下一份的话，正常启动的游戏会不理你的鼠标键盘）。
+结束就删（留下一份的话，正常启动的游戏也会进管理窗口）。
 
 如果测试场景直接调用框架自己的输入类（比如 `[MyE2E.Native]::Key(0x10, $false)`），给这个类加上下面几个字段，
 并在每个方法开头加一行判断，`Register-BeDDNative` 会把它们填好：
@@ -183,23 +180,21 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 ## 设置
 
 `mods\BeDD\config\config.json`，一般由测试框架写入（`Install-BeDDMod` 会写）。
-没有这个文件时模组是被动的：后台模式关闭，管道照样能用。`Install-BeDDMod` 和 `Start-BeDDGame.ps1`
+没有这个文件时游戏照样无头运行，只是用默认值、没有 `managerScript`（所以只能进已经开着的管理窗口）。`Install-BeDDMod` 和 `Start-BeDDGame.ps1`
 还会把实例的 LeviLamina 切到内置崩溃记录器（`mods\LeviLamina\config\Config.json` 里的
 `modules.crashLogger.builtin`）：默认的 `CrashLogger.exe` 是控制台程序，每次启动游戏都会在桌面上闪一下黑窗口。
 
 ```json
-{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "BeDD" }
+{ "clientWidth": 1600, "clientHeight": 900, "pipeName": "BeDD", "managerScript": "C:\\BeDD\\BeDDManager.ps1" }
 ```
 
 | 键 | |
 |---|---|
-| `background` | 让游戏待在后台，不受你真鼠标键盘的影响 |
-| `placement` | `back`（放到你的窗口后面）、`offscreen`（移出屏幕）或 `none` |
 | `clientWidth`、`clientHeight` | 游戏窗口大小（0 表示不改），每次运行点击位置都一样 |
 | `pipeName` | 多开时每个实例一个 |
 | `loopbackOnly` | 默认 `true`：游戏只在本机通信，新实例不会弹 Windows 防火墙提示，也不会去查询本机以外的游戏服务器（否则它们可能以"局域网世界"出现在测试存档前面）。测试框架自己启动的专用服务器每个服务器目录还是会问一次，点**取消**即可 |
-| `manager` | 默认 `true`：后台模式下，有管理窗口时游戏显示在管理窗口里，自己的窗口留在屏幕外、不进任务栏 |
-| `mute` | 默认 `true`：后台模式下游戏不出声（你接管游戏时恢复声音） |
+| `managerScript` | `BeDDManager.ps1` 的路径（`Install-BeDDMod` 会写）：没有管理窗口时游戏用它启动一个 |
+| `mute` | 默认 `true`：游戏不出声 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
 | `pipeInstances` | 默认 `4`：可同时使用游戏管道的脚本数（某个脚本断开时，它按住的键、鼠标按钮和 `input` 移动覆盖都会松开）；`1` 表示一次一个 |
 | `gameHooks` | 默认 `false`：挂钩游戏自身的系统，供 bedboo 用的操作使用：`world` 与 `look`（`Get-BeDDWorld`、`Set-BeDDLook`）、`input`（`Set-BeDDInput`：行走、跳跃、潜行、疾跑，与按键绑定无关）、`slot`、`action` 与 `button`（`Set-BeDDSlot`、`Invoke-BeDDAction`、`Set-BeDDButton`：快捷栏、丢弃/背包/视角/暂停、按游戏刻或直到目标方块破坏为止按住攻击/使用/选取）；见 CONTRIBUTING.md |

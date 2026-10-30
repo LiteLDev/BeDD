@@ -7,8 +7,8 @@ keyboard and windows stay yours, and several games can play at once.
 ![Your input goes to your apps; the script drives three background games over one pipe each](/showcase/how-it-feels.svg)
 
 ::: warning A testing tool
-While background mode is on, the game ignores your real mouse and keyboard. Do not leave Be.D.D. in a game you
-play. **Ctrl+Shift+F12** in the game window turns background mode off.
+A game with Be.D.D. in its `mods\` folder ignores your real mouse and keyboard and shows up only in the manager
+window. Do not leave Be.D.D. in a game you play.
 :::
 
 ## What is in it
@@ -21,7 +21,7 @@ Be.D.D. is a testing toolkit, not a mod for players. A release (`bedd-client-win
 | `BeDD.psm1` | the PowerShell client: `Connect-BeDD`, `Send-BeDDKey`, `Send-BeDDMouse`, `Save-BeDDScreenshot`, … ([Driving the game](/guide/usage)) |
 | `harness-shim.ps1` | drop-in replacements for the input helpers of LeviLauncher harnesses ([Plugging into a harness](/guide/harness)) |
 | `Start-BeDDGame.ps1` | starts a game instance without bringing it forward |
-| `BeDDManager.ps1` | the manager window that shows every background game ([Several games at once](/guide/several-games#the-manager-window)) |
+| `BeDDManager.ps1` | the manager window that shows every game, the only place a game shows up ([Several games at once](/guide/several-games#the-manager-window)) |
 | `clone-instance.ps1` | makes a cheap clone of an instance for a parallel run |
 | `BeDDSetup.psm1`, `Initialize-BeDD.ps1` | find the game instance and set up whatever the PC lacks ([Setting up a new PC](/guide/new-pc)) |
 
@@ -38,7 +38,7 @@ LeviMC Mods: you download it from the [releases](https://github.com/LiteLDev/BeD
 - **Plays like a player.** Keys, chat, key bindings, menus, hover tooltips, clicks and the camera all work as with
   a real mouse and keyboard.
 - **Deterministic.** Every call returns once the game has handled the input, so no guessing sleeps.
-- **Screenshots of covered windows.** The game can sit behind your other windows.
+- **Screenshots of covered windows.** The manager window can sit behind your other windows.
 - **Drop-in for existing harnesses.** One file replaces the usual `Click`, `Press-Key`, `Focus-Game` helpers of
   LeviLauncher harnesses; scenarios stay as they are.
 

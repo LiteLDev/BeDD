@@ -9,8 +9,9 @@ scripts.
 - **For tests**, harnesses copy the module into the game instance's `mods\` folder at the start of a run and remove
   it afterwards ([Plugging into a harness](/guide/harness)).
 - **To try it by hand**, unzip it into the instance's `mods\` folder, so that you get `mods\BeDD\BeDD.dll`, and
-  write a [config](/guide/configuration) that turns background mode on. Remove the folder again when you are done:
-  a leftover copy with background mode on makes a normally started game ignore your mouse and keyboard.
+  write a [config](/guide/configuration) whose `managerScript` points at its `BeDDManager.ps1`. Remove the folder
+  again when you are done: with a leftover copy, a normally started game ignores your mouse and keyboard and shows
+  up only in the manager window.
 
 Be.D.D. is not a lip package and is not listed on LeviMC Mods.
 

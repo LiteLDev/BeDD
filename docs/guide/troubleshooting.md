@@ -2,10 +2,9 @@
 
 ## My game ignores my mouse and keyboard
 
-Background mode is on: the module is in the instance's `mods\` folder with a config that turns it on, often a copy a
-harness left behind. Press **Ctrl+Shift+F12** in the game window to turn background mode off, then delete
-`mods\BeDD`. Harnesses call `Uninstall-BeDDMod` in `finally` so this does not happen, and keep `BeDD` out of their
-"move other mods aside" step.
+The module is in the instance's `mods\` folder, often a copy a harness left behind: the game then runs headless and
+shows up only in the manager window. Close it there, then delete `mods\BeDD`. Harnesses call `Uninstall-BeDDMod` in
+`finally` so this does not happen, and keep `BeDD` out of their "move other mods aside" step.
 
 ## "An error has occurred" (code "Blaze") with several games
 
@@ -38,9 +37,15 @@ instance its own lock file.
 
 ## Closing the manager window closed all games
 
-That is what it does (it asks first): the games of every run on the PC are in it. To keep a game out of the manager,
-start it with `Start-BeDDGame.ps1 -NoManager` (or `BEDD_MANAGER=0`) and install the module with
-`Install-BeDDMod -NoManager`.
+That is what it does (it asks first): the games of every run on the PC are in it, and a game never runs without
+it.
+
+## The game closes by itself while starting
+
+No manager window linked to it within 90 s (or it lost its manager), so it closed; its `logs\latest.log` says why.
+The game starts the manager with the `managerScript` of its config when none runs: check that the path is right
+(`Install-BeDDMod` writes it) and that PowerShell 7 (`pwsh`) is installed. `%LOCALAPPDATA%\BeDD\manager.log` is the
+manager's own log.
 
 ## `Set-BeDDLook` times out, or game ops do nothing after pause
 

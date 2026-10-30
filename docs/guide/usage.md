@@ -29,7 +29,6 @@ cursor, presses real keys or changes the foreground window.
 | `Clear-BeDDInput` | release every key and button still held |
 | `Save-BeDDScreenshot path.png` / `Get-BeDDBitmap` | the game's picture, even when covered |
 | `Set-BeDDWindow 1600 900` | resize the game window without bringing it forward |
-| `Set-BeDDBackground $false` | hand the game back to your real mouse and keyboard |
 | `Get-BeDDState` | is the game up, how much input arrived, did it ever get the foreground |
 | `Get-BeDDWorld` | in a world? which screen, mouse grabbed, menu open, the player's position and rotation (`gameHooks`) |
 | `Set-BeDDLook 90 -30` | turn the player to a yaw and pitch in degrees (`gameHooks`) |
@@ -67,8 +66,8 @@ mouse by raw counts, which turns the camera while the game has grabbed the mouse
 
 ## Screenshots
 
-`Save-BeDDScreenshot` and `Get-BeDDBitmap` take the game's picture while the window is behind your other windows or
-off screen.
+`Save-BeDDScreenshot` and `Get-BeDDBitmap` take the game's picture although its window is off screen, and while the
+manager window is behind your other windows.
 
 ## Which game
 
@@ -77,9 +76,3 @@ instance needs a pipe name of its own when several run at once: see [Several gam
 
 Other scripts may use the same game's pipe at the same time (config `pipeInstances`). The keys and buttons a script
 still holds are released when it disconnects or its process exits.
-
-## Taking a game over
-
-**Ctrl+Shift+F12** on your real keyboard, in the game window, ends background mode: your mouse and keyboard work in
-the game again. `Set-BeDDBackground $false` does the same from a script, and the manager window's right-click menu
-takes a game over and hands it back.

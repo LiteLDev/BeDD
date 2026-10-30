@@ -6,8 +6,9 @@
 里面是一个 `BeDD` 文件夹：模块（`BeDD.dll`、`manifest.json`）、PowerShell 客户端和脚本。
 
 - **用于测试**：测试框架在每次运行开始时把模块复制进游戏实例的 `mods\` 目录、结束后删掉（[接入测试框架](/zh/guide/harness)）。
-- **手动试一下**：解压到该实例的 `mods\` 目录，得到 `mods\BeDD\BeDD.dll`，再写一个打开后台模式的[配置](/zh/guide/configuration)。
-  用完记得删掉这个文件夹：留下一份开着后台模式的副本，正常启动的游戏会不理你的鼠标键盘。
+- **手动试一下**：解压到该实例的 `mods\` 目录，得到 `mods\BeDD\BeDD.dll`，再写一个[配置](/zh/guide/configuration)，
+  让其中的 `managerScript` 指向它的 `BeDDManager.ps1`。用完记得删掉这个文件夹：留下一份副本的话，正常启动的游戏会不理你的鼠标键盘，
+  而且只显示在管理窗口里。
 
 Be.D.D. 不是 lip 包，也不在 LeviMC 模组里上架。
 

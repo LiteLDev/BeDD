@@ -1,9 +1,12 @@
 // Link to the manager window of this logon session (client/BeDDManager.ps1) on
 // \\.\pipe\BeDD-Manager-<session id>. The game says hello once, then answers the
-// manager's requests: every control-pipe op, plus "show" (take over), "hide" (hand back) and
-// "close". While linked, the game window stays off screen and off the taskbar (Window.cpp) and the
-// manager shows it; the manager also puts the game into a kill-on-close job, so closing the
-// manager closes the game.
+// manager's requests: every control-pipe op, plus "close". The game window always stays off screen
+// and off the taskbar (Window.cpp) and the manager is the only place that shows it; the manager also
+// puts the game into a kill-on-close job, so closing the manager closes the game.
+//
+// A game never runs without the manager: with none running, the mod starts it (config
+// managerScript, which Install-BeDDMod writes); with none linked in time, or once the link is lost
+// for good, the game closes.
 #include "BeDD.h"
 
 #include <format>
@@ -19,10 +22,16 @@ using json = nlohmann::json;
 using namespace std::chrono_literals;
 
 constexpr int kLinkProtocol = 1;
+// How long a game waits for its first link (the manager may be starting, the game loading).
+constexpr auto kFirstLinkTimeout = 90s;
 
 std::jthread gLink;
 
+// The session's manager, or the one BEDD_MANAGER_PIPE names (e.g. a recording's own).
 std::wstring managerPipePath() {
+    wchar_t buf[256]{};
+    DWORD   n = GetEnvironmentVariableW(L"BEDD_MANAGER_PIPE", buf, 256);
+    if (n > 0 && n < 256) return L"\\\\.\\pipe\\" + std::wstring(buf, n);
     DWORD session = 0;
     ProcessIdToSessionId(GetCurrentProcessId(), &session);
     return std::format(L"\\\\.\\pipe\\BeDD-Manager-{}", session);
@@ -80,7 +89,6 @@ bool sayHello(HANDLE h) {
         {"pipe",       options().pipeName                         },
         {"instance",   instanceName()                             },
         {"label",      label()                                    },
-        {"background", backgroundMode().load()                    },
     };
     return writeLine(h, hello.dump() + "\n");
 }
@@ -124,11 +132,7 @@ std::string handleManagerLine(std::string const& line) {
         json        r{
             {"ok", true}
         };
-        if (op == "show") {
-            r["result"] = takeOver();
-        } else if (op == "hide") {
-            r["result"] = handBack();
-        } else if (op == "close") {
+        if (op == "close") {
             HWND h = gameWindow();
             if (!h || !PostMessageW(h, WM_CLOSE, 0, 0)) r = {{"ok", false}, {"error", "no game window to close"}};
             else log().info("the manager window asked the game to close");
@@ -165,29 +169,60 @@ bool sleepUnlessStopped(std::stop_token const& stop, std::chrono::milliseconds m
     return !stop.stop_requested();
 }
 
+// pwsh -File <managerScript> -Ensure, which starts the manager outside this process tree.
+void startManager() {
+    std::string const& script = options().managerScript;
+    if (script.empty()) {
+        log().error("no manager window running and no managerScript in config.json to start one");
+        return;
+    }
+    int          n = MultiByteToWideChar(CP_UTF8, 0, script.data(), static_cast<int>(script.size()), nullptr, 0);
+    std::wstring wide(static_cast<size_t>(n), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, script.data(), static_cast<int>(script.size()), wide.data(), n);
+    std::wstring        cmd = L"pwsh.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + wide + L"\" -Ensure";
+    STARTUPINFOW        si{sizeof(si)};
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+        log().error("could not start the manager window ({}): error {}", script, GetLastError());
+        return;
+    }
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    log().info("no manager window running: starting it ({})", script);
+}
+
+// A game the manager does not show must not run at all.
+[[noreturn]] void closeUnmanaged(char const* why) {
+    log().error("{}: closing the game (a BeDD game only runs inside the manager window)", why);
+    TerminateProcess(GetCurrentProcess(), 1);
+    ExitProcess(1);
+}
+
 void run(std::stop_token stop, HANDLE first) {
     HANDLE pipe = first;
-    bool   lost = false;
-    while (!stop.stop_requested()) {
-        if (!pipe) {
-            // No manager (yet): one may start any time (the next Start-BeDDGame.ps1 does).
-            if (!sleepUnlessStopped(stop, 1000ms)) break;
-            if (!(pipe = link())) continue;
+    if (!pipe) {
+        startManager();
+        for (auto waited = 0ms; !pipe && waited < kFirstLinkTimeout; waited += 500ms) {
+            if (!sleepUnlessStopped(stop, 500ms)) return;
+            pipe = link();
         }
-        log().info("linked to the manager window ({})", lost ? "again" : "the game window stays off screen and off the taskbar");
+        if (!pipe) closeUnmanaged("no manager window linked within 90 s");
+    }
+    bool again = false;
+    while (!stop.stop_requested()) {
+        log().info("linked to the manager window{}", again ? " again" : "");
         setManaged(true);
         serve(pipe, stop);
         CloseHandle(pipe);
         pipe = nullptr;
         if (stop.stop_requested()) break;
         // Lost the link: link again right away if the manager is still there (it dropped the link
-        // after a slow answer), so the window does not come back on the desktop for nothing.
+        // after a slow answer).
         for (int attempt = 0; attempt < 12 && !pipe && sleepUnlessStopped(stop, 250ms); ++attempt) pipe = link();
-        if (pipe) continue;
-        // The manager closed without closing us (it normally does): be a normal background game again.
-        lost = true;
-        setManaged(false);
-        log().warn("the manager window went away; the game window is back on the taskbar");
+        if (stop.stop_requested()) break;
+        // The manager closed without closing the game (it normally does).
+        if (!pipe) closeUnmanaged("the manager window went away");
+        again = true;
     }
     if (pipe) CloseHandle(pipe);
 }
@@ -195,12 +230,9 @@ void run(std::stop_token stop, HANDLE first) {
 } // namespace
 
 void startManagerLink() {
-    if (!options().manager || !options().background) return;
-    // The first attempt runs right here, before the game creates its window, so a managed game's
-    // window never shows up on the taskbar or the screen.
+    // The first attempt runs right here, before the game creates its window.
     HANDLE first = link();
     if (first) setManaged(true);
-    else log().info("no manager window running; linking to one as soon as it starts");
     gLink = std::jthread(run, first);
 }
 

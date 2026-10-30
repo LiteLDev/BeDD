@@ -19,7 +19,7 @@ xmake -y        # -> bin\BeDD\（DLL、manifest 以及 client\ 里的所有文�
 模组打包器从 `git describe` 读取版本号，所以仓库至少要有一个提交。
 
 `tools\dev.ps1 [-Trace]` 是一个试验场：它拿到共享的 e2e 锁（`%APPDATA%\levilauncher.exe\bei-e2e.lock`），把模块部署进 BeDD 找到的实例
-（新电脑上先准备好，见[在新电脑上准备](/zh/guide/new-pc)），通过 LeviLauncher 启动它，并把每次前台和光标锁定的变化记录到
+（新电脑上先准备好，见[在新电脑上准备](/zh/guide/new-pc)），没有管理窗口时先启动它，通过 LeviLauncher 启动游戏（游戏显示在管理窗口里），并把每次前台和光标锁定的变化记录到
 `tools\out\desktop-watch.log`，直到游戏退出或 `tools\out\dev.stop` 存在（`tools\out\dev.restart` 会重新部署并重启，不释放锁）。
 它最后总会关掉游戏、删掉模块并释放锁。
 
@@ -29,8 +29,8 @@ xmake -y        # -> bin\BeDD\（DLL、manifest 以及 client\ 里的所有文�
 `docs/public/showcase/` 存放站点的展示内容和 README 里的图片。
 
 `tools/showcase/record.ps1 [-KeepOpen]` 重新录制桌面视频：在共享 e2e 锁（以及每个克隆的 `hi<N>-e2e.lock`）下，它准备三个克隆实例
-（`-hi2`..`-hi4`，其他模组挪开），恢复 `tools/showcase/fixtures/Showcase.zip` 存档，在后台启动游戏并进入世界，把窗口在背景（`stage.ps1`）上
-排成 2x2 网格，第四格是运行 `demo.ps1` 的 Windows Terminal，然后用 ffmpeg 的 Desktop Duplication 抓取器录下真实屏幕的这块区域，存为
+（`-hi2`..`-hi4`，其他模组挪开），恢复 `tools/showcase/fixtures/Showcase.zip` 存档，在它自己的管理窗口里启动游戏（`BEDD_MANAGER_PIPE`，这样别的测试的游戏不会进画面）
+并进入世界，把这个管理窗口放到背景（`stage.ps1`）上一块区域的左边三分之二，右边三分之一是运行 `demo.ps1` 的 Windows Terminal，然后用 ffmpeg 的 Desktop Duplication 抓取器录下真实屏幕的这块区域，存为
 `tools/showcase/out/take-<n>.mkv`。带 `-KeepOpen` 时，创建 `tools/showcase/out/take` 开始下一次录制，`tools/showcase/out/stop` 结束。
 `tools/showcase/encode.ps1` 把一次录制剪成 MP4、WebP 和封面图。
 
@@ -40,11 +40,11 @@ xmake -y        # -> bin\BeDD\（DLL、manifest 以及 client\ 里的所有文�
 |---|---|
 | `src/BeDD.h` | 共享状态，以及下面各部分的声明 |
 | `src/Mod.cpp` | 入口、配置、虚拟按键/光标状态 |
-| `src/Window.cpp` | 窗口查找、子类化、合成事件分发、焦点屏蔽、窗口摆放 |
+| `src/Window.cpp` | 窗口查找、子类化、合成事件分发、焦点屏蔽、让窗口留在屏幕外 |
 | `src/ApiHooks.cpp` | user32 钩子（光标、按键状态、前台、激活、原始输入） |
 | `src/GameInputHooks.cpp` | GameInput v2 钩子（虚拟鼠标、键盘读数） |
-| `src/Audio.cpp` | FMOD 钩子：后台模式下静音游戏的主通道组（`mute`） |
-| `src/NetHooks.cpp` | 后台模式下只用本机网络（`loopbackOnly`：没有防火墙提示，不查询本机以外的服务器） |
+| `src/Audio.cpp` | FMOD 钩子：静音游戏的主通道组（`mute`） |
+| `src/NetHooks.cpp` | 只用本机网络（`loopbackOnly`：没有防火墙提示，不查询本机以外的服务器） |
 | `src/Pipe.cpp` | 控制管道和协议 |
 | `src/Manager.cpp` | 与会话管理窗口的连接 |
 | `src/Trace.cpp` | trace 模式的输入日志 |

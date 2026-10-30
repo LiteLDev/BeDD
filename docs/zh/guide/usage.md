@@ -27,7 +27,6 @@ Save-BeDDScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 | `Clear-BeDDInput` | 松开所有还按着的键和鼠标按钮 |
 | `Save-BeDDScreenshot path.png` / `Get-BeDDBitmap` | 游戏画面，被挡住也照样截 |
 | `Set-BeDDWindow 1600 900` | 调整游戏窗口大小，不会把它提到前面 |
-| `Set-BeDDBackground $false` | 把游戏交还给你的真鼠标和键盘 |
 | `Get-BeDDState` | 游戏是否在线、收到了多少输入、是否抢过前台 |
 | `Get-BeDDWorld` | 是否在世界中、当前界面、鼠标是否锁定、是否打开菜单、玩家位置与朝向（`gameHooks`） |
 | `Set-BeDDLook 90 -30` | 把玩家转到指定的偏航角和俯仰角（度，`gameHooks`） |
@@ -64,7 +63,7 @@ Save-BeDDScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 
 ## 截图
 
-`Save-BeDDScreenshot` 和 `Get-BeDDBitmap` 在窗口被其他窗口挡住或移出屏幕时也能截到游戏画面。
+`Save-BeDDScreenshot` 和 `Get-BeDDBitmap` 能截到游戏画面，尽管游戏窗口在屏幕外，管理窗口被其他窗口挡住时也一样。
 
 ## 选哪个游戏
 
@@ -72,8 +71,3 @@ Save-BeDDScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 见[多开](/zh/guide/several-games)。
 
 其他脚本也可以同时使用同一个游戏的管道（配置 `pipeInstances`）。某个脚本断开或进程退出时，它还按着的键和按钮会被松开。
-
-## 接管游戏
-
-在游戏窗口里用你的真键盘按 **Ctrl+Shift+F12** 会结束后台模式：你的鼠标键盘又能操作游戏了。脚本里用
-`Set-BeDDBackground $false` 效果一样；管理窗口的右键菜单也可以接管游戏、再交还给脚本。

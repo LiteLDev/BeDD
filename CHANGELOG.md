@@ -10,9 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Be.D.D. is a standalone testing toolkit, no longer a mod package: `tooth.json` is gone, so it is neither a lip package nor listed on LeviMC Mods. Install it from the release zip. It has its own documentation at <https://docs.levimc.org/BeDD/> (`docs/`).
+- **A BeDD game runs one way only: headless, inside the manager window.** There are no modes any more. Loading the mod always shields the game from the real mouse and keyboard and keeps its window a tool window off screen (no taskbar button, not in Alt+Tab, never on screen); the manager window is the only place a game shows up. A game that finds no manager window starts one (new config key `managerScript`, the path of `BeDDManager.ps1`, which `Install-BeDDMod` writes), and a game that no manager links within 90 s, or that loses the link for good, closes itself (logged). Without `config.json` the mod still runs headless, with the defaults.
+- `Start-BeDDGame.ps1` refuses an instance without `mods\BeDD\BeDD.dll` and throws when the manager window does not start, and so does the harness shim's `Start-Game` when the manager window does not start. `tools/dev.ps1` starts the manager window and the game shows up there. `tools/showcase/record.ps1` records the games in a manager window of its own (`BEDD_MANAGER_PIPE`), laid out next to the terminal.
 
 ### Added
 
+- `BEDD_MANAGER_PIPE` (or `BeDDManager.ps1 -PipeName`) names another manager window than the session's, for scripts and games alike, e.g. one of its own for a recording.
 - Setup for a new PC: `Initialize-BeDD.ps1` and `BeDDSetup.psm1` (`Initialize-BeDDInstance`, `Get-BeDDInstance`, …) find the LeviLauncher instance of Minecraft 1.26.51 and set up whatever is missing: LeviLauncher (downloaded from its releases when not installed), LeviLamina (installed with lip, which is downloaded with its .NET runtime), LeviLauncher's loader in the game exe, and clones. Only the game install itself is left to a person: LeviLauncher opens and the script waits for it. `Start-BeDDGame.ps1`, `clone-instance.ps1` and `tools/dev.ps1` run the same setup, and the harness shim exports it. Overrides: `BEDD_INSTANCE`, `BEDD_VERSIONS_DIR`, `BEDD_LAUNCHER_DATA`, `BEDD_LEVILAUNCHER`, `BEDD_LIP`.
 - `Start-BeDDGame.ps1 -Slot N`; `-Instance` is optional (the instance BeDD finds).
 - `tools/build.ps1`: builds with xmake, installing xmake, LLVM and the Visual Studio C++ build tools with winget when missing.
@@ -22,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`send`** (config `allowSend`, ids in `sendAllow`, default text and command_request): the local player sends a packet a script serialized; login, inventory_transaction, player_auth_input and item_stack_request are always refused. `Send-BeDDPacket`.
   - **`stack`** (config `allowStack`): the local player sends an item_stack_request a script serialized, with its request ids renamed to client ids (the reply maps them back), and asks the server for the whole inventory once a request is accepted so the game shows the result. `view:true` reports what the client shows. `Send-BeDDStack`.
 - Several scripts can use a game's control pipe at once (config `pipeInstances`, default 4; `1` = one at a time as before). Window input is serialized between them, `state` reports `clients`, and a client that disconnects (or dies) has what it still holds released: its keys and mouse buttons, its `button` holds and its `input` override, and nothing another client holds. Mod code can tag per-client state with `currentPipeClient()`.
+
+### Removed
+
+- Background mode as a switch, and every way to run a BeDD game with its own window: config `background`, `placement` and `manager`; `Start-BeDDGame.ps1 -NoManager` and `BEDD_MANAGER`; `Install-BeDDMod -Placement` and `-NoManager`; `Set-BeDDBackground` and the pipe op `background`; `Set-BeDDWindow -Placement` and the `placement` field of the `window` op; Ctrl+Shift+F12; `tools/dev.ps1 -Placement` and `-NoBackground`.
+- Taking a game over from the manager window: the "take over with my mouse and keyboard" and "hand back" menu items, `BeDDManager.ps1 -Game <pid> -Action show|hide` (only `close` is left) and the manager link ops `show` and `hide`. `ping`/`state` no longer report `background` and `takenOver`, nor the manager's `hello` and `list`.
 
 ### Fixed
 

@@ -1,5 +1,5 @@
-// user32 hooks: in background mode the game reads the virtual input state and can neither grab
-// the real cursor nor take the foreground. Outside background mode every hook passes through.
+// user32 hooks: the game reads the virtual input state and can neither grab the real cursor nor
+// take the foreground.
 #include "BeDD.h"
 
 #include <array>
@@ -12,8 +12,6 @@
 namespace bedd {
 
 namespace {
-
-bool bg() { return backgroundMode().load(std::memory_order_relaxed); }
 
 bool gInstalled = false;
 
@@ -58,22 +56,19 @@ HookSlot* slotFor(std::string_view name);
 
 BOOL WINAPI d_ClipCursor(RECT const* r) {
     HI_COUNT("ClipCursor");
-    if (bg()) return TRUE; // never confine the real cursor
-    return o_ClipCursor(r);
+    (void)r;
+    return TRUE; // never confine the real cursor
 }
 
 BOOL WINAPI d_SetCursorPos(int x, int y) {
     HI_COUNT("SetCursorPos");
-    if (bg()) {
-        // The game re-centres the cursor while the mouse is grabbed: move the virtual one only.
-        if (HWND h = gameWindow()) {
-            POINT p{x, y};
-            ScreenToClient(h, &p);
-            vstate::setCursor(p);
-        }
-        return TRUE;
+    // The game re-centres the cursor while the mouse is grabbed: move the virtual one only.
+    if (HWND h = gameWindow()) {
+        POINT p{x, y};
+        ScreenToClient(h, &p);
+        vstate::setCursor(p);
     }
-    return o_SetCursorPos(x, y);
+    return TRUE;
 }
 
 BOOL virtualCursorScreen(LPPOINT p) {
@@ -86,31 +81,29 @@ BOOL virtualCursorScreen(LPPOINT p) {
 
 BOOL WINAPI d_GetCursorPos(LPPOINT p) {
     HI_COUNT("GetCursorPos");
-    if (bg() && virtualCursorScreen(p)) return TRUE;
+    if (virtualCursorScreen(p)) return TRUE;
     return o_GetCursorPos(p);
 }
 
 BOOL WINAPI d_GetPhysicalCursorPos(LPPOINT p) {
     HI_COUNT("GetPhysicalCursorPos");
-    if (bg() && virtualCursorScreen(p)) return TRUE;
+    if (virtualCursorScreen(p)) return TRUE;
     return o_GetPhysicalCursorPos(p);
 }
 
 SHORT WINAPI d_GetAsyncKeyState(int vk) {
     HI_COUNT("GetAsyncKeyState");
-    if (bg()) return vstate::keyDown(vk) ? static_cast<SHORT>(0x8000) : 0;
-    return o_GetAsyncKeyState(vk);
+    return vstate::keyDown(vk) ? static_cast<SHORT>(0x8000) : 0;
 }
 
 SHORT WINAPI d_GetKeyState(int vk) {
     HI_COUNT("GetKeyState");
-    if (bg()) return vstate::keyState(vk);
-    return o_GetKeyState(vk);
+    return vstate::keyState(vk);
 }
 
 BOOL WINAPI d_GetKeyboardState(PBYTE keys) {
     HI_COUNT("GetKeyboardState");
-    if (bg() && keys) {
+    if (keys) {
         for (int vk = 0; vk < 256; ++vk) {
             SHORT s  = vstate::keyState(vk);
             keys[vk] = static_cast<BYTE>(((s & 0x8000) ? 0x80 : 0) | (s & 0x01));
@@ -122,15 +115,13 @@ BOOL WINAPI d_GetKeyboardState(PBYTE keys) {
 
 HWND WINAPI d_GetForegroundWindow() {
     HI_COUNT("GetForegroundWindow");
-    if (bg()) {
-        if (HWND h = gameWindow()) return h;
-    }
+    if (HWND h = gameWindow()) return h;
     return o_GetForegroundWindow();
 }
 
 HWND WINAPI d_GetActiveWindow() {
     HI_COUNT("GetActiveWindow");
-    if (bg() && gameThreadIsCurrent()) {
+    if (gameThreadIsCurrent()) {
         if (HWND h = gameWindow()) return h;
     }
     return o_GetActiveWindow();
@@ -138,7 +129,7 @@ HWND WINAPI d_GetActiveWindow() {
 
 HWND WINAPI d_GetFocus() {
     HI_COUNT("GetFocus");
-    if (bg() && gameThreadIsCurrent()) {
+    if (gameThreadIsCurrent()) {
         if (HWND h = gameWindow()) return h;
     }
     return o_GetFocus();
@@ -154,13 +145,13 @@ bool ownTopLevel(HWND h) {
 
 BOOL WINAPI d_SetForegroundWindow(HWND h) {
     HI_COUNT("SetForegroundWindow");
-    if (bg() && ownTopLevel(h)) return TRUE; // the game stays in the background
+    if (ownTopLevel(h)) return TRUE; // the game stays in the background
     return o_SetForegroundWindow(h);
 }
 
 BOOL WINAPI d_ShowWindow(HWND h, int cmd) {
     HI_COUNT("ShowWindow");
-    if (bg() && ownTopLevel(h)) {
+    if (ownTopLevel(h)) {
         if (cmd != SW_HIDE && cmd != SW_MINIMIZE) prepareFirstShow(h);
         // Show without activating (the start-up show would otherwise take the foreground).
         switch (cmd) {
@@ -178,7 +169,7 @@ BOOL WINAPI d_ShowWindow(HWND h, int cmd) {
 
 BOOL WINAPI d_SetWindowPos(HWND h, HWND after, int x, int y, int cx, int cy, UINT flags) {
     HI_COUNT("SetWindowPos");
-    if (bg() && ownTopLevel(h)) {
+    if (ownTopLevel(h)) {
         if (flags & SWP_SHOWWINDOW) prepareFirstShow(h);
         flags |= SWP_NOACTIVATE;
         if (after == HWND_TOP || after == HWND_TOPMOST) flags |= SWP_NOZORDER; // stay behind the user's windows
@@ -189,13 +180,13 @@ BOOL WINAPI d_SetWindowPos(HWND h, HWND after, int x, int y, int cx, int cy, UIN
 
 HWND WINAPI d_SetActiveWindow(HWND h) {
     HI_COUNT("SetActiveWindow");
-    if (bg() && ownTopLevel(h)) return gameWindow() ? gameWindow() : h;
+    if (ownTopLevel(h)) return gameWindow() ? gameWindow() : h;
     return o_SetActiveWindow(h);
 }
 
 BOOL WINAPI d_BringWindowToTop(HWND h) {
     HI_COUNT("BringWindowToTop");
-    if (bg() && ownTopLevel(h)) return TRUE;
+    if (ownTopLevel(h)) return TRUE;
     return o_BringWindowToTop(h);
 }
 
@@ -213,7 +204,7 @@ HWND WINAPI d_CreateWindowExW(
     HINSTANCE instance,
     LPVOID    param
 ) {
-    // A managed game's main window (class "Bedrock"; other windows, e.g. of other mods, are left
+    // The game's main window (class "Bedrock"; other windows, e.g. of other mods, are left
     // alone): a tool window (no taskbar button, not in Alt+Tab) created off screen, so it never
     // shows up on the user's desktop while the game loads.
     bool game = IS_INTRESOURCE(cls) || wcscmp(cls, L"Bedrock") == 0;
@@ -271,7 +262,7 @@ UINT WINAPI d_GetRawInputBuffer(PRAWINPUT data, PUINT size, UINT headerSize) {
     HI_COUNT("GetRawInputBuffer");
     UINT r = o_GetRawInputBuffer(data, size, headerSize);
     // Buffered raw input is read straight from the queue: drop the real devices' data.
-    if (bg() && data && r != static_cast<UINT>(-1)) return 0;
+    if (data && r != static_cast<UINT>(-1)) return 0;
     return r;
 }
 

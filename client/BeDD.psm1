@@ -100,13 +100,9 @@ function Set-BeDDLook([Parameter(Mandatory)][double]$Yaw, [Parameter(Mandatory)]
     Invoke-BeDD @{ op = 'look'; yaw = $Yaw; pitch = $Pitch; timeoutMs = $TimeoutMs }
 }
 
-# Background mode on/off at runtime (off = the game sees real input and focus again, e.g. to let a
-# human take over a -KeepOpen session; Ctrl+Shift+F12 on the real keyboard does the same).
-function Set-BeDDBackground([bool]$On = $true) { Invoke-BeDD @{ op = 'background'; on = $On } }
-
-# Client-area size and placement ('back' = bottom of the Z order, 'offscreen', 'none'), never activating the window.
-function Set-BeDDWindow([int]$ClientWidth = 0, [int]$ClientHeight = 0, [string]$Placement = 'none') {
-    Invoke-BeDD @{ op = 'window'; clientWidth = $ClientWidth; clientHeight = $ClientHeight; placement = $Placement }
+# Client-area size (the window stays off screen: the manager window shows the game), never activating the window.
+function Set-BeDDWindow([int]$ClientWidth = 0, [int]$ClientHeight = 0) {
+    Invoke-BeDD @{ op = 'window'; clientWidth = $ClientWidth; clientHeight = $ClientHeight }
 }
 
 # Key by name ('E', 'ESC', 'ENTER', 'SHIFT', 'F3', '1', ...) or -Vk. -Action press|down|up.
@@ -276,7 +272,7 @@ function Send-BeDDStack($Buffer, [switch]$View, [int]$TimeoutMs = 2000) {
 }
 
 Export-ModuleMember -Function Connect-BeDD, Set-BeDDPipe, Disconnect-BeDD, Test-BeDD, Invoke-BeDD,
-    Set-BeDDCrashLogger, Get-BeDDState, Set-BeDDBackground, Set-BeDDWindow, Send-BeDDKey, Send-BeDDText,
+    Set-BeDDCrashLogger, Get-BeDDState, Set-BeDDWindow, Send-BeDDKey, Send-BeDDText,
     Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot,
     Get-BeDDWorld, Set-BeDDLook,
     Set-BeDDInput, Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton, Send-BeDDPacket, Send-BeDDStack

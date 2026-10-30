@@ -12,7 +12,7 @@ version (`ping`.`protocol`) stays 1: newer ops are found by calling them (below)
 
 | op | fields | |
 |---|---|---|
-| `ping` | | `protocol`, `pid`, `hwnd`, `background`, `client{w,h}`, `cursor{x,y}`, `realForeground`, `managed`, `takenOver` |
+| `ping` | | `protocol`, `pid`, `hwnd`, `client{w,h}`, `cursor{x,y}`, `realForeground`, `managed` |
 | `state` | | `ping` fields + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal}`, `clients` (control-pipe clients connected now), `hooks{name: installed}` (each game hook a feature installed; `false` while the feature is off) |
 | `key` | `key` (name) or `vk`; `action` press\|down\|up; `holdMs` | names: letters, digits, ESC, ENTER, BACK, TAB, SPACE, SHIFT, CTRL, ALT, LEFT/UP/RIGHT/DOWN, HOME, END, PGUP, PGDN, INSERT, DELETE, F1..F24, SLASH, GRAVE, MINUS, EQUALS |
 | `text` | `text`; `delayMs` | one `WM_CHAR` per UTF-16 unit |
@@ -20,8 +20,7 @@ version (`ping`.`protocol`) stays 1: newer ops are found by calling them (below)
 | `raw` | `action` move\|down\|up\|click\|wheel; `dx`,`dy` (mouse counts); `steps`; `button`; `notches`; `holdMs` | virtual GameInput mouse: camera while the mouse is grabbed |
 | `release` | | releases every held key and button, whoever pressed it, and ends the `input` move override |
 | `focus` | | re-sends the "focus gained" messages |
-| `window` | `clientWidth`, `clientHeight`, `placement` back\|offscreen\|none | never activates the window |
-| `background` | `on` | background mode on/off |
+| `window` | `clientWidth`, `clientHeight` | never activates the window; it stays off screen |
 | `flush` | | waits until everything posted was dispatched |
 
 ## Several clients
@@ -99,7 +98,7 @@ of every op is read-only.
     The client sends `mob_equipment` itself. Replies `slot` and `via` callback\|keys.
   - `action`: the matching `ClientInputCallbacks::handle*ButtonPress` (inventory with
     `CraftingType::Inventory`).
-  - `button`: left/right/middle on the virtual GameInput mouse (needs background mode), released
+  - `button`: left/right/middle on the virtual GameInput mouse, released
     by the tick listener after `holdTicks` (click: default 2) or, with `releaseOn:"blockChange"`,
     once the block the client's hit result pointed at when it went down changes, turns to air or is
     no longer targeted (`refused` when no block is targeted). `up` applies at once. Never blocks
@@ -178,15 +177,16 @@ item_stack_request is unsupported only when the `stack` probe does not answer `o
 
 `\\.\pipe\BeDD-Manager-<session id>` (current user only), served by
 `BeDDManager.ps1`, JSON lines like the control pipe.
+`BEDD_MANAGER_PIPE` names another manager's pipe instead (scripts and games read it).
 
 - **Clients** (one request per connection): `ping` (`games`; `ok` is false while it closes),
   `adopt` `{pid, instance, label}` (`Start-BeDDGame.ps1` right after starting a game), `list`
-  (`games[]`: `pid`, `instance`, `label`, `pipe`, `hwnd`, `linked`, `background`, `managed`,
-  `takenOver`, `job`, `thumbnail`), `game` `{pid, action: show|hide|close}`, `shutdown`.
-- **Games** (the mod): the first line is `hello` `{protocol, pid, hwnd, pipe, instance, label,
-  background}` (`label` from `BEDD_LABEL`), answered with `{"ok":true}` (a manager that
-  is closing hangs up instead; the game is linked only once welcomed). The connection stays open
-  and the manager sends requests on it: every control-pipe op (it polls `state` every second), plus `show` (take over:
-  background off, a normal window on screen and in front; the manager calls
-  `AllowSetForegroundWindow` first), `hide` (hand back) and `close` (`WM_CLOSE` to the game window).
+  (`games[]`: `pid`, `instance`, `label`, `pipe`, `hwnd`, `linked`, `managed`, `job`,
+  `thumbnail`), `game` `{pid, action: close}`, `shutdown`.
+- **Games** (the mod): the first line is `hello` `{protocol, pid, hwnd, pipe, instance, label}`
+  (`label` from `BEDD_LABEL`), answered with `{"ok":true}` (a manager that is closing hangs up
+  instead; the game is linked only once welcomed). The connection stays open and the manager sends
+  requests on it: every control-pipe op (it polls `state` every second), plus `close` (`WM_CLOSE` to
+  the game window). A game with no manager starts one (config `managerScript`); one that no manager
+  links within 90 s, or that loses the link for good, closes itself.
 

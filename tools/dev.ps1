@@ -5,8 +5,8 @@
 
 .DESCRIPTION
   Takes the machine-wide e2e lock (bei-e2e.lock, shared with BEI, BeetrootSkin and
-  AlleviatedBackpacks), deploys bin\BeDD with a config.json, launches the game and
-  watches the desktop while it runs: every change of the foreground window and of the cursor clip
+  AlleviatedBackpacks), deploys bin\BeDD with a config.json, starts the manager window unless it
+  runs, launches the game (it shows up in the manager window) and watches the desktop while it runs: every change of the foreground window and of the cursor clip
   rectangle is written to tools\out\desktop-watch.log. "Minecraft" never appearing there as the
   foreground (after the launch hand-back) and the clip staying the whole desktop is the evidence
   that the game does not take the user's mouse or keyboard. Always closes the game, removes the
@@ -18,8 +18,6 @@
 #>
 param(
     [switch]$Trace,
-    [ValidateSet('back', 'offscreen', 'none')][string]$Placement = 'back',
-    [switch]$NoBackground,
     [int]$MaxMinutes = 60
 )
 $ErrorActionPreference = 'Stop'
@@ -98,10 +96,11 @@ try {
         if (Test-Path $ModDest) { Remove-Item -Recurse -Force $ModDest }
         Copy-Item -Recurse $bin $ModDest
         New-Item -ItemType Directory -Force (Join-Path $ModDest 'config') | Out-Null
-        # A window of its own (not the manager window): this script watches it on the desktop.
-        @{ background = -not $NoBackground; placement = $Placement; clientWidth = 1600; clientHeight = 900; trace = [bool]$Trace; manager = $false } |
+        $managerScript = Join-Path $bin 'BeDDManager.ps1'
+        @{ clientWidth = 1600; clientHeight = 900; trace = [bool]$Trace; managerScript = $managerScript } |
             ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ModDest 'config\config.json')
         Write-Dev "deployed $bin -> $ModDest"
+        if (-not (& $managerScript -Ensure)) { throw 'the manager window did not start (it needs PowerShell 7, pwsh)' }
         # The window that has the foreground now gets it back when the game window appears.
         $env:BEDD_RETURN_FOCUS = [string][int64][BeDDDev.Native]::GetForegroundWindow()
         Get-Process -Name 'LeviLauncher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue

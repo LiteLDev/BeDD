@@ -1,8 +1,7 @@
-// FMOD hooks: in background mode the game is silent. The game hears no focus loss there, so it
-// never suspends its own audio, and every headless game would otherwise play its menu music and
-// sounds on the user's speakers. The master channel group of each FMOD system is muted while
-// background mode is on (a human taking the game over hears it again); the game's own
-// setMute() calls on it are remembered and win once background mode ends.
+// FMOD hooks: the game is silent (config mute). The game hears no focus loss, so it never
+// suspends its own audio, and every headless game would otherwise play its menu music and sounds
+// on the user's speakers. The master channel group of each FMOD system stays muted; the game's own
+// setMute() calls on it are remembered.
 #include "BeDD.h"
 
 #include <array>
@@ -27,8 +26,6 @@ constexpr char kPlaySound[] =
 constexpr char kMaster[]  = "?getMasterChannelGroup@System@FMOD@@QEAA?AW4FMOD_RESULT@@PEAPEAVChannelGroup@2@@Z";
 constexpr char kSetMute[] = "?setMute@ChannelControl@FMOD@@QEAA?AW4FMOD_RESULT@@_N@Z";
 
-constexpr unsigned kInitThreadUnsafe = 0x00100000; // FMOD_INIT_THREAD_UNSAFE
-
 InitFn      o_init      = nullptr;
 PlaySoundFn o_playSound = nullptr;
 SetMuteFn   o_setMute   = nullptr;
@@ -45,7 +42,7 @@ struct System {
 std::mutex          gMutex;
 std::vector<System> gSystems; // guarded by gMutex
 
-bool muteNow() { return options().mute && backgroundMode().load(std::memory_order_relaxed); }
+bool muteNow() { return options().mute; }
 
 // Remember the system's master group and mute it as it should be now.
 void track(void* system) {
@@ -66,8 +63,6 @@ void track(void* system) {
 }
 
 int d_init(void* system, int maxChannels, unsigned flags, void* extra) {
-    // The mute changes from other threads (control pipe, manager), so FMOD must lock its API.
-    if (options().mute) flags &= ~kInitThreadUnsafe;
     int rc = o_init(system, maxChannels, flags, extra);
     if (rc == 0) track(system);
     return rc;
@@ -137,7 +132,7 @@ void installAudioHooks() {
         }
     }
     if (installed == static_cast<int>(gHooks.size()))
-        log().info("FMOD hooks installed: the game is silent in background mode");
+        log().info("FMOD hooks installed: the game is silent");
     else log().error("FMOD hooks installed: {}/{}; the game's audio may not be muted", installed, gHooks.size());
 }
 
@@ -152,17 +147,6 @@ void uninstallAudioHooks() {
         h.target    = nullptr;
         *h.original = nullptr;
     }
-}
-
-void syncAudioMute() {
-    if (!o_setMute) return;
-    std::vector<System> systems;
-    {
-        std::lock_guard lock(gMutex);
-        systems = gSystems;
-    }
-    bool mute = muteNow();
-    for (auto const& s : systems) o_setMute(s.master, s.gameMute || mute);
 }
 
 std::string audioStats() {

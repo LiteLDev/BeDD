@@ -1,4 +1,4 @@
-// The game window: subclassing, synthetic input dispatch, focus shield and placement.
+// The game window: subclassing, synthetic input dispatch, focus shield, and keeping it hidden.
 #include "BeDD.h"
 
 #include <shobjidl.h>
@@ -20,15 +20,9 @@ std::atomic<HWND>  gWindow{nullptr};
 std::atomic<DWORD> gGameThread{0};
 WNDPROC            gOrigProc = nullptr;
 UINT               gInputMsg = 0;
-// Window changes the manager asks for run on the game thread (wParam: SyncAction, lParam: ticket):
-// from another thread they would wait for the game thread, which may be waiting for that thread.
+// Hiding the window again runs on the game thread: from another thread the style change would
+// wait for the game thread, which may be waiting for that thread.
 UINT gSyncMsg = 0;
-enum SyncAction : WPARAM { kSync, kTakeOver, kHandBack };
-std::mutex              gActionMutex;
-std::condition_variable gActionCv;
-uint64_t                gActionPosted = 0; // guarded by gActionMutex
-uint64_t                gActionDone   = 0;
-std::string             gActionResult;
 
 std::mutex              gQueueMutex;
 std::deque<Event>       gQueue;
@@ -49,15 +43,12 @@ std::array<std::atomic<uint32_t>, 0x401> gMsgCounts{};
 std::jthread      gWatcher;
 HWND              gReturnFocus = nullptr;
 
-// Manager window (Manager.cpp): while linked, the game window is a tool window (no taskbar button,
-// not in Alt+Tab) kept off screen; the manager shows it through a DWM thumbnail.
+// The game window is always a tool window (no taskbar button, not in Alt+Tab) kept off screen; the
+// manager window (Manager.cpp) shows it through a DWM thumbnail.
 std::atomic<bool> gManaged{false};
-std::atomic<bool> gTakenOver{false};
 std::atomic<bool> gCreatedHidden{false}; // the game window was created hidden (CreateWindowExW)
 // Set on a window this mod made a tool window (findGameWindow skips other tool windows).
 wchar_t const* const kHiddenProp = L"BeDD.Hidden";
-
-bool bg() { return backgroundMode().load(std::memory_order_relaxed); }
 
 bool isClientInput(UINT m) {
     return (m >= WM_KEYFIRST && m <= WM_KEYLAST) || (m >= WM_MOUSEFIRST && m <= WM_MOUSELAST) || m == WM_MOUSEHOVER
@@ -100,7 +91,7 @@ void dispatchOne(HWND h) {
     gDispatchedCv.notify_all();
 }
 
-void onSync(HWND h, WPARAM action, LPARAM ticket);
+void keepHidden(HWND h);
 
 LRESULT CALLBACK subclassProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == gInputMsg) {
@@ -108,11 +99,11 @@ LRESULT CALLBACK subclassProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     if (m == gSyncMsg) {
-        onSync(h, w, l);
+        keepHidden(h);
         return 0;
     }
     if (options().trace) gMsgCounts[m < 0x400 ? m : 0x400].fetch_add(1, std::memory_order_relaxed);
-    if (!tSynthetic && bg()) {
+    if (!tSynthetic) {
         switch (m) {
         case WM_ACTIVATEAPP:
             if (!w) {
@@ -136,14 +127,6 @@ LRESULT CALLBACK subclassProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         if (isClientInput(m)) {
             gStats.swallowedInput.fetch_add(1, std::memory_order_relaxed);
-            // Human takeover: Ctrl+Shift+F12 on the real keyboard ends background mode.
-            if (m == WM_KEYDOWN && w == VK_F12 && (real::GetAsyncKeyState(VK_CONTROL) & 0x8000)
-                && (real::GetAsyncKeyState(VK_SHIFT) & 0x8000)) {
-                backgroundMode() = false;
-                syncAudioMute();
-                vstate::releaseAll();
-                log().warn("Ctrl+Shift+F12: background mode off, real input goes to the game again");
-            }
             // Real raw input still needs DefWindowProc for the system's cleanup.
             if (m == WM_INPUT) return DefWindowProcW(h, m, w, l);
             return 0;
@@ -219,9 +202,6 @@ void giveAwayForeground(HWND game) {
     log().info("gave the foreground back to {} [{}]", static_cast<void*>(target), narrow(classOf(target)));
 }
 
-// Managed, not taken over and in background mode: the manager shows the game, its window hides.
-bool hideNow() { return gManaged.load() && !gTakenOver.load() && bg(); }
-
 // Left of the whole virtual desktop, so no monitor shows it.
 int offScreenX(int windowWidth) { return GetSystemMetrics(SM_XVIRTUALSCREEN) - windowWidth - 64; }
 
@@ -244,90 +224,34 @@ void setTaskbarButton(HWND h, bool shown) {
     if (SUCCEEDED(init)) CoUninitialize();
 }
 
-// Tool window (no taskbar button, not in Alt+Tab) or back to a normal one.
-void setHidden(HWND h, bool hidden) {
+// A tool window: no taskbar button, not in Alt+Tab.
+void setHidden(HWND h) {
+    SetPropW(h, kHiddenProp, reinterpret_cast<HANDLE>(1));
     LONG_PTR ex   = GetWindowLongPtrW(h, GWL_EXSTYLE);
-    LONG_PTR want = hidden ? (ex | WS_EX_TOOLWINDOW) & ~static_cast<LONG_PTR>(WS_EX_APPWINDOW) : ex & ~static_cast<LONG_PTR>(WS_EX_TOOLWINDOW);
-    if (hidden) SetPropW(h, kHiddenProp, reinterpret_cast<HANDLE>(1));
+    LONG_PTR want = (ex | WS_EX_TOOLWINDOW) & ~static_cast<LONG_PTR>(WS_EX_APPWINDOW);
     if (want == ex) return;
     SetWindowLongPtrW(h, GWL_EXSTYLE, want);
     real::SetWindowPos(h, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-    if (IsWindowVisible(h)) setTaskbarButton(h, !hidden);
-    log().info("game window {} {}", static_cast<void*>(h), hidden ? "hidden from the taskbar and Alt+Tab (manager)" : "back on the taskbar");
+    if (IsWindowVisible(h)) setTaskbarButton(h, false);
+    log().info("game window {} hidden from the taskbar and Alt+Tab", static_cast<void*>(h));
 }
 
 bool isHidden(HWND h) { return GetPropW(h, kHiddenProp) && (GetWindowLongW(h, GWL_EXSTYLE) & WS_EX_TOOLWINDOW); }
 
-// Centred in the primary monitor's work area, keeping its size.
-void bringOnScreen(HWND h) {
-    MONITORINFO mi{sizeof(MONITORINFO)};
-    GetMonitorInfoW(MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &mi);
-    RECT r{};
-    GetWindowRect(h, &r);
-    int w = r.right - r.left, hgt = r.bottom - r.top;
-    int x = mi.rcWork.left + std::max(0L, (mi.rcWork.right - mi.rcWork.left - w) / 2);
-    int y = mi.rcWork.top + std::max(0L, (mi.rcWork.bottom - mi.rcWork.top - hgt) / 2);
-    real::SetWindowPos(h, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-}
+bool needsSync(HWND h) { return !isHidden(h) || isOnScreen(h); }
 
-bool needsSync(HWND h) { return hideNow() ? !isHidden(h) || isOnScreen(h) : isHidden(h); }
-
-// Brings the window in line with hideNow(): a hidden tool window off screen, or a normal window
-// on screen. On the game thread only (requestSync): when the manager link or takeover changes, and
-// whenever the watcher sees it out of line (the game, a script or Ctrl+Shift+F12 can change things).
-void syncManaged(HWND h) {
-    if (hideNow()) {
-        bool changed = !isHidden(h);
-        if (changed) setHidden(h, true);
-        // Again after a style change: the frame (and so the client area) is smaller now.
-        if (changed || isOnScreen(h)) log().info("{}", applyWindowLayout(options().clientWidth, options().clientHeight, "offscreen"));
-    } else if (isHidden(h)) {
-        setHidden(h, false);
-        if (!isOnScreen(h)) bringOnScreen(h);
-    }
+// Makes the window a hidden tool window off screen again. On the game thread only (requestSync):
+// once it is found, and whenever the watcher sees it out of line (the game or a script moved it).
+void keepHidden(HWND h) {
+    bool changed = !isHidden(h);
+    if (changed) setHidden(h);
+    // Again after a style change: the frame (and so the client area) is smaller now.
+    if (changed || isOnScreen(h)) log().info("{}", applyWindowLayout(options().clientWidth, options().clientHeight));
 }
 
 void requestSync() {
     HWND h = gWindow.load();
-    if (h && gSyncMsg) PostMessageW(h, gSyncMsg, kSync, 0);
-}
-
-// Runs a take-over or hand-back on the game thread and waits for it, at most a few seconds (the
-// game thread may be busy loading, or waiting for this thread in disable()).
-std::string runOnGameThread(HWND h, SyncAction action) {
-    std::unique_lock lock(gActionMutex);
-    uint64_t         ticket = ++gActionPosted;
-    if (!PostMessageW(h, gSyncMsg, action, static_cast<LPARAM>(ticket))) return "the game window is gone";
-    if (!gActionCv.wait_for(lock, std::chrono::seconds(5), [&] { return gActionDone >= ticket; }))
-        return "requested (the game is busy and does it as soon as it can)";
-    return gActionResult;
-}
-
-void onSync(HWND h, WPARAM action, LPARAM ticket) {
-    std::string result;
-    if (action == kTakeOver) {
-        syncManaged(h);
-        if (IsIconic(h)) ShowWindow(h, SW_RESTORE);
-        if (!isOnScreen(h)) bringOnScreen(h);
-        real::SetWindowPos(h, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-        // The manager allowed this process to take the foreground (AllowSetForegroundWindow).
-        result = real::SetForegroundWindow(h) ? "taken over" : "taken over (Windows did not let the window come to the front)";
-        log().warn("taken over from the manager window: background mode off, real input goes to the game");
-    } else if (action == kHandBack) {
-        syncManaged(h);
-        fakeFocusGained();
-        result = "handed back";
-        log().info("handed back to the scripts from the manager window: background mode on");
-    } else {
-        syncManaged(h);
-        return;
-    }
-    {
-        std::lock_guard lock(gActionMutex);
-        gActionDone   = std::max(gActionDone, static_cast<uint64_t>(ticket));
-        gActionResult = result;
-    }
-    gActionCv.notify_all();
+    if (h && gSyncMsg) PostMessageW(h, gSyncMsg, 0, 0);
 }
 
 std::string processNameOf(DWORD pid) {
@@ -407,24 +331,19 @@ void watch(std::stop_token stop) {
             }
             if (HWND found = findGameWindow()) {
                 subclass(found);
-                auto& o = options();
-                if (bg()) {
-                    requestSync();
-                    log().info("{}", applyWindowLayout(o.clientWidth, o.clientHeight, o.placement));
-                    fakeFocusGained();
-                    // The game may still activate itself while it starts up: keep handing the
-                    // foreground back for a while (later activations are a human clicking it).
-                    guardUntil = steady_clock::now() + seconds(30);
-                } else if (o.clientWidth > 0 && o.clientHeight > 0) {
-                    log().info("{}", applyWindowLayout(o.clientWidth, o.clientHeight, "none"));
-                }
+                requestSync();
+                log().info("{}", applyWindowLayout(options().clientWidth, options().clientHeight));
+                fakeFocusGained();
+                // The game may still activate itself while it starts up: keep handing the
+                // foreground back for a while.
+                guardUntil = steady_clock::now() + seconds(30);
             }
         } else {
-            if (bg() && real::GetForegroundWindow() == h) {
+            if (real::GetForegroundWindow() == h) {
                 gStats.realForegroundSeen.fetch_add(1, std::memory_order_relaxed);
                 if (steady_clock::now() < guardUntil) giveAwayForeground(h);
             }
-            if ((gManaged || GetPropW(h, kHiddenProp)) && steady_clock::now() - lastSync > milliseconds(500)) {
+            if (steady_clock::now() - lastSync > milliseconds(500)) {
                 lastSync = steady_clock::now();
                 if (needsSync(h)) requestSync();
             }
@@ -476,11 +395,10 @@ RAWMOUSE const* syntheticRawMouse(HRAWINPUT h) {
     return it == gRaw.end() ? nullptr : &it->second;
 }
 
-std::string applyWindowLayout(int clientW, int clientH, std::string const& requested) {
+std::string applyWindowLayout(int clientW, int clientH) {
     HWND h = gWindow.load();
     if (!h) return "no game window yet";
-    // The manager shows the game: wherever a script asks for it, the window stays off screen.
-    std::string const& placement = hideNow() && bg() ? std::string("offscreen") : requested;
+    // The manager shows the game: the window itself always stays off screen.
     std::string done;
     int         x = 40, y = 40;
     if (clientW > 0 && clientH > 0) {
@@ -493,7 +411,7 @@ std::string applyWindowLayout(int clientW, int clientH, std::string const& reque
             GetDpiForWindow(h)
         );
         int w = r.right - r.left, hgt = r.bottom - r.top;
-        if (placement == "offscreen") x = offScreenX(w);
+        x     = offScreenX(w);
         if (IsZoomed(h) || IsIconic(h)) {
             // Restore without activating: SetWindowPlacement with SW_SHOWNOACTIVATE.
             WINDOWPLACEMENT wp{sizeof(WINDOWPLACEMENT)};
@@ -506,20 +424,16 @@ std::string applyWindowLayout(int clientW, int clientH, std::string const& reque
         RECT c{};
         GetClientRect(h, &c);
         done = std::format("client {}x{} at ({},{})", c.right, c.bottom, x, y);
-    } else if (placement == "offscreen") {
+    } else {
         RECT wr{};
         GetWindowRect(h, &wr);
         x = offScreenX(wr.right - wr.left);
         real::SetWindowPos(h, nullptr, x, wr.top, 0, 0, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
         done = std::format("moved off screen to x={}", x);
     }
-    if (placement == "back" || placement == "offscreen") {
-        real::SetWindowPos(h, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        giveAwayForeground(h);
-        done += done.empty() ? "" : ", ";
-        done += "sent to the back of the Z order";
-    }
-    return "window layout: " + (done.empty() ? std::string("unchanged") : done);
+    real::SetWindowPos(h, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    giveAwayForeground(h);
+    return "window layout: " + done + ", sent to the back of the Z order";
 }
 
 void fakeFocusGained() {
@@ -530,48 +444,22 @@ void fakeFocusGained() {
     post(Event{.msg = WM_SETFOCUS, .wp = 0, .lp = 0});
 }
 
-void setManaged(bool on) {
-    if (gManaged.exchange(on) == on) return;
-    if (!on) gTakenOver = false;
-    requestSync();
-}
+void setManaged(bool on) { gManaged = on; }
 
 bool managed() { return gManaged.load(); }
 
-bool takenOver() { return gTakenOver.load(); }
-
 void prepareFirstShow(HWND h) {
-    if (!hideNow() || IsWindowVisible(h) || GetWindow(h, GW_OWNER) || (GetWindowLongW(h, GWL_STYLE) & WS_CHILD)) return;
+    if (IsWindowVisible(h) || GetWindow(h, GW_OWNER) || (GetWindowLongW(h, GWL_STYLE) & WS_CHILD)) return;
     // Before the first show: no taskbar button and no frame on screen, not even for a moment.
-    setHidden(h, true);
+    setHidden(h);
     RECT r{};
     GetWindowRect(h, &r);
     real::SetWindowPos(h, nullptr, offScreenX(r.right - r.left), r.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-bool keepOffScreen(HWND h) { return hideNow() && isHidden(h); }
+bool keepOffScreen(HWND h) { return isHidden(h); }
 
-std::string takeOver() {
-    HWND h = gWindow.load();
-    if (!h) return "no game window yet";
-    gTakenOver       = true;
-    backgroundMode() = false;
-    syncAudioMute();
-    vstate::releaseAll();
-    return runOnGameThread(h, kTakeOver);
-}
-
-std::string handBack() {
-    HWND h = gWindow.load();
-    if (!h) return "no game window yet";
-    vstate::releaseAll();
-    gTakenOver       = false;
-    backgroundMode() = true;
-    syncAudioMute();
-    return runOnGameThread(h, kHandBack);
-}
-
-bool hideNewWindows() { return hideNow() && !gCreatedHidden.load(); }
+bool hideNewWindows() { return !gCreatedHidden.load(); }
 
 void markHidden(HWND h) {
     SetPropW(h, kHiddenProp, reinterpret_cast<HANDLE>(1));

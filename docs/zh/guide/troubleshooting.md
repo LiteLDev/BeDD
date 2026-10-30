@@ -2,8 +2,8 @@
 
 ## 游戏不理我的鼠标和键盘
 
-后台模式开着：模块在实例的 `mods\` 目录里，配置打开了后台模式，常常是测试框架留下的副本。在游戏窗口里按
-**Ctrl+Shift+F12** 关掉后台模式，然后删掉 `mods\BeDD`。测试框架会在 `finally` 里调用 `Uninstall-BeDDMod`，
+模块在实例的 `mods\` 目录里，常常是测试框架留下的副本：游戏于是无头运行，只显示在管理窗口里。在管理窗口里关掉它，
+然后删掉 `mods\BeDD`。测试框架会在 `finally` 里调用 `Uninstall-BeDDMod`，
 并在"把其他模组挪开"那一步跳过 `BeDD`，以免出现这种情况。
 
 ## 多开时报"发生错误"（代码 "Blaze"）
@@ -32,8 +32,13 @@
 
 ## 关掉管理窗口，所有游戏都关了
 
-它就是这样设计的（会先确认）：电脑上所有测试的游戏都在里面。想让某个游戏不进管理窗口，用
-`Start-BeDDGame.ps1 -NoManager`（或 `BEDD_MANAGER=0`）启动，并用 `Install-BeDDMod -NoManager` 安装模块。
+它就是这样设计的（会先确认）：电脑上所有测试的游戏都在里面，而游戏从不脱离管理窗口运行。
+
+## 游戏启动时自己关掉了
+
+90 秒内没有管理窗口连上它（或者它失去了管理窗口），所以它关掉了；原因写在它的 `logs\latest.log` 里。没有管理窗口时，
+游戏用配置里的 `managerScript` 启动一个：检查路径是否正确（`Install-BeDDMod` 会写），以及是否装了 PowerShell 7（`pwsh`）。
+管理窗口自己的日志在 `%LOCALAPPDATA%\BeDD\manager.log`。
 
 ## `Set-BeDDLook` 超时，或暂停后游戏操作没反应
 

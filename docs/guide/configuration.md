@@ -1,10 +1,11 @@
 # Configuration
 
 The module reads `mods\BeDD\config\config.json`, usually written by the harness (`Install-BeDDMod` does it).
-Without it the module stays passive: background mode off, the pipe still answers.
+Without it the game still runs headless, with the defaults and no `managerScript` (so only in a manager window that
+already runs).
 
 ```json
-{ "background": true, "placement": "back", "clientWidth": 1600, "clientHeight": 900, "pipeName": "BeDD" }
+{ "clientWidth": 1600, "clientHeight": 900, "pipeName": "BeDD", "managerScript": "C:\\BeDD\\BeDDManager.ps1" }
 ```
 
 `Install-BeDDMod` and `Start-BeDDGame.ps1` also switch the instance's LeviLamina to its built-in crash logger
@@ -15,13 +16,11 @@ program, and its console window would flash on the desktop at every game start.
 
 | Key | |
 |---|---|
-| `background` | keep the game in the background and away from your real mouse and keyboard |
-| `placement` | `back` (behind your windows), `offscreen` or `none` |
 | `clientWidth`, `clientHeight` | game window size (0 = leave it), so clicks land in the same place every run |
 | `pipeName` | one per game instance when several run at once |
 | `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new instance, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). Dedicated servers your harness starts still ask once per server folder; **Cancel** is fine |
-| `manager` | default `true`: in background mode the game shows up in the manager window when one runs, and its own window stays off screen and off the taskbar |
-| `mute` | default `true`: in background mode the game makes no sound (it is audible again while you take it over) |
+| `managerScript` | path of `BeDDManager.ps1` (`Install-BeDDMod` writes it): the game starts the [manager window](/guide/several-games#the-manager-window) with it when none runs |
+| `mute` | default `true`: the game makes no sound |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
 | `pipeInstances` | default `4`: scripts that may use the game's pipe at once (each one's held keys, buttons and `input` override are released when it disconnects); `1` = one at a time |
 
@@ -45,7 +44,7 @@ default; keep them off unless a harness needs them (see [Security](/reference/pr
 | Variable | Read by | |
 |---|---|---|
 | `BEDD_PIPE` | `BeDD.psm1` | the pipe `Connect-BeDD` uses without `-PipeName` (default `BeDD`) |
-| `BEDD_MANAGER` | `Start-BeDDGame.ps1`, the shim | `0`: no manager window |
+| `BEDD_MANAGER_PIPE` | `BeDDManager.ps1`, the module | the pipe of another manager window than the session's, e.g. a recording's own; games started with it set show up there |
 | `BEDD_LABEL` | the module | the game's name in the manager window (`Start-BeDDGame.ps1 -Label` sets it) |
 | `BEDD_RETURN_FOCUS` | the module | a window handle that gets the foreground back if the game still activates itself while starting (`Start-BeDDGame.ps1` and the shim's `Start-Game` set it) |
 | `BEDD_DIR` | your harness | where Be.D.D. is unpacked ([Installation](/guide/installation#let-the-harness-fetch-it)) |

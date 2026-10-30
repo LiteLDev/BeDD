@@ -32,8 +32,10 @@ A clone has its own `mods\`, logs, worlds and options. A few rules keep parallel
 
 ## Starting a game
 
-`Start-BeDDGame.ps1` runs `versions\<Instance>\Minecraft.Windows.exe` directly, so the window appears without taking
-the foreground (LeviLauncher is not needed: the exe loads LeviLamina itself). It returns the process.
+`Start-BeDDGame.ps1` runs `versions\<Instance>\Minecraft.Windows.exe` directly, so the game never takes the
+foreground (LeviLauncher is not needed: the exe loads LeviLamina itself). It returns the process. The instance must
+have the module in `mods\BeDD` (`Install-BeDDMod`), and the [manager window](#the-manager-window) must start: otherwise
+it throws.
 
 | Parameter | |
 |---|---|
@@ -41,13 +43,12 @@ the foreground (LeviLauncher is not needed: the exe loads LeviLamina itself). It
 | `-Slot N` | its clone `<base>-hi<N>` instead |
 | `-VersionsDir <dir>` | LeviLauncher's `versions` folder |
 | `-Label <text>` | the game's name in the manager window (default: the project and worktree of the calling script) |
-| `-NoManager` | start the game without the manager window (also `BEDD_MANAGER=0`) |
 
 ## The manager window
 
 The first `Start-BeDDGame.ps1` of your logon session opens the **manager window**, and every later run (from any
-terminal, harness or agent) reuses it. Each background game then shows up there as a live picture instead of as a
-window of its own: no taskbar buttons, nothing in Alt+Tab, no windows popping up and vanishing while several runs
+terminal, harness or agent) reuses it. Every game shows up there as a live picture, and nowhere else: its own window
+stays off screen, with no taskbar button and nothing in Alt+Tab, so no windows pop up and vanish while several runs
 start and close games. It never takes the focus.
 
 ![Look at the title bars: only the terminal is active](/showcase/desktop-poster.webp)
@@ -56,11 +57,11 @@ start and close games. It never takes the focus.
   whether input is arriving. `-Label` on `Start-BeDDGame.ps1` names it.
 - **Closing the manager window closes every game in it** (it asks first). The games also go if the manager is
   killed, so nothing is left running in the background.
-- Double-click a game to show only that one. Right-click it to take it over with your own mouse and keyboard (and
-  hand it back to the script), open its `latest.log` or instance folder, or close it.
-- From a script: `BeDDManager.ps1 -List` lists the games, `-Game <pid> -Action show|hide|close` does what the
-  right-click menu does, `-Shutdown` closes the manager and every game without asking.
+- Double-click a game to show only that one. Right-click it to open its `latest.log` or instance folder, or to
+  close it.
+- From a script: `BeDDManager.ps1 -List` lists the games, `-Game <pid> -Action close` closes one, `-Shutdown` closes
+  the manager and every game without asking.
 
-It needs PowerShell 7 (`pwsh`). `Start-BeDDGame.ps1 -NoManager` (or `BEDD_MANAGER=0`) starts a game without
-starting the manager, and `Install-BeDDMod -NoManager` (config `"manager": false`) keeps a game out of a running
-one, for example to record the real screen.
+It needs PowerShell 7 (`pwsh`). A game never runs without it: a game that finds no manager window starts one (config
+`managerScript`), and a game that no manager links within 90 s, or that loses its manager for good, closes itself
+(the reason is in its `latest.log`).
