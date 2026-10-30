@@ -161,7 +161,7 @@ ops reply after the game thread has dispatched the input (`timeoutMs`, default 5
 | op | fields | |
 |---|---|---|
 | `ping` | | `protocol`, `pid`, `hwnd`, `background`, `client{w,h}`, `cursor{x,y}`, `realForeground` |
-| `state` | | `ping` fields + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput}` |
+| `state` | | `ping` fields + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput}`, `clients` (control-pipe clients connected now) |
 | `key` | `key` (name) or `vk`; `action` press\|down\|up; `holdMs` | names: letters, digits, ESC, ENTER, BACK, TAB, SPACE, SHIFT, CTRL, ALT, LEFT/UP/RIGHT/DOWN, HOME, END, PGUP, PGDN, INSERT, DELETE, F1..F24, SLASH, GRAVE, MINUS, EQUALS |
 | `text` | `text`; `delayMs` | one `WM_CHAR` per UTF-16 unit |
 | `mouse` | `action` move\|down\|up\|click\|wheel; `x`,`y` (client px) or `rx`,`ry` (fractions); `button` left\|right\|middle; `notches`; `holdMs` | moves the virtual cursor (if a point is given), then buttons/wheel on the virtual GameInput mouse |
@@ -173,6 +173,20 @@ ops reply after the game thread has dispatched the input (`timeoutMs`, default 5
 | `flush` | | waits until everything posted was dispatched |
 
 `ping` and `state` also report `managed` (linked to the manager window) and `takenOver`.
+
+Several clients can be connected at once (config `pipeInstances`, default 4; 1 = one at a time),
+each served by its own thread. Ops that post input (everything but `ping`, `state`, `tap` and
+`world`) are serialized, so two clients never interleave a press or a typed text. Each key and
+mouse button remembers the client that pressed it last; when a client disconnects (or its process
+dies), BeDD releases what it still holds, and nothing another client holds. The `release` op still
+releases every held key and button, whoever pressed it. Ops the manager window forwards over the
+manager link are neither serialized nor owned (as before).
+
+For units with per-client state (`src/BeDD.h`): `currentPipeClient()` is the id of the client the
+current thread serves (from 1, never reused; 0 on the manager link and the game thread), and
+`onPipeClientGone(fn)` calls `fn(id)` on the departing client's thread, after its keys and
+buttons are released and with input ops still serialized (not at shutdown). Register in
+`enable()`, or add the one-line release call to `clientGone()` in `src/Pipe.cpp`.
 
 ### Manager pipe
 

@@ -55,6 +55,7 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
     gOptions.manager      = j.value("manager", gOptions.manager);
     gOptions.mute         = j.value("mute", gOptions.mute);
+    gOptions.pipeInstances = j.value("pipeInstances", gOptions.pipeInstances);
 }
 
 bool Mod::load() {

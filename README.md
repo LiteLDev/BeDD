@@ -225,6 +225,7 @@ console window would flash on the desktop at every game start.
 | `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new instance, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). Dedicated servers your harness starts still ask once per server folder; **Cancel** is fine |
 | `manager` | default `true`: in background mode the game shows up in the manager window when one runs, and its own window stays off screen and off the taskbar |
 | `mute` | default `true`: in background mode the game makes no sound (it is audible again while you take it over) |
+| `pipeInstances` | default `4`: scripts that may talk to the game's pipe at once (each one's held keys are released when it disconnects); `1` = one at a time
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
 
 ## More
