@@ -191,7 +191,7 @@ install order) and sets `bedd::tap::gReplay`, which the tap pipe calls for each 
   change of `gLinkType`) and on `start_game` (11), which becomes its first frame.
 - Compaction keys (read from the leading fields only; the last frame with a key wins):
   `level_chunk` (x, z, dimension), `subchunk` (dimension, origin), `update_block` (position,
-  layer), `set_time`, `set_health`, `network_chunk_publisher_update`, `inventory_content` (window),
+  layer), `set_time`, `set_health`, `network_chunk_publisher_update`, `current_structure_feature`, `inventory_content` (window),
   `inventory_slot` (window, slot), `level_event` (event id, so the weather keeps its last state),
   `update_abilities` (unique id), the `add_*` packets (unique id; `add_player` by runtime id), and
   per runtime id `update_attributes`, `set_entity_data`, `set_entity_motion`, `move_entity`,

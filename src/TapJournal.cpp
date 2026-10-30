@@ -75,6 +75,7 @@ enum : uint32_t {
     kLevelEventGeneric           = 124,
     kSubChunk                    = 174,
     kUpdateAbilities             = 187,
+    kCurrentStructureFeature     = 314,
 };
 
 bool transient(uint32_t id) {
@@ -258,7 +259,8 @@ Parsed parse(std::string_view bytes) {
     case kUpdateAbilities: key(r.le(8)); break;
     case kSetTime:
     case kSetHealth:
-    case kNetworkChunkPublisherUpdate: key(); break;
+    case kNetworkChunkPublisherUpdate:
+    case kCurrentStructureFeature: key(); break;
     case kSetEntityMotion:
     case kMoveEntity:
     case kMovePlayer:
