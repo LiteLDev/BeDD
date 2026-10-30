@@ -116,6 +116,13 @@ Save-BeDDScreenshot C:\temp\shot.png       # works while the window is covered
 | `Set-BeDDWindow 1600 900` | resize the game window without bringing it forward |
 | `Set-BeDDBackground $false` | hand the game back to your real mouse and keyboard |
 | `Get-BeDDState` | is the game up, how much input arrived, did it ever get the foreground |
+| `Get-BeDDWorld` | in a world? which screen, mouse grabbed, menu open, the player's position and rotation (`gameHooks`) |
+| `Set-BeDDLook 90 -30` | turn the player to a yaw and pitch in degrees (`gameHooks`) |
+| `Set-BeDDInput -Z 1 -Sprint -TtlMs 2000` | walk, jump, sneak or sprint the player through the game's input systems for a while, whatever the key bindings (`gameHooks`) |
+| `Set-BeDDSlot 3` / `Invoke-BeDDAction inventory` | select a hotbar slot; drop, drop all, open the inventory, switch perspective, pause (`gameHooks`) |
+| `Set-BeDDButton attack -Action down -ReleaseOnBlockChange` | hold attack/use/pick for game ticks or until the targeted block breaks, without blocking the pipe (`gameHooks`) |
+| `Send-BeDDPacket -Base64 ...` | the player sends a chat or command packet a script serialized (`allowSend`) |
+| `Send-BeDDStack -Buffer ...` / `-View` | the player sends an item stack request a script serialized; `-View` shows the inventory as the client sees it (`allowStack`) |
 
 Key names: letters, digits, `ESC`, `ENTER`, `BACK`, `TAB`, `SPACE`, `SHIFT`, `CTRL`, `ALT`, arrows
 (`LEFT`...), `HOME`, `END`, `PGUP`, `PGDN`, `INSERT`, `DELETE`, `F1`..`F24`, `SLASH`, `GRAVE`,
@@ -129,7 +136,7 @@ pwsh -NoProfile -File clone-instance.ps1 -Slot 2                  # versions\1.2
 Connect-BeDD -PipeName BeDD-1.26.51.01-hi2   # the pipeName in that instance's config
 ```
 
-`Start-BeDDGame.ps1 -Slot 2` (or `-Instance <base>-hi2`) makes the clone itself when it is missing.
+`Start-BeDDGame.ps1 -Slot 2` (or `-Instance <base>-hi2`) makes the clone itself when it is missing. `clone-instance.ps1` takes slots 1 to 32; for a higher slot use `New-BeDDClone -Source <base> -Slot 41` from `BeDDSetup.psm1`.
 
 A clone has its own `mods\`, logs, worlds and options. A few rules keep parallel runs from
 tripping over each other:
@@ -226,6 +233,14 @@ console window would flash on the desktop at every game start.
 | `manager` | default `true`: in background mode the game shows up in the manager window when one runs, and its own window stays off screen and off the taskbar |
 | `mute` | default `true`: in background mode the game makes no sound (it is audible again while you take it over) |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
+| `pipeInstances` | default `4`: scripts that may use the game's pipe at once (each one's held keys, buttons and `input` override are released when it disconnects); `1` = one at a time |
+| `gameHooks` | default `false`: hook the game's own systems for the ops bedboo uses: `world` and `look` (`Get-BeDDWorld`, `Set-BeDDLook`), `input` (`Set-BeDDInput`: walk, jump, sneak and sprint whatever the key bindings), `slot`, `action` and `button` (`Set-BeDDSlot`, `Invoke-BeDDAction`, `Set-BeDDButton`: hotbar, drop/inventory/perspective/pause, attack/use/pick held for game ticks or until the targeted block breaks); see CONTRIBUTING.md |
+| `tap` | default `false`: serve `\\.\pipe\<pipeName>-tap`, a binary stream of the game packets the client receives and sends, for [bedboo](https://github.com/LiteLDev/bedboo)'s transport `bedd` (see CONTRIBUTING.md, Tap protocol), with a join journal so a reader can attach in the middle of a session. It carries the whole session of the signed-in player, so only your user can open it. While it is on the client asks servers not to use its blob cache, so every chunk arrives in full |
+| `tapLoopback` | default `true`, used only with `tap`: also tap singleplayer worlds and LAN worlds this game hosts (packets re-serialized; LAN guests' traffic is left out) |
+| `tapJournalMiB` | default `128`: size cap of the tap's join journal; past it a late attach is incomplete (`complete:false`) |
+| `allowSend` | default `false`: allow the `send` pipe op (`Send-BeDDPacket`), with which a script such as bedboo makes the client send chat and commands it serialized (any local program of yours could then do so as your player) |
+| `sendAllow` | packet ids `send` may send, default `[9, 77]` (text, command_request); login, inventory_transaction, player_auth_input and item_stack_request are always refused |
+| `allowStack` | default `false`: the `stack` op (`Send-BeDDStack`) lets a pipe client make the game send item stack requests (inventory moves, crafting, chest moves) for the signed-in player, as bedboo does in bedd mode. Turn it on only for such harnesses |
 
 ## More
 

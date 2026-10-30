@@ -8,6 +8,8 @@
 #
 # Every input call returns once the game thread has processed the input (or throws).
 # Nothing here moves the real cursor, presses real keys or changes the foreground window.
+# Other scripts may use the same game's pipe at the same time (config pipeInstances); the keys and
+# buttons a session still holds are released when it disconnects or its process exits.
 
 # One pipe per game instance; $env:BEDD_PIPE or Connect-BeDD -PipeName picks it.
 $script:PipeName = if ($env:BEDD_PIPE) { $env:BEDD_PIPE } else { 'BeDD' }
@@ -88,6 +90,16 @@ function Invoke-BeDD([Parameter(Mandatory)][hashtable]$Request, [switch]$NoThrow
 
 function Get-BeDDState { Invoke-BeDD @{ op = 'state' } }
 
+# What the client shows (topScreen, mouseGrabbed, showingMenu, ...) and the local player's pose
+# (config gameHooks).
+function Get-BeDDWorld { Invoke-BeDD @{ op = 'world' } }
+
+# Turns the player to an absolute yaw/pitch in degrees (player_auth_input convention: yaw 0 = +Z,
+# 90 = -X; pitch -90 = up) and returns once it is within 0.5 degrees (config gameHooks).
+function Set-BeDDLook([Parameter(Mandatory)][double]$Yaw, [Parameter(Mandatory)][double]$Pitch, [int]$TimeoutMs = 1000) {
+    Invoke-BeDD @{ op = 'look'; yaw = $Yaw; pitch = $Pitch; timeoutMs = $TimeoutMs }
+}
+
 # Background mode on/off at runtime (off = the game sees real input and focus again, e.g. to let a
 # human take over a -KeepOpen session; Ctrl+Shift+F12 on the real keyboard does the same).
 function Set-BeDDBackground([bool]$On = $true) { Invoke-BeDD @{ op = 'background'; on = $On } }
@@ -156,6 +168,49 @@ function Set-BeDDCrashLogger([Parameter(Mandatory)][string]$ModsDir) {
 # Releases every key and button the virtual state still holds down.
 function Clear-BeDDInput { Invoke-BeDD @{ op = 'release' } | Out-Null }
 
+# Hotbar slot 0..8 through the game's own slot-select callback (config gameHooks); no -Slot = query.
+function Set-BeDDSlot([ValidateRange(0, 8)][int]$Slot = -1) {
+    $r = @{ op = 'slot' }
+    if ($Slot -ge 0) { $r.slot = $Slot }
+    Invoke-BeDD $r
+}
+
+# The game's own button actions (config gameHooks): drop, dropAll, inventory, perspective, pause.
+function Invoke-BeDDAction([Parameter(Mandatory)][ValidateSet('drop', 'dropAll', 'inventory', 'perspective', 'pause')][string]$Name) {
+    Invoke-BeDD @{ op = 'action'; name = $Name }
+}
+
+# attack/use/pick on the virtual GameInput mouse, released by the game's ticks (config gameHooks):
+# after -HoldTicks, or with -ReleaseOnBlockChange once the targeted block breaks or is no longer targeted.
+function Set-BeDDButton(
+    [Parameter(Mandatory)][ValidateSet('attack', 'use', 'pick')][string]$Button,
+    [ValidateSet('down', 'up', 'click')][string]$Action = 'click',
+    [int]$HoldTicks = 0, [switch]$ReleaseOnBlockChange
+) {
+    $r = @{ op = 'button'; button = $Button; action = $Action }
+    if ($HoldTicks -gt 0) { $r.holdTicks = $HoldTicks }
+    if ($ReleaseOnBlockChange) { $r.releaseOn = 'blockChange' }
+    Invoke-BeDD $r
+}
+
+# Moves the local player through the game's own input pipeline (config "gameHooks": true) until
+# -TtlMs runs out: -X = left - right, -Z = forward - back, each in [-1, 1]. -TtlMs 0 stops at once.
+# -Query returns the op's state ({active, via, hooks}) instead.
+function Set-BeDDInput([double]$X = 0, [double]$Z = 0, [switch]$Jump, [switch]$Sneak, [switch]$Sprint, [int]$TtlMs = 300, [switch]$Query) {
+    if ($Query) { return Invoke-BeDD @{ op = 'input' } }
+    Invoke-BeDD @{ op = 'input'; move = @{ x = $X; z = $Z }; jump = [bool]$Jump; sneak = [bool]$Sneak; sprint = [bool]$Sprint; ttlMs = $TtlMs }
+}
+
+# The local client sends one serverbound packet (needs allowSend; ids in sendAllow only): -Base64 or
+# -Bytes is the varint header + body, as bedrock-protocol serializes it. Without either, returns the
+# allowed ids. Returns the reply (packetId, name); with -NoThrow also a failed one (code, error).
+function Send-BeDDPacket([string]$Base64, [byte[]]$Bytes, [int]$TimeoutMs = 2000, [switch]$NoThrow) {
+    $r = @{ op = 'send'; timeoutMs = $TimeoutMs }
+    if ($PSBoundParameters.ContainsKey('Bytes')) { $r.buf = [Convert]::ToBase64String($Bytes) }
+    elseif ($PSBoundParameters.ContainsKey('Base64')) { $r.buf = $Base64 }
+    Invoke-BeDD $r -NoThrow:$NoThrow
+}
+
 Add-Type -AssemblyName System.Drawing
 if (-not ('BeDD.Win' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -205,6 +260,23 @@ function Save-BeDDScreenshot([Parameter(Mandatory)][string]$Path) {
     return $Path
 }
 
+# Item stack request through the local client (`stack` op, config allowStack). -Buffer: the whole
+# item_stack_request packet (varint header + body) as base64 or bytes, as bedrock-protocol serializes
+# it; the reply maps its request ids to the client's (map, requestIds). Without -Buffer: the probe
+# ({enabled, via}; ok is false while allowStack is off). -View: the inventory as the client shows it.
+# Invoke-BeDD writes a request again after a broken pipe: check with -View before resending a buffer.
+function Send-BeDDStack($Buffer, [switch]$View, [int]$TimeoutMs = 2000) {
+    $r = @{ op = 'stack' }
+    if ($View) { $r.view = $true }
+    elseif ($null -ne $Buffer) {
+        $r.buf = if ($Buffer -is [byte[]]) { [Convert]::ToBase64String($Buffer) } else { [string]$Buffer }
+        $r.timeoutMs = $TimeoutMs
+    }
+    Invoke-BeDD $r -NoThrow:(-not $View -and $null -eq $Buffer)
+}
+
 Export-ModuleMember -Function Connect-BeDD, Set-BeDDPipe, Disconnect-BeDD, Test-BeDD, Invoke-BeDD,
     Set-BeDDCrashLogger, Get-BeDDState, Set-BeDDBackground, Set-BeDDWindow, Send-BeDDKey, Send-BeDDText,
-    Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot
+    Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot,
+    Get-BeDDWorld, Set-BeDDLook,
+    Set-BeDDInput, Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton, Send-BeDDPacket, Send-BeDDStack

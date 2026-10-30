@@ -55,6 +55,19 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
     gOptions.manager      = j.value("manager", gOptions.manager);
     gOptions.mute         = j.value("mute", gOptions.mute);
+    gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
+    gOptions.tap          = j.value("tap", gOptions.tap);
+    gOptions.pipeInstances = j.value("pipeInstances", gOptions.pipeInstances);
+    gOptions.tapLoopback  = gOptions.tap && j.value("tapLoopback", gOptions.tapLoopback);
+    gOptions.tapJournalMiB = j.value("tapJournalMiB", gOptions.tapJournalMiB);
+    gOptions.allowSend    = j.value("allowSend", gOptions.allowSend);
+    if (auto it = j.find("sendAllow"); it != j.end() && it->is_array()) {
+        gOptions.sendAllow.clear();
+        for (auto const& id : *it)
+            if (id.is_number_integer() && id.get<int64_t>() >= 0 && id.get<int64_t>() <= 0x3ff) gOptions.sendAllow.push_back(id.get<int>());
+            else log().warn("sendAllow: {} is not a packet id (0..1023); ignored", id.dump());
+    }
+    gOptions.allowStack   = j.value("allowStack", gOptions.allowStack);
 }
 
 bool Mod::load() {
@@ -87,13 +100,28 @@ bool Mod::enable() {
     installApiHooks();
     installGameInputHooks();
     startWindowWatcher();
+    installMoveInputHooks(); // before the pipe: an early "input" must not take the key fallback
     startPipeServer();
     startInputTrace();
+    startGameState();
+    startLook();
+    startTap();
+    if (gOptions.tapLoopback) installTapLoopback();
+    if (gOptions.tap) installTapJournal();
+    installGameActions();
+    if (gOptions.allowSend) installSend();
+    if (gOptions.allowStack) installStack();
     log().info("BeDD enabled");
     return true;
 }
 
 bool Mod::disable() {
+    // First: wakes a pipe thread waiting for a look, so stopPipeServer can join it.
+    stopLook();
+    stopGameState();
+    uninstallGameActions(); // first: its tick listener drives the virtual mouse
+    uninstallSend(); // first: answers a send the pipe thread waits on, so stopPipeServer() can join it
+    uninstallStack(); // likewise for a waiting stack request
     stopInputTrace();
     stopManagerLink();
     stopPipeServer();
@@ -102,6 +130,10 @@ bool Mod::disable() {
     uninstallApiHooks();
     uninstallNetHooks();
     uninstallAudioHooks();
+    stopTap();
+    uninstallTapLoopback();
+    uninstallTapJournal();
+    uninstallMoveInputHooks();
     return true;
 }
 

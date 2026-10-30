@@ -5,8 +5,12 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
+#include <vector>
+
+#include <nlohmann/json_fwd.hpp>
 
 #include "ll/api/io/Logger.h"
 #include "ll/api/thread/GlobalThreadPauser.h"
@@ -48,6 +52,25 @@ struct Options {
     bool manager = true;
     /// In background mode, mute the game (FMOD master channel group): headless games stay silent.
     bool mute = true;
+    /// Hook the client's own game systems for the world, look, input, slot, action and button ops.
+    /// Off: those ops answer code:"disabled" and nothing is hooked.
+    bool gameHooks = false;
+    /// Serve \\.\pipe\<pipeName>-tap (Tap.cpp): the game packets the client receives and sends,
+    /// with a join journal (TapJournal.cpp) so a reader can attach in the middle of a session.
+    bool tap = false;
+    /// Control-pipe clients served at once (nMaxInstances); 1 = one client at a time.
+    int pipeInstances = 4;
+    /// With "tap": also tap singleplayer worlds and LAN worlds this client hosts (TapLoopback.cpp).
+    /// Read as tap && tapLoopback, so it is off unless the tap is on.
+    bool tapLoopback = true;
+    /// Size cap of the tap's join journal (late attach); past it the replay reports complete:false.
+    int tapJournalMiB = 128;
+    /// Allow the `send` op: the local client sends serverbound packets a caller serialized (Send.cpp).
+    bool allowSend = false;
+    /// Packet ids `send` may send (text, command_request). 1, 30, 144 and 147 are always refused.
+    std::vector<int> sendAllow{9, 77};
+    /// Allow the `stack` op: the local client sends item stack requests a caller serialized (Stack.cpp).
+    bool allowStack = false;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -204,6 +227,31 @@ void startPipeServer();
 void stopPipeServer();
 /// One request line of the control protocol -> one reply line (with the newline).
 [[nodiscard]] std::string handleControlLine(std::string const& line);
+/// The control-pipe client whose request the current thread handles (ids start at 1 and are never
+/// reused); 0 off a client thread (the manager link, the game thread). Tag per-client state with it.
+[[nodiscard]] uint64_t currentPipeClient();
+/// Control-pipe clients connected now.
+[[nodiscard]] int pipeClients();
+/// Called with the client's id once a control-pipe client has disconnected, after its keys and
+/// buttons are released: release what it owns. Runs on the departing client's thread with input
+/// ops serialized; not called at shutdown. Register once, e.g. in enable().
+void onPipeClientGone(std::function<void(uint64_t)> fn);
+
+// ---------------------------------------------------------------------------------------------
+// Tap join journal (TapJournal.cpp): compacted clientbound frames since start_game, replayed to
+// each new tap client (bedd::tap::gReplay).
+// ---------------------------------------------------------------------------------------------
+void installTapJournal();
+void uninstallTapJournal();
+struct TapJournalStats {
+    bool     enabled = false;
+    uint64_t frames = 0, bytes = 0;
+    bool     complete = true;
+    // Clientbound frames seen; replaced by a later frame with the same key; add_* frames pruned by
+    // remove_entity; transient frames not kept; frames not kept past the cap; resets; replays.
+    uint64_t seen = 0, compacted = 0, pruned = 0, transient = 0, overCap = 0, resets = 0, replays = 0;
+};
+[[nodiscard]] TapJournalStats tapJournalStats();
 
 // ---------------------------------------------------------------------------------------------
 // Manager link (Manager.cpp): \\.\pipe\BeDD-Manager-<session id>
@@ -211,4 +259,104 @@ void stopPipeServer();
 void startManagerLink();
 void stopManagerLink();
 
+// ---------------------------------------------------------------------------------------------
+// World snapshot and absolute look (GameState.cpp, Look.cpp; config gameHooks)
+// ---------------------------------------------------------------------------------------------
+void startGameState();
+void stopGameState();
+struct WorldPose {
+    bool     inLevel = false; // and the local player exists
+    float    yaw{}, pitch{};  // degrees, as in player_auth_input
+    uint64_t tick{};
+};
+/// The last client-tick snapshot (any thread).
+[[nodiscard]] WorldPose worldPose();
+/// Replies of the `world` and `look` ops (pipe thread).
+[[nodiscard]] nlohmann::json worldOp(nlohmann::json const& req);
+[[nodiscard]] nlohmann::json lookOp(nlohmann::json const& req);
+/// {ok:false, code:"disabled"} naming the gameHooks key.
+[[nodiscard]] nlohmann::json disabledReply(char const* op);
+void startLook();
+void stopLook();
+/// The client left its world: a pending look fails with not_in_level.
+void lookLevelExited();
+
+// ---------------------------------------------------------------------------------------------
+// Tap (Tap.cpp, NetTap.cpp): \\.\pipe\<pipeName>-tap, only with config "tap"
+// ---------------------------------------------------------------------------------------------
+void startTap();
+void stopTap();
+/// The "tap" op reply fields (JSON object).
+[[nodiscard]] std::string tapInfo();
+/// {hook name: installed} of the tap's hooks (JSON object, for "state").
+[[nodiscard]] std::string tapHooks();
+
+// ---------------------------------------------------------------------------------------------
+// Loopback tap (TapLoopback.cpp): singleplayer and LAN-host worlds, re-serialized.
+// ---------------------------------------------------------------------------------------------
+void installTapLoopback();
+void uninstallTapLoopback();
+struct TapLoopbackStats {
+    bool     enabled = false;
+    int      hooks   = 0;
+    int      link    = 0; // tap::Link
+    uint64_t clientbound{}, echo{}, bytes{};
+    uint64_t unpublished{}; // frames counted while no tap pipe took them
+    uint64_t guest{};       // clientbound packets to LAN guests (never published)
+};
+[[nodiscard]] TapLoopbackStats tapLoopbackStats();
+
+// ---------------------------------------------------------------------------------------------
+// Game actions (GameActions.cpp): the `slot`, `action` and `button` ops (config gameHooks).
+// ---------------------------------------------------------------------------------------------
+void installGameActions();
+void uninstallGameActions();
+/// Releases every button a `button` op holds (BeDD is unloading).
+void releaseGameButtons();
+/// Releases the buttons control-pipe client `client` pressed through `button` (it disconnected).
+void releaseGameButtonsOf(uint64_t client);
+/// Reply of a `slot`, `action` or `button` request.
+[[nodiscard]] nlohmann::json gameActionOp(std::string const& op, nlohmann::json const& req);
+
+// ---------------------------------------------------------------------------------------------
+// Move input (MoveInput.cpp): the "input" op, ClientInputUpdateSystem hooks with a dead-man TTL.
+// ---------------------------------------------------------------------------------------------
+/// When gameHooks is on; falls back to the default keymap's keys if the hooks do not install.
+void installMoveInputHooks();
+void uninstallMoveInputHooks();
+/// Drop the move override now ("release", a control client disconnecting).
+void clearMoveInput();
+/// Drop the move override if control-pipe client `client` set it (it disconnected).
+void clearMoveInputOf(uint64_t client);
+/// The "input" op: the reply object (ok:false with a code on refusal).
+[[nodiscard]] nlohmann::json moveInputOp(nlohmann::json const& request);
+
+} // namespace bedd
+
+// ---------------------------------------------------------------------------------------------
+// Send (Send.cpp): allowlisted serverbound packets from the control pipe (allowSend).
+// ---------------------------------------------------------------------------------------------
+#include <nlohmann/json_fwd.hpp>
+
+namespace bedd {
+/// Client level tick listener that sends queued packets on the client thread.
+void installSend();
+void uninstallSend();
+/// The `send` op: the whole reply (`ok`, `code` on errors).
+[[nodiscard]] nlohmann::json sendOp(nlohmann::json const& req);
+/// `sent`, `refused`, `failed`, `lastError` for the "state" op.
+[[nodiscard]] nlohmann::json sendStats();
+} // namespace bedd
+
+// ---------------------------------------------------------------------------------------------
+// Stack (Stack.cpp): item stack requests from the control pipe (allowStack).
+// ---------------------------------------------------------------------------------------------
+#include <nlohmann/json_fwd.hpp>
+
+namespace bedd {
+/// Client level tick listener and item stack response hook of the `stack` op.
+void installStack();
+void uninstallStack();
+/// The `stack` op: the whole reply (`ok`, `code` on errors).
+[[nodiscard]] nlohmann::json stackOp(nlohmann::json const& req);
 } // namespace bedd
