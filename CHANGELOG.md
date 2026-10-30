@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tools/build.ps1`: builds with xmake, installing xmake, LLVM and the Visual Studio C++ build tools with winget when missing.
 - `world` and `look` pipe ops (`Get-BeDDWorld`, `Set-BeDDLook`), off unless config `gameHooks` is on: `world` reports whether the client is in a world, its top screen, mouse grab, open menu, input mode and the local player's runtime id, eye position, rotation and hotbar slot; `look` turns the player to an absolute yaw/pitch (player_auth_input degrees) from the game's own thread and replies once it is within 0.5°.
 - Config `tap` (off by default): `\\.\pipe\<pipeName>-tap` streams the game packets the client receives from a server and echoes the ones it sends, framed with `LINK_UP`/`LINK_DOWN` and replay markers, for bedboo's transport `bedd`. The `tap` op reports it (`code:"disabled"` while off), and `state` reports its hooks under `hooks`. With `trace`, the first 50 packets of each server link are logged.
+- Loopback tap (`tapLoopback`, with `tap`): singleplayer worlds and LAN worlds the game hosts appear on the tap pipe. `LoopbackPacketSender` packets to the local player and the client's own packets are re-serialized with `Packet::write` (flags `reserialized` and `local`); LAN guests' traffic is left out. Counters in `state.stats.tapLoopback`.
 
 ### Fixed
 

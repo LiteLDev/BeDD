@@ -58,6 +58,7 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
     gOptions.tap          = j.value("tap", gOptions.tap);
     gOptions.pipeInstances = j.value("pipeInstances", gOptions.pipeInstances);
+    gOptions.tapLoopback  = j.value("tap", false) && j.value("tapLoopback", gOptions.tapLoopback);
 }
 
 bool Mod::load() {
@@ -95,6 +96,7 @@ bool Mod::enable() {
     startGameState();
     startLook();
     startTap();
+    if (gOptions.tapLoopback) installTapLoopback();
     log().info("BeDD enabled");
     return true;
 }
@@ -112,6 +114,7 @@ bool Mod::disable() {
     uninstallNetHooks();
     uninstallAudioHooks();
     stopTap();
+    uninstallTapLoopback();
     return true;
 }
 

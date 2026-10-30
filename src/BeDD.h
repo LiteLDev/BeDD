@@ -57,6 +57,9 @@ struct Options {
     bool tap = false;
     /// Control-pipe clients served at once (nMaxInstances); 1 = one client at a time.
     int pipeInstances = 4;
+    /// With "tap": also tap singleplayer worlds and LAN worlds this client hosts (TapLoopback.cpp).
+    /// Read as tap && tapLoopback, so it is off unless the tap is on.
+    bool tapLoopback = true;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -258,5 +261,18 @@ void stopTap();
 [[nodiscard]] std::string tapInfo();
 /// {hook name: installed} of the tap's hooks (JSON object, for "state").
 [[nodiscard]] std::string tapHooks();
+// Loopback tap (TapLoopback.cpp): singleplayer and LAN-host worlds, re-serialized.
+// ---------------------------------------------------------------------------------------------
+void installTapLoopback();
+void uninstallTapLoopback();
+struct TapLoopbackStats {
+    bool     enabled = false;
+    int      hooks   = 0;
+    int      link    = 0; // tap::Link
+    uint64_t clientbound{}, echo{}, bytes{};
+    uint64_t unpublished{}; // frames counted while no tap pipe took them
+    uint64_t guest{};       // clientbound packets to LAN guests (never published)
+};
+[[nodiscard]] TapLoopbackStats tapLoopbackStats();
 
 } // namespace bedd

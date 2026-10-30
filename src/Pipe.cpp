@@ -261,6 +261,11 @@ json handle(json const& j) {
             {"loopbackRebinds",    loopbackRebinds()          },
             {"serverQueriesRefused", serverQueriesRefused()     },
             {"audio",              audioStats()               },
+            {"tapLoopback",        [] {
+                 auto t = tapLoopbackStats();
+                 return json{{"enabled", t.enabled}, {"hooks", t.hooks}, {"link", t.link}, {"clientbound", t.clientbound}, {"echo", t.echo},
+                             {"bytes", t.bytes}, {"unpublished", t.unpublished}, {"guest", t.guest}};
+             }()},
         };
         json tap = json::parse(tapHooks());
         for (auto& [name, on] : tap.items()) r["hooks"][name] = on;
