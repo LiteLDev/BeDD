@@ -14,6 +14,10 @@
 //   (header + body): a SERVERBOUND_ECHO frame. login, the handshakes and request_network_settings
 //   are left out.
 //
+// * NetworkSystem::send: the client's client_cache_status goes out with enabled = false. With the
+//   blob cache on, a server sends sub-chunks as blob hashes plus only the blobs the client misses,
+//   and the rest come from the client's cache on disk: a tap reader could not build the world.
+//
 // The hooks only copy the bytes and hand them to tap::emit (Tap.cpp queues them for the pipe).
 #include "BeDD.h"
 #include "Tap.h"
@@ -31,6 +35,8 @@
 #include "mc/network/NetworkIdentifier.h"
 #include "mc/network/NetworkPeer.h"
 #include "mc/network/NetworkSystem.h"
+#include "mc/network/Packet.h"
+#include "mc/network/packet/ClientCacheStatusPacket.h"
 
 namespace bedd::tap {
 
@@ -257,6 +263,28 @@ LL_TYPE_INSTANCE_HOOK(
     origin(id, packet, data);
 }
 
+// The client tells the server whether it has a blob cache (client_cache_status, 129): it never has
+// one while the tap is on, so every sub-chunk arrives with its data (see the file comment).
+LL_TYPE_INSTANCE_HOOK(
+    TapCacheStatusHook,
+    ll::memory::HookPriority::Normal,
+    NetworkSystem,
+    &NetworkSystem::send,
+    void,
+    NetworkIdentifier const& id,
+    Packet const&            packet,
+    SubClientId              recipientSubId
+) {
+    if (static_cast<int>(packet.getId()) == 129 && isClientSystem(this)) {
+        auto& status = const_cast<ClientCacheStatusPacket&>(static_cast<ClientCacheStatusPacket const&>(packet));
+        if (status.mEnabled) {
+            status.mEnabled = false;
+            log().info("tap: client_cache_status sent with the blob cache off");
+        }
+    }
+    origin(id, packet, recipientSubId);
+}
+
 namespace {
 
 struct TapHook {
@@ -274,6 +302,7 @@ TapHook gHooks[]{
     {"NetworkSystem::disconnect",              &TapDisconnectHook::hook,           &TapDisconnectHook::unhook          },
     {"NetworkConnection::receivePacket",       &TapReceivePacketHook::hook,        &TapReceivePacketHook::unhook       },
     {"NetworkSystem::_sendInternal",           &TapSendInternalHook::hook,         &TapSendInternalHook::unhook        },
+    {"NetworkSystem::send (client_cache_status)", &TapCacheStatusHook::hook,       &TapCacheStatusHook::unhook         },
 };
 
 } // namespace
