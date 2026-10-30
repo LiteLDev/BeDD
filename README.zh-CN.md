@@ -104,6 +104,11 @@ Save-BeDDScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 | `Get-BeDDState` | 游戏是否在线、收到了多少输入、是否抢过前台 |
 | `Get-BeDDWorld` | 是否在世界中、当前界面、鼠标是否锁定、是否打开菜单、玩家位置与朝向（`gameHooks`） |
 | `Set-BeDDLook 90 -30` | 把玩家转到指定的偏航角和俯仰角（度，`gameHooks`） |
+| `Set-BeDDInput -Z 1 -Sprint -TtlMs 2000` | 通过游戏自己的输入系统让玩家行走、跳跃、潜行或疾跑一段时间，与按键绑定无关（`gameHooks`） |
+| `Set-BeDDSlot 3` / `Invoke-BeDDAction inventory` | 选择快捷栏格子；丢弃、全部丢弃、打开背包、切换视角、暂停（`gameHooks`） |
+| `Set-BeDDButton attack -Action down -ReleaseOnBlockChange` | 按游戏刻或直到目标方块破坏为止按住攻击/使用/选取，不阻塞管道（`gameHooks`） |
+| `Send-BeDDPacket -Base64 ...` | 让玩家发送脚本序列化好的聊天或命令数据包（`allowSend`） |
+| `Send-BeDDStack -Buffer ...` / `-View` | 让玩家发送脚本序列化好的物品堆请求；`-View` 显示客户端看到的背包（`allowStack`） |
 
 按键名：字母、数字、`ESC`、`ENTER`、`BACK`、`TAB`、`SPACE`、`SHIFT`、`CTRL`、`ALT`、方向键（`LEFT` 等）、
 `HOME`、`END`、`PGUP`、`PGDN`、`INSERT`、`DELETE`、`F1`..`F24`、`SLASH`、`GRAVE`、`MINUS`、`EQUALS`。
@@ -116,7 +121,7 @@ pwsh -NoProfile -File clone-instance.ps1 -Slot 2                  # versions\1.2
 Connect-BeDD -PipeName BeDD-1.26.51.01-hi2   # 该实例配置里的 pipeName
 ```
 
-克隆不存在时，`Start-BeDDGame.ps1 -Slot 2`（或 `-Instance <基础实例>-hi2`）会自己先克隆出来。
+克隆不存在时，`Start-BeDDGame.ps1 -Slot 2`（或 `-Instance <基础实例>-hi2`）会自己先克隆出来。`clone-instance.ps1` 只接受 1 到 32 号槽位；更大的槽位用 `BeDDSetup.psm1` 的 `New-BeDDClone -Source <基础实例> -Slot 41`。
 
 克隆出来的实例有自己的 `mods\`、日志、存档和设置。几条规矩，免得并行的测试互相打架：
 
@@ -198,12 +203,14 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 | `loopbackOnly` | 默认 `true`：游戏只在本机通信，新实例不会弹 Windows 防火墙提示，也不会去查询本机以外的游戏服务器（否则它们可能以"局域网世界"出现在测试存档前面）。测试框架自己启动的专用服务器每个服务器目录还是会问一次，点**取消**即可 |
 | `manager` | 默认 `true`：后台模式下，有管理窗口时游戏显示在管理窗口里，自己的窗口留在屏幕外、不进任务栏 |
 | `mute` | 默认 `true`：后台模式下游戏不出声（你接管游戏时恢复声音） |
-| `gameHooks` | 默认 `false`：启用 `world` 与 `look` 操作（`Get-BeDDWorld`、`Set-BeDDLook`），在游戏自己的线程上读取客户端状态并转动玩家视角 |
-| `gameHooks` | 默认 `false`：挂钩游戏自身的系统，供 bedboo 的操作使用；开启后 `input`（`Set-BeDDInput`）可让玩家行走、跳跃、潜行和疾跑，与按键绑定无关 |
-| `allowSend` | 默认 `false`：允许管道操作 `send`，bedboo 等脚本借此让客户端发送它序列化好的聊天和命令（你电脑上的任何程序都能以你的玩家身份这样做） |
-| `sendAllow` | `send` 可发送的数据包 id，默认 `[9, 77]`（text、command_request）；login、inventory_transaction、player_auth_input 和 item_stack_request 始终被拒绝 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
+| `pipeInstances` | 默认 `4`：可同时使用游戏管道的脚本数（某个脚本断开时，它按住的键、鼠标按钮和 `input` 移动覆盖都会松开）；`1` 表示一次一个 |
+| `gameHooks` | 默认 `false`：挂钩游戏自身的系统，供 bedboo 用的操作使用：`world` 与 `look`（`Get-BeDDWorld`、`Set-BeDDLook`）、`input`（`Set-BeDDInput`：行走、跳跃、潜行、疾跑，与按键绑定无关）、`slot`、`action` 与 `button`（`Set-BeDDSlot`、`Invoke-BeDDAction`、`Set-BeDDButton`：快捷栏、丢弃/背包/视角/暂停、按游戏刻或直到目标方块破坏为止按住攻击/使用/选取）；见 CONTRIBUTING.md |
+| `tap` | 默认 `false`：提供 `\\.\pipe\<pipeName>-tap`，一个二进制流，包含客户端收发的游戏数据包，供 [bedboo](https://github.com/LiteLDev/bedboo) 的 `bedd` 传输使用（见 CONTRIBUTING.md 的 Tap protocol），并带加入日志，读取方可在会话中途接入。它包含登录玩家的整个会话，所以只有你的用户能打开。打开时客户端会请服务器不使用它的 blob 缓存，每个区块都完整发送 |
 | `tapLoopback` | 默认 `true`，只在 `tap` 打开时生效：单人世界和本游戏开的局域网世界也接到 tap 管道上（数据包重新序列化；局域网访客的流量不包括在内） |
+| `tapJournalMiB` | 默认 `128`：tap 加入日志的大小上限；超过后中途接入不完整（`complete:false`） |
+| `allowSend` | 默认 `false`：允许管道操作 `send`（`Send-BeDDPacket`），bedboo 等脚本借此让客户端发送它序列化好的聊天和命令（你电脑上的任何程序都能以你的玩家身份这样做） |
+| `sendAllow` | `send` 可发送的数据包 id，默认 `[9, 77]`（text、command_request）；login、inventory_transaction、player_auth_input 和 item_stack_request 始终被拒绝 |
 | `allowStack` | 默认 `false`：`stack` 操作（`Send-BeDDStack`）让管道客户端以登录玩家的身份发出物品堆请求（背包移动、合成、箱子存取），bedboo 的 bedd 模式用它。只在需要的测试里打开 |
 
 ## 更多

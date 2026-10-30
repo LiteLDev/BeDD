@@ -280,6 +280,8 @@ void startLook();
 void stopLook();
 /// The client left its world: a pending look fails with not_in_level.
 void lookLevelExited();
+
+// ---------------------------------------------------------------------------------------------
 // Tap (Tap.cpp, NetTap.cpp): \\.\pipe\<pipeName>-tap, only with config "tap"
 // ---------------------------------------------------------------------------------------------
 void startTap();
@@ -288,6 +290,8 @@ void stopTap();
 [[nodiscard]] std::string tapInfo();
 /// {hook name: installed} of the tap's hooks (JSON object, for "state").
 [[nodiscard]] std::string tapHooks();
+
+// ---------------------------------------------------------------------------------------------
 // Loopback tap (TapLoopback.cpp): singleplayer and LAN-host worlds, re-serialized.
 // ---------------------------------------------------------------------------------------------
 void installTapLoopback();
@@ -301,16 +305,20 @@ struct TapLoopbackStats {
     uint64_t guest{};       // clientbound packets to LAN guests (never published)
 };
 [[nodiscard]] TapLoopbackStats tapLoopbackStats();
+
+// ---------------------------------------------------------------------------------------------
 // Game actions (GameActions.cpp): the `slot`, `action` and `button` ops (config gameHooks).
 // ---------------------------------------------------------------------------------------------
 void installGameActions();
 void uninstallGameActions();
-/// Releases every button a `button` op holds (a control client disconnected).
+/// Releases every button a `button` op holds (BeDD is unloading).
 void releaseGameButtons();
 /// Releases the buttons control-pipe client `client` pressed through `button` (it disconnected).
 void releaseGameButtonsOf(uint64_t client);
 /// Reply of a `slot`, `action` or `button` request.
 [[nodiscard]] nlohmann::json gameActionOp(std::string const& op, nlohmann::json const& req);
+
+// ---------------------------------------------------------------------------------------------
 // Move input (MoveInput.cpp): the "input" op, ClientInputUpdateSystem hooks with a dead-man TTL.
 // ---------------------------------------------------------------------------------------------
 /// When gameHooks is on; falls back to the default keymap's keys if the hooks do not install.
