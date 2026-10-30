@@ -40,7 +40,7 @@ features:
     link: /zh/guide/harness
 ---
 
-![三个 Minecraft 窗口跟着测试脚本动，前面的终端一直保持焦点](/showcase/desktop.webp)
+![管理窗口里的三个无头 Minecraft 游戏跟着测试脚本动](/showcase/desktop.webp)
 
 Be.D.D.（Bedrock Deep Dive）得名自《绝区零》的 H.D.D.：绳匠在远处引导代理人穿行空洞，你的脚本在后台引导 Minecraft。
 

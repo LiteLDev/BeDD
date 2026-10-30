@@ -19,7 +19,7 @@ Be.D.D. is a testing toolkit, not a mod for players: a client-side LeviLamina mo
 harness puts into a game instance for a run, the PowerShell client that drives it, and the scripts
 that set up, clone and start the games. **Documentation: <https://docs.levimc.org/BeDD/>**
 
-<p align="center"><img src="docs/public/showcase/desktop.webp" alt="Three Minecraft windows react to a test script while the terminal in front keeps the focus" width="100%"></p>
+<p align="center"><img src="docs/public/showcase/desktop.webp" alt="Three headless Minecraft games react to a test script in the manager window" width="100%"></p>
 
 > [!WARNING]
 > This is a **testing tool**. A game with Be.D.D. in its `mods\` folder ignores your real mouse

@@ -1,20 +1,20 @@
 # Gallery
 
-Recorded from the real screen with `tools/showcase/record.ps1` ([how](/reference/building#documentation-and-showcase-media)).
+Recorded with `tools/showcase/record.ps1`, straight from the manager window and the terminal ([how](/reference/building#documentation-and-showcase-media)).
 
-## Three games, one desktop, your PC stays yours
+## Three headless games, one manager window
 
 <video controls muted playsinline preload="none" poster="/BeDD/showcase/desktop-poster.webp" src="/BeDD/showcase/desktop.mp4" width="1280" height="720" style="width:100%;height:auto"></video>
 
-A test script drives three Minecraft instances at once while the terminal in front keeps the focus. Recorded from
-the real screen.
+A test script drives three headless Minecraft instances at once. The games have no windows of their own: the
+manager window shows each one live, with its instance, pid and whether input is arriving.
 
 ## Every line, live in the game
 
-<video controls muted playsinline preload="none" poster="/BeDD/showcase/script-and-game-poster.webp" src="/BeDD/showcase/script-and-game.mp4" width="1280" height="360" style="width:100%;height:auto"></video>
+<video controls muted playsinline preload="none" poster="/BeDD/showcase/script-and-game-poster.webp" src="/BeDD/showcase/script-and-game.mp4" width="1020" height="360" style="width:100%;height:auto"></video>
 
-`Send-BeDDKey E` opens the inventory, `Send-BeDDMouse` hovers and moves the sword, `ESC` closes it, in a window you
-never clicked.
+`Send-BeDDKey E` opens the inventory, `Send-BeDDMouse` hovers and moves the sword, `ESC` closes it, in a game you
+never touched.
 
 ## Your input stays yours
 
@@ -36,8 +36,9 @@ game has handled the input.
 A virtual cursor brings up tooltips and clicks slots; this picture is `Save-BeDDScreenshot` of a window that was off
 the screen.
 
-## The games never take the focus
+## One window for every game
 
-![Three games and a terminal; only the terminal's title bar is active](/showcase/desktop-poster.webp)
+![The manager window with three headless games next to the terminal running the script](/showcase/desktop-poster.webp)
 
-Look at the title bars: only the terminal is active. Each game runs from its own cheap clone of the instance.
+No game windows, no taskbar buttons, nothing takes the focus: the games of every run show up in the manager window,
+and closing it closes them all. Each game runs from its own cheap clone of the instance.

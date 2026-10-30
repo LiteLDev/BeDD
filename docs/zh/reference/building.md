@@ -30,9 +30,10 @@ xmake -y        # -> bin\BeDD\（DLL、manifest 以及 client\ 里的所有文�
 
 `tools/showcase/record.ps1 [-KeepOpen]` 重新录制桌面视频：在共享 e2e 锁（以及每个克隆的 `hi<N>-e2e.lock`）下，它准备三个克隆实例
 （`-hi2`..`-hi4`，其他模组挪开），恢复 `tools/showcase/fixtures/Showcase.zip` 存档，在它自己的管理窗口里启动游戏（`BEDD_MANAGER_PIPE`，这样别的测试的游戏不会进画面）
-并进入世界，把这个管理窗口放到背景（`stage.ps1`）上一块区域的左边三分之二，右边三分之一是运行 `demo.ps1` 的 Windows Terminal，然后用 ffmpeg 的 Desktop Duplication 抓取器录下真实屏幕的这块区域，存为
-`tools/showcase/out/take-<n>.mkv`。带 `-KeepOpen` 时，创建 `tools/showcase/out/take` 开始下一次录制，`tools/showcase/out/stop` 结束。
-`tools/showcase/encode.ps1` 把一次录制剪成 MP4、WebP 和封面图。
+并进入世界，在屏幕外、不抢焦点的控制台窗口里运行 `demo.ps1`，然后用 ffmpeg 的 `gfxcapture`（Windows.Graphics.Capture：直接录窗口自己的画面，被挡住也不影响）
+录下管理窗口和这个控制台，存为 `tools/showcase/out/take-<n>-manager.mkv` 和 `take-<n>-terminal.mkv`。不会有窗口挪到你面前，也不会抢焦点。
+带 `-KeepOpen` 时，创建 `tools/showcase/out/take` 开始下一次录制，`tools/showcase/out/stop` 结束。
+`tools/showcase/encode.ps1` 把一次录制拼成左边管理窗口、右边终端的画面，剪成 MP4、WebP 和封面图。
 
 ## 源码结构
 

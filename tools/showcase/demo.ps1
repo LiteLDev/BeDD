@@ -1,4 +1,4 @@
-# The script the showcase video shows in its terminal (record.ps1 opens it in Windows Terminal).
+# The script the showcase video shows in its terminal (record.ps1 opens it in a console window).
 # Each game gets its own runspace and its own pipe; every line printed is exactly the command run.
 param([Parameter(Mandatory)][string]$Pipes, [string]$GoFile, [int]$LingerSeconds = 6)
 $ErrorActionPreference = 'Stop'
@@ -8,11 +8,12 @@ Import-Module $module   # once here, so the runspaces below find its types alrea
 $pipeList = $Pipes -split ','
 
 $Host.UI.RawUI.WindowTitle = 'e2e - my-client-mod'
+# Nothing printed before the take starts: the window gets its final size meanwhile.
+if ($GoFile) { while (-not (Test-Path $GoFile)) { Start-Sleep -Milliseconds 50 } }
 Clear-Host
 Write-Host 'PS C:\src\my-client-mod> ' -NoNewline -ForegroundColor DarkGray
 Write-Host '.\e2e.ps1 -Games 3'
-Write-Host "[1] [2] [3]: three games in the background, one pipe each`n" -ForegroundColor DarkGray
-if ($GoFile) { while (-not (Test-Path $GoFile)) { Start-Sleep -Milliseconds 50 } }
+Write-Host "[1] [2] [3]: three headless games, one pipe each`n" -ForegroundColor DarkGray
 
 $scripts = @{
     1 = @(
