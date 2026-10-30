@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Be.D.D. is a standalone testing toolkit, no longer a mod package: `tooth.json` is gone, so it is neither a lip package nor listed on LeviMC Mods. Install it from the release zip. It has its own documentation at <https://docs.levimc.org/BeDD/> (`docs/`).
+
 ### Added
 
 - Setup for a new PC: `Initialize-BeDD.ps1` and `BeDDSetup.psm1` (`Initialize-BeDDInstance`, `Get-BeDDInstance`, …) find the LeviLauncher instance of Minecraft 1.26.51 and set up whatever is missing: LeviLauncher (downloaded from its releases when not installed), LeviLamina (installed with lip, which is downloaded with its .NET runtime), LeviLauncher's loader in the game exe, and clones. Only the game install itself is left to a person: LeviLauncher opens and the script waits for it. `Start-BeDDGame.ps1`, `clone-instance.ps1` and `tools/dev.ps1` run the same setup, and the harness shim exports it. Overrides: `BEDD_INSTANCE`, `BEDD_VERSIONS_DIR`, `BEDD_LAUNCHER_DATA`, `BEDD_LEVILAUNCHER`, `BEDD_LIP`.

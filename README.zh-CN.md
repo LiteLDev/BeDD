@@ -1,18 +1,21 @@
 # Be.D.D.
 
-<img src="docs/logo.png" alt="" width="128" align="right">
+<img src="docs/public/logo.png" alt="" width="128" align="right">
 
 [English](README.md) | 简体中文
 
 [![Release](https://img.shields.io/github/v/release/LiteLDev/BeDD)](https://github.com/LiteLDev/BeDD/releases)
 [![License](https://img.shields.io/github/license/LiteLDev/BeDD)](COPYING.LESSER)
+[![Docs](https://img.shields.io/badge/%E6%96%87%E6%A1%A3-docs.levimc.org%2FBeDD-blue)](https://docs.levimc.org/BeDD/zh/)
 
 Be.D.D.（Bedrock Deep Dive）得名自《绝区零》的 H.D.D.：绳匠在远处引导代理人穿行空洞，你的脚本在后台引导 Minecraft。
 
 让 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 客户端模组的端到端测试**在后台跑**。
 脚本在 Minecraft 基岩版里按键、打字、点击，你的鼠标、键盘和窗口照常归你用，还能同时开好几个游戏一起测。
 
-<p align="center"><img src="docs/showcase/desktop.webp" alt="三个 Minecraft 窗口跟着测试脚本动，前面的终端一直保持焦点" width="100%"></p>
+Be.D.D. 是一套测试工具，不是给玩家装的模组：测试框架在每次运行时放进游戏实例的客户端 LeviLamina 模块、驱动它的 PowerShell 客户端，以及准备、克隆、启动游戏的脚本。**文档：<https://docs.levimc.org/BeDD/zh/>**
+
+<p align="center"><img src="docs/public/showcase/desktop.webp" alt="三个 Minecraft 窗口跟着测试脚本动，前面的终端一直保持焦点" width="100%"></p>
 
 > [!WARNING]
 > 这是**测试工具**。后台模式开着时，游戏不理会你真实的鼠标和键盘。别把它留在平时玩的游戏里
@@ -28,19 +31,13 @@ Be.D.D.（Bedrock Deep Dive）得名自《绝区零》的 H.D.D.：绳匠在远�
 - **窗口被挡住也能截图。** 游戏可以躲在你其他窗口后面。
 - **直接接进现有测试框架。** 一个文件替换掉 LeviLauncher 测试框架里常见的 `Click`、`Press-Key`、`Focus-Game` 等函数，测试场景一行不用改。
 
-<p align="center"><img src="docs/showcase/how-it-feels.svg" alt="你的输入只到你自己的应用；脚本通过各自的管道驱动三个后台游戏" width="100%"></p>
+<p align="center"><img src="docs/public/showcase/how-it-feels.svg" alt="你的输入只到你自己的应用；脚本通过各自的管道驱动三个后台游戏" width="100%"></p>
 
 ## 安装
 
-装进跑测试的那个游戏实例，例如用 [lip](https://github.com/LiteLDev/lip)：
-
-```powershell
-lip install github.com/LiteLDev/BeDD#client
-```
-
-也可以从 [Releases](https://github.com/LiteLDev/BeDD/releases) 下载
-`bedd-client-windows-x64.zip`，解压到该实例的 `mods\` 目录。多数测试框架会在每次运行开始时自己放进去、结束后删掉
-（[见下文](#接入测试框架)）。
+从 [Releases](https://github.com/LiteLDev/BeDD/releases) 下载 `bedd-client-windows-x64.zip`，解压到任意位置：里面是模块
+（`BeDD.dll`）和脚本。测试框架会在每次运行开始时把模块放进游戏实例的 `mods\` 目录、结束后删掉
+（[见下文](#接入测试框架)）；想手动试一下，就解压到该实例的 `mods\` 目录。Be.D.D. 不是 lip 包，也不在 LeviMC 模组里上架。
 
 需要 Minecraft 基岩版 **1.26.51**（GDK 版）和 LeviLamina **26.51.x**（客户端），装在用 LeviLauncher 安装的游戏实例里。
 测试时用 `Start-BeDDGame.ps1` 启动这个实例，不走启动器（[见下文](#多开)）。只有测试机上的游戏需要装，服务器和玩家都不用。
@@ -215,7 +212,7 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 
 ## 更多
 
-更多视频和截图：https://levimc.org/mods/github.com/LiteLDev/BeDD/?tab=gallery
+完整文档（含更多视频和截图）：<https://docs.levimc.org/BeDD/zh/>
 
 想自己构建、了解管道协议或内部原理？见 [CONTRIBUTING.md](CONTRIBUTING.md#development)。
 

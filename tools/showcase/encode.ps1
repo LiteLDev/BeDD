@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Cuts a showcase take (record.ps1) into the files in docs\showcase\.
+  Cuts a showcase take (record.ps1) into the files in docs\public\showcase\.
 
 .EXAMPLE
   pwsh -NoProfile -File tools/showcase/encode.ps1 -Take 2 -Start 1.5 -Duration 11 -Still 6
@@ -16,7 +16,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'ffmpeg.ps1')
 $FFmpeg = Find-FFmpeg
 $src = Join-Path $PSScriptRoot "out\take-$Take.mkv"
-$dst = (Resolve-Path (Join-Path $PSScriptRoot '..\..\docs\showcase')).Path
+$dst = (Resolve-Path (Join-Path $PSScriptRoot '..\..\docs\public\showcase')).Path
 function ff { & $FFmpeg -hide_banner -loglevel error -y @args; if ($LASTEXITCODE) { throw "ffmpeg failed: $args" } }
 $cut = @('-ss', $Start, '-t', $Duration, '-i', $src)
 $mp4 = @('-an', '-c:v', 'libx264', '-preset', 'slow', '-pix_fmt', 'yuv420p', '-movflags', '+faststart')

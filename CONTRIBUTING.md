@@ -89,7 +89,9 @@ lock). It always closes the game, removes the mod and releases the lock.
 
 ### Showcase media
 
-`docs/showcase/` holds the gallery shown on LeviMC Mods (`showcase.json`) and the README pictures.
+`docs/` is the documentation site (<https://docs.levimc.org/BeDD/>, built with levimc-kit by
+`.github/workflows/docs.yml`; `cd docs; npm ci; npm run build`). `docs/public/showcase/` holds its
+gallery and the README pictures.
 `tools/showcase/record.ps1 [-KeepOpen]` reproduces the desktop video: under the shared e2e lock
 (plus the `hi<N>-e2e.lock` of each clone) it prepares three clone instances (`-hi2`..`-hi4`, other
 mods moved aside), restores the `tools/showcase/fixtures/Showcase.zip` world, starts the games in

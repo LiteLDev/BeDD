@@ -45,8 +45,6 @@ jobs:
           $expected = "${{ github.ref_name }}".TrimStart('v')
           $actual = (Get-Content bin/BeDD/manifest.json | ConvertFrom-Json).version
           if ($actual -ne $expected) { throw "manifest version $actual does not match tag $expected" }
-          $tooth = (Get-Content tooth.json | ConvertFrom-Json).version
-          if ($tooth -ne $expected) { throw "tooth.json version $tooth does not match tag $expected" }
 
       - name: Package
         shell: pwsh
