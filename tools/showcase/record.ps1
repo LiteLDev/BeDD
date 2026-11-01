@@ -4,7 +4,7 @@
   shows them.
 
 .DESCRIPTION
-  Takes the machine-wide e2e lock (bei-e2e.lock, shared with the other LiteLDev harnesses) and the
+  Takes the machine-wide e2e lock (bei-e2e.lock, shared with the other e2e harnesses) and the
   locks of the clone slots it uses, prepares the clone instances versions\<base>-hi<N> (other mods
   moved aside, BeDD deployed with its own pipe, the Showcase world restored), starts
   the games without activating them, enters the world in each and stages the scene through chat
