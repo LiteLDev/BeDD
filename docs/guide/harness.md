@@ -49,6 +49,6 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 
 ## Examples
 
-[BeetrootSkin](https://github.com/LiteLDev/BeetrootSkin/tree/main/tools/e2e) and
-[AlleviatedBackpacks](https://github.com/LiteLDev/AlleviatedBackpacks/tree/main/tools/e2e) have complete harnesses to
+[BeetrootSkin](https://github.com/MiracleForest/BeetrootSkin/tree/main/tools/e2e) and
+[AlleviatedBackpacks](https://github.com/MiracleForest/AlleviatedBackpacks/tree/main/tools/e2e) have complete harnesses to
 copy from.
