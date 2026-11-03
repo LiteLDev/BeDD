@@ -1,7 +1,9 @@
 // FMOD hooks: the game is silent (config mute). The game hears no focus loss, so it never
 // suspends its own audio, and every headless game would otherwise play its menu music and sounds
-// on the user's speakers. The master channel group of each FMOD system stays muted; the game's own
-// setMute() calls on it are remembered.
+// on the user's speakers. Each FMOD system the game initialises gets the NOSOUND output: it mixes in
+// real time as before, but opens no audio device, so the game has no session in the Windows volume
+// mixer either. The master channel group of each system also stays muted (a system initialised
+// before the hooks keeps its device); the game's own setMute() calls on it are remembered.
 #include "BeDD.h"
 
 #include <array>
@@ -19,17 +21,22 @@ using InitFn      = int (*)(void* system, int maxChannels, unsigned flags, void*
 using PlaySoundFn = int (*)(void* system, void* sound, void* group, bool paused, void** channel);
 using MasterFn    = int (*)(void* system, void** group);
 using SetMuteFn   = int (*)(void* control, bool mute);
+using SetOutputFn = int (*)(void* system, int output);
+
+constexpr int kOutputNoSound = 2; // FMOD_OUTPUTTYPE_NOSOUND (NOSOUND_NRT would mix as fast as it can)
 
 constexpr char kInit[] = "?init@System@FMOD@@QEAA?AW4FMOD_RESULT@@HIPEAX@Z";
 constexpr char kPlaySound[] =
     "?playSound@System@FMOD@@QEAA?AW4FMOD_RESULT@@PEAVSound@2@PEAVChannelGroup@2@_NPEAPEAVChannel@2@@Z";
 constexpr char kMaster[]  = "?getMasterChannelGroup@System@FMOD@@QEAA?AW4FMOD_RESULT@@PEAPEAVChannelGroup@2@@Z";
 constexpr char kSetMute[] = "?setMute@ChannelControl@FMOD@@QEAA?AW4FMOD_RESULT@@_N@Z";
+constexpr char kSetOutput[] = "?setOutput@System@FMOD@@QEAA?AW4FMOD_RESULT@@W4FMOD_OUTPUTTYPE@@@Z";
 
 InitFn      o_init      = nullptr;
 PlaySoundFn o_playSound = nullptr;
 SetMuteFn   o_setMute   = nullptr;
 MasterFn    gGetMaster  = nullptr;
+SetOutputFn gSetOutput  = nullptr;
 
 bool gInstalled = false;
 
@@ -63,6 +70,12 @@ void track(void* system) {
 }
 
 int d_init(void* system, int maxChannels, unsigned flags, void* extra) {
+    // setOutput must come before init; the game's own choice of output is overridden.
+    if (gSetOutput && muteNow()) {
+        int out = gSetOutput(system, kOutputNoSound);
+        if (out == 0) log().info("FMOD system {}: NOSOUND output (no audio device)", system);
+        else log().warn("FMOD system {}: setOutput(NOSOUND) failed ({}); only muted", system, out);
+    }
     int rc = o_init(system, maxChannels, flags, extra);
     if (rc == 0) track(system);
     return rc;
@@ -109,6 +122,8 @@ void installAudioHooks() {
         return;
     }
     gGetMaster = reinterpret_cast<MasterFn>(GetProcAddress(fmod, kMaster));
+    gSetOutput = reinterpret_cast<SetOutputFn>(GetProcAddress(fmod, kSetOutput));
+    if (!gSetOutput) log().warn("FMOD has no System::setOutput; the game is muted but keeps its audio device");
     // Resolved before the pause: GetProcAddress takes loader locks a paused thread may hold.
     for (auto& h : gHooks) h.target = reinterpret_cast<void*>(GetProcAddress(fmod, h.name));
     int installed = 0;
