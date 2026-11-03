@@ -193,6 +193,8 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 | `clientWidth`、`clientHeight` | 游戏窗口大小（0 表示不改），每次运行点击位置都一样 |
 | `pipeName` | 多开时每个实例一个 |
 | `loopbackOnly` | 默认 `true`：游戏只在本机通信，新实例不会弹 Windows 防火墙提示，也不会去查询本机以外的游戏服务器（否则它们可能以"局域网世界"出现在测试存档前面）。测试框架自己启动的专用服务器每个服务器目录还是会问一次，点**取消**即可 |
+| `mode` | 世界在哪里运行：`ClientOnly`（默认：本地世界）、`ClientServer`（本机上装了 BeDD 的专用服务器；`loopbackOnly` 不变）、`Remote`（没装 BeDD 的服务器，可以在本机以外）。见[调试模式](https://docs.levimc.org/BeDD/zh/guide/configuration#调试模式)。`state` 和 `join` 会报告它 |
+| `allowHosts` | `loopbackOnly` 仍然允许游戏访问的主机名或地址（Remote 模式的服务器；`Start-BeDDGame.ps1 -Mode Remote -ServerHost` 会写）。会查询这些主机，游戏的出站 UDP 套接字能连到它们且不弹防火墙提示，发往本机以外其他主机的数据报会被拒绝（`state` 的 `stats.sendsRefused`）。本机上的主机不用写 |
 | `managerScript` | `BeDDManager.ps1` 的路径（`Install-BeDDMod` 会写）：没有管理窗口时游戏用它启动一个 |
 | `mute` | 默认 `true`：游戏不出声 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |

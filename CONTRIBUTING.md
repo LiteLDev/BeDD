@@ -23,7 +23,8 @@ See [Development](#development) below. The code is small:
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
 | `src/Audio.cpp` | FMOD hooks: the game's master channel group is muted (`mute`) |
-| `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`: no firewall prompt, no queries to servers off the PC) |
+| `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`: no firewall prompt, no queries to servers off the PC; `allowHosts`: the one server Remote mode reaches) |
+| `src/Join.cpp` | `join` op: the client joins a server by address (the game's own external-server join, on the client thread); where the client plays, for `state` |
 | `src/Pipe.cpp` | control pipe and protocol |
 | `src/Manager.cpp` | link to the session's manager window |
 | `src/Trace.cpp` | trace-mode input logging |
@@ -180,7 +181,7 @@ version (`ping`.`protocol`) stays 1: newer ops are found by calling them (below)
 | op | fields | |
 |---|---|---|
 | `ping` | | `protocol`, `pid`, `hwnd`, `client{w,h}`, `cursor{x,y}`, `realForeground`, `managed` |
-| `state` | | `ping` fields + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal}`, `clients` (control-pipe clients connected now), `hooks{name: installed}` (each game hook a feature installed; `false` while the feature is off) |
+| `state` | | `ping` fields + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal, sendsRefused}`, `clients` (control-pipe clients connected now), `hooks{name: installed}` (each game hook a feature installed; `false` while the feature is off), `mode` (ClientOnly\|ClientServer\|Remote, config `mode`), `connection{connection none\|local\|remote, inLevel, host, port}` (where the client plays) |
 | `key` | `key` (name) or `vk`; `action` press\|down\|up; `holdMs` | names: letters, digits, ESC, ENTER, BACK, TAB, SPACE, SHIFT, CTRL, ALT, LEFT/UP/RIGHT/DOWN, HOME, END, PGUP, PGDN, INSERT, DELETE, F1..F24, SLASH, GRAVE, MINUS, EQUALS |
 | `text` | `text`; `delayMs` | one `WM_CHAR` per UTF-16 unit |
 | `mouse` | `action` move\|down\|up\|click\|wheel; `x`,`y` (client px) or `rx`,`ry` (fractions); `button` left\|right\|middle; `notches`; `holdMs` | moves the virtual cursor (if a point is given), then buttons/wheel on the virtual GameInput mouse |
@@ -189,13 +190,14 @@ version (`ping`.`protocol`) stays 1: newer ops are found by calling them (below)
 | `focus` | | re-sends the "focus gained" messages |
 | `window` | `clientWidth`, `clientHeight` | never activates the window; it stays off screen |
 | `flush` | | waits until everything posted was dispatched |
+| `join` | `host`, `port` (19132), `wait`, `timeoutMs` (60000) | the client joins a server by address through the game's own external-server join (`ClientInstance::connectToThirdPartyServer`), from the title screen or from inside a world, which it leaves first. Replies `started:true` once it connects, with `wait:true` `joined:true` once it is in the level; `left`: a world was left first. Codes: `join_failed` (the client gave up and shows why), `timeout` (`screen`: the game may still be connecting), `busy` (a join is in progress), `not_allowed` (a host off the PC that `loopbackOnly` keeps the game from: not in `allowHosts`), `bad_args`. Without `host`: `mode`, `connection` none\|local\|remote, `host`, `port`, `inLevel`, `joining` (the attempt in progress), `last` (how the last one ended). A server off the PC needs Remote mode (config `allowHosts`) |
 
 #### Several clients
 
 Several clients can be connected at once (config `pipeInstances`, default 4; 1 = one at a time),
 each served by its own thread. Ops that post window input are serialized, so two clients never
-interleave a press or a typed text; `ping`, `state`, `tap`, `world`, `look`, `input`, `send` and
-`stack` run without that lock (they only read, or hand their work to the client thread). What a
+interleave a press or a typed text; `ping`, `state`, `tap`, `world`, `look`, `input`, `send`,
+`stack` and `join` run without that lock (they only read, or hand their work to the client thread). What a
 client holds is released when it disconnects (or its process dies), and nothing another client
 holds: its keys and mouse buttons, the `button` holds it made and the `input` override it set. Ops
 the manager window forwards over the manager link are neither serialized nor owned.

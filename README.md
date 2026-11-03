@@ -226,6 +226,8 @@ game start.
 | `clientWidth`, `clientHeight` | game window size (0 = leave it), so clicks land in the same place every run |
 | `pipeName` | one per game instance when several run at once |
 | `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new instance, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). Dedicated servers your harness starts still ask once per server folder; **Cancel** is fine |
+| `mode` | where the world runs: `ClientOnly` (default: a local world), `ClientServer` (a dedicated server with BeDD on this PC; `loopbackOnly` stays), `Remote` (a server without BeDD, possibly off the PC). See [Debug modes](https://docs.levimc.org/BeDD/guide/configuration#debug-modes). `state` and `join` report it |
+| `allowHosts` | host names or addresses `loopbackOnly` still lets the game reach (Remote mode's server; `Start-BeDDGame.ps1 -Mode Remote -ServerHost` writes it). Those hosts are queried, the game's outgoing UDP socket can reach them without a firewall prompt, and datagrams to any other host off the PC are refused (`state` `stats.sendsRefused`). Hosts on the PC need no entry |
 | `managerScript` | path of `BeDDManager.ps1` (`Install-BeDDMod` writes it): the game starts the manager window with it when none runs |
 | `mute` | default `true`: the game makes no sound |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |

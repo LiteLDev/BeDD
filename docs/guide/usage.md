@@ -36,6 +36,7 @@ cursor, presses real keys or changes the foreground window.
 | `Set-BeDDSlot 3` / `Invoke-BeDDAction inventory` | select a hotbar slot; drop, drop all, open the inventory, switch perspective, pause (`gameHooks`) |
 | `Set-BeDDButton attack -Action down -ReleaseOnBlockChange` | hold attack/use/pick for game ticks or until the targeted block breaks, without blocking the pipe (`gameHooks`) |
 | `Send-BeDDPacket -Base64 ...` | the player sends a chat or command packet a script serialized (`allowSend`) |
+| `Join-BeDDServer -Host 127.0.0.1 -Port 19132 -Wait` | join a server by address, from the title screen or from inside a world; without `-Host`, where the client plays now |
 | `Send-BeDDStack -Buffer ...` / `-View` | the player sends an item stack request a script serialized; `-View` shows the inventory as the client sees it (`allowStack`) |
 
 The commands marked `gameHooks`, `allowSend` or `allowStack` need that [config key](/guide/configuration) turned on;
@@ -68,6 +69,22 @@ mouse by raw counts, which turns the camera while the game has grabbed the mouse
 
 `Save-BeDDScreenshot` and `Get-BeDDBitmap` take the game's picture although its window is off screen, and while the
 manager window is behind your other windows.
+
+## Servers
+
+`Join-BeDDServer` makes the client join a server the way "Add server" and "Play" in the Servers tab do, without
+clicking: from the title screen, or from inside a world, which it leaves first. It returns once the client connects;
+with `-Wait` once it is in the server's world, and it throws when the join fails (the game shows why) or
+`-TimeoutMs` (default 60000) runs out. Without `-Host` it reports where the client plays: `connection` is `none`,
+`local` (a world of its own) or `remote` (`host`, `port`), plus the [debug mode](/guide/configuration#debug-modes).
+
+```powershell
+Join-BeDDServer -Host 127.0.0.1 -Port 19132 -Wait   # a dedicated server on this PC
+(Join-BeDDServer).connection                        # remote
+```
+
+A server off the PC needs Remote mode (`Start-BeDDGame.ps1 -Mode Remote -ServerHost <address>`): the game reaches only
+the servers on the PC otherwise.
 
 ## Which game
 

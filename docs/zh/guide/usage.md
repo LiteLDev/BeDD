@@ -34,6 +34,7 @@ Save-BeDDScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 | `Set-BeDDSlot 3` / `Invoke-BeDDAction inventory` | 选择快捷栏格子；丢弃、全部丢弃、打开背包、切换视角、暂停（`gameHooks`） |
 | `Set-BeDDButton attack -Action down -ReleaseOnBlockChange` | 按游戏刻或直到目标方块破坏为止按住攻击/使用/选取，不阻塞管道（`gameHooks`） |
 | `Send-BeDDPacket -Base64 ...` | 让玩家发送脚本序列化好的聊天或命令数据包（`allowSend`） |
+| `Join-BeDDServer -Host 127.0.0.1 -Port 19132 -Wait` | 按地址加入服务器，标题界面或世界里都可以；不带 `-Host` 时报告客户端现在在哪里玩 |
 | `Send-BeDDStack -Buffer ...` / `-View` | 让玩家发送脚本序列化好的物品堆请求；`-View` 显示客户端看到的背包（`allowStack`） |
 
 标着 `gameHooks`、`allowSend` 或 `allowStack` 的命令需要打开对应的[配置项](/zh/guide/configuration)；它们是为
@@ -64,6 +65,20 @@ Save-BeDDScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 ## 截图
 
 `Save-BeDDScreenshot` 和 `Get-BeDDBitmap` 能截到游戏画面，尽管游戏窗口在屏幕外，管理窗口被其他窗口挡住时也一样。
+
+## 服务器
+
+`Join-BeDDServer` 让客户端像在"服务器"页"添加服务器"再"开始游戏"那样加入服务器，不用点击：在标题界面，或在世界里（先退出世界）。
+开始连接后返回；带 `-Wait` 时进入服务器的世界后返回，加入失败（游戏会显示原因）或 `-TimeoutMs`（默认 60000）用完时抛出异常。
+不带 `-Host` 时报告客户端在哪里玩：`connection` 为 `none`、`local`（自己的世界）或 `remote`（`host`、`port`），以及
+[调试模式](/zh/guide/configuration#调试模式)。
+
+```powershell
+Join-BeDDServer -Host 127.0.0.1 -Port 19132 -Wait   # 本机上的专用服务器
+(Join-BeDDServer).connection                        # remote
+```
+
+本机以外的服务器需要 Remote 模式（`Start-BeDDGame.ps1 -Mode Remote -ServerHost <地址>`）：否则游戏只能连到本机上的服务器。
 
 ## 选哪个游戏
 
