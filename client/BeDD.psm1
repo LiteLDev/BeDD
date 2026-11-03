@@ -95,9 +95,12 @@ function Get-BeDDState { Invoke-BeDD @{ op = 'state' } }
 function Get-BeDDWorld { Invoke-BeDD @{ op = 'world' } }
 
 # Turns the player to an absolute yaw/pitch in degrees (player_auth_input convention: yaw 0 = +Z,
-# 90 = -X; pitch -90 = up) and returns once it is within 0.5 degrees (config gameHooks).
-function Set-BeDDLook([Parameter(Mandatory)][double]$Yaw, [Parameter(Mandatory)][double]$Pitch, [int]$TimeoutMs = 1000) {
-    Invoke-BeDD @{ op = 'look'; yaw = $Yaw; pitch = $Pitch; timeoutMs = $TimeoutMs }
+# 90 = -X; pitch -90 = up) and returns once it is within 0.5 degrees (config gameHooks). Without
+# -TimeoutMs the game's default applies (1000 ms, longer at a slower game speed).
+function Set-BeDDLook([Parameter(Mandatory)][double]$Yaw, [Parameter(Mandatory)][double]$Pitch, [int]$TimeoutMs) {
+    $r = @{ op = 'look'; yaw = $Yaw; pitch = $Pitch }
+    if ($PSBoundParameters.ContainsKey('TimeoutMs')) { $r.timeoutMs = $TimeoutMs }
+    Invoke-BeDD $r
 }
 
 # Client-area size (the window stays off screen: the manager window shows the game), never activating the window.
@@ -190,18 +193,26 @@ function Set-BeDDButton(
 }
 
 # Moves the local player through the game's own input pipeline (config "gameHooks": true) until
-# -TtlMs runs out: -X = left - right, -Z = forward - back, each in [-1, 1]. -TtlMs 0 stops at once.
-# -Query returns the op's state ({active, via, hooks}) instead.
-function Set-BeDDInput([double]$X = 0, [double]$Z = 0, [switch]$Jump, [switch]$Sneak, [switch]$Sprint, [int]$TtlMs = 300, [switch]$Query) {
+# -TtlMs runs out, or for -TtlTicks client ticks (the same game time at any game speed; not with
+# -TtlMs): -X = left - right, -Z = forward - back, each in [-1, 1]. -TtlMs 0 / -TtlTicks 0 stops at
+# once. -Query returns the op's state ({active, via, hooks, ticksLeft}) instead.
+function Set-BeDDInput([double]$X = 0, [double]$Z = 0, [switch]$Jump, [switch]$Sneak, [switch]$Sprint, [int]$TtlMs = 300, [int]$TtlTicks, [switch]$Query) {
     if ($Query) { return Invoke-BeDD @{ op = 'input' } }
-    Invoke-BeDD @{ op = 'input'; move = @{ x = $X; z = $Z }; jump = [bool]$Jump; sneak = [bool]$Sneak; sprint = [bool]$Sprint; ttlMs = $TtlMs }
+    $r = @{ op = 'input'; move = @{ x = $X; z = $Z }; jump = [bool]$Jump; sneak = [bool]$Sneak; sprint = [bool]$Sprint }
+    if ($PSBoundParameters.ContainsKey('TtlTicks')) {
+        if ($PSBoundParameters.ContainsKey('TtlMs')) { throw 'Set-BeDDInput: -TtlMs and -TtlTicks are exclusive' }
+        $r.ttlTicks = $TtlTicks
+    } else { $r.ttlMs = $TtlMs }
+    Invoke-BeDD $r
 }
 
 # The local client sends one serverbound packet (needs allowSend; ids in sendAllow only): -Base64 or
 # -Bytes is the varint header + body, as bedrock-protocol serializes it. Without either, returns the
 # allowed ids. Returns the reply (packetId, name); with -NoThrow also a failed one (code, error).
-function Send-BeDDPacket([string]$Base64, [byte[]]$Bytes, [int]$TimeoutMs = 2000, [switch]$NoThrow) {
-    $r = @{ op = 'send'; timeoutMs = $TimeoutMs }
+# Without -TimeoutMs the game's default applies (2000 ms, longer at a slower game speed).
+function Send-BeDDPacket([string]$Base64, [byte[]]$Bytes, [int]$TimeoutMs, [switch]$NoThrow) {
+    $r = @{ op = 'send' }
+    if ($PSBoundParameters.ContainsKey('TimeoutMs')) { $r.timeoutMs = $TimeoutMs }
     if ($PSBoundParameters.ContainsKey('Bytes')) { $r.buf = [Convert]::ToBase64String($Bytes) }
     elseif ($PSBoundParameters.ContainsKey('Base64')) { $r.buf = $Base64 }
     Invoke-BeDD $r -NoThrow:$NoThrow
@@ -261,12 +272,12 @@ function Save-BeDDScreenshot([Parameter(Mandatory)][string]$Path) {
 # it; the reply maps its request ids to the client's (map, requestIds). Without -Buffer: the probe
 # ({enabled, via}; ok is false while allowStack is off). -View: the inventory as the client shows it.
 # Invoke-BeDD writes a request again after a broken pipe: check with -View before resending a buffer.
-function Send-BeDDStack($Buffer, [switch]$View, [int]$TimeoutMs = 2000) {
+function Send-BeDDStack($Buffer, [switch]$View, [int]$TimeoutMs) {
     $r = @{ op = 'stack' }
     if ($View) { $r.view = $true }
     elseif ($null -ne $Buffer) {
         $r.buf = if ($Buffer -is [byte[]]) { [Convert]::ToBase64String($Buffer) } else { [string]$Buffer }
-        $r.timeoutMs = $TimeoutMs
+        if ($PSBoundParameters.ContainsKey('TimeoutMs')) { $r.timeoutMs = $TimeoutMs }
     }
     Invoke-BeDD $r -NoThrow:(-not $View -and $null -eq $Buffer)
 }

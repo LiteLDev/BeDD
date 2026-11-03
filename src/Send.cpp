@@ -46,9 +46,6 @@ using namespace std::chrono_literals;
 // Never sent, whatever sendAllow says: login, inventory_transaction, player_auth_input, item_stack_request.
 constexpr std::array<int, 4> kAlwaysRefused{1, 30, 144, 147};
 
-// The client ticks its level ~20 times a second while in a world; longer without a tick = not in one.
-constexpr auto kTickStale = 1s;
-
 // One packet handed to the client thread; the pipe thread waits for `done`.
 struct Job {
     int                id = 0;
@@ -62,13 +59,8 @@ struct Job {
 std::mutex                        gMutex;
 std::deque<std::shared_ptr<Job>>  gJobs;
 ll::event::ListenerPtr            gListener;
-std::atomic<int64_t>              gLastTickMs{0};
 std::atomic<uint64_t>             gSent{}, gRefused{}, gFailed{};
 std::string                       gLastError; // guarded by gMutex
-
-int64_t nowMs() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-}
 
 void noteError(std::string const& e) {
     std::lock_guard lock(gMutex);
@@ -178,7 +170,6 @@ json sendNow(Level& level, Job const& job) {
 }
 
 void onTick(ll::event::ClientLevelTickEvent& ev) {
-    gLastTickMs = nowMs();
     std::deque<std::shared_ptr<Job>> jobs;
     {
         std::lock_guard lock(gMutex);
@@ -232,12 +223,13 @@ json sendOp(json const& req) {
     if (!n) return fail("bad_args", "'buf' has no packet header");
     int id = static_cast<int>(header & 0x3ff);
     if (!allowed(id)) return fail("refused", "packet id " + std::to_string(id) + " is not allowed (sendAllow)");
-    auto ticking = [] { return nowMs() - gLastTickMs.load() <= std::chrono::milliseconds(kTickStale).count(); };
-    if (!ticking()) return fail("not_in_level", "the client is not in a world (or it is paused)");
-    auto const& t = req.contains("timeoutMs") ? req["timeoutMs"] : json(2000);
-    if (!t.is_number_integer()) return fail("bad_args", "'timeoutMs' must be an integer");
-    // Bounded: the pipe thread waits, and every other op waits with it.
-    auto timeout = std::chrono::milliseconds(std::clamp<int64_t>(t.get<int64_t>(), 0, 10000));
+    // Not in a world when the client has not ticked for 20 ticks of its current cadence (at least 1 s).
+    if (clientTickStale()) return fail("not_in_level", "the client is not in a world (or it is paused)");
+    if (req.contains("timeoutMs") && !req["timeoutMs"].is_number_integer()) return fail("bad_args", "'timeoutMs' must be an integer");
+    // Bounded: the pipe thread waits, and every other op waits with it. The default (2000) is
+    // stretched at a slower game speed.
+    auto timeout = req.contains("timeoutMs") ? std::chrono::milliseconds(std::clamp<int64_t>(req["timeoutMs"].get<int64_t>(), 0, 10000))
+                                             : tickScaled(2000ms, 10000ms);
 
     auto job  = std::make_shared<Job>();
     job->id   = id;
@@ -251,7 +243,7 @@ json sendOp(json const& req) {
     if (done.wait_for(timeout) != std::future_status::ready) {
         int expected = Job::Pending;
         if (job->state.compare_exchange_strong(expected, Job::Abandoned)) {
-            if (!ticking()) return fail("not_in_level", "the client left the world (or paused it); nothing was sent");
+            if (clientTickStale()) return fail("not_in_level", "the client left the world (or paused it); nothing was sent");
             return fail("timeout", "the client thread did not send it in time; nothing was sent");
         }
         // The client thread claimed it meanwhile: it is being sent, and its reply stands.

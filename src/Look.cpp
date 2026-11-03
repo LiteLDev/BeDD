@@ -184,7 +184,8 @@ json lookOp(json const& j) {
         return r;
     }
     float yaw = 0, pitch = 0;
-    int   timeoutMs = 1000;
+    // Default 1000, stretched at a slower game speed (the client turns once a tick).
+    int   timeoutMs = static_cast<int>(tickScaled(std::chrono::milliseconds(1000), std::chrono::milliseconds(kMaxTimeout)).count());
     try {
         yaw   = wrapDegrees(number(j, "yaw"));
         pitch = std::clamp(number(j, "pitch"), -kMaxPitch, kMaxPitch);

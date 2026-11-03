@@ -252,6 +252,21 @@ void startManagerLink();
 void stopManagerLink();
 
 // ---------------------------------------------------------------------------------------------
+// Tick cadence (TickCadence.cpp): the measured client tick interval, so waits follow the game speed.
+// ---------------------------------------------------------------------------------------------
+/// One client level tick listener (gameHooks, allowSend or allowStack).
+void startTickCadence();
+void stopTickCadence();
+/// Client level ticks seen (any thread).
+[[nodiscard]] uint64_t clientTicks();
+/// The smoothed client tick interval: 50 ms at 20 TPS and faster, longer at a slower game speed.
+[[nodiscard]] std::chrono::microseconds clientTickInterval();
+/// No client tick within max(minimum, 20 tick intervals): not in a world, or paused.
+[[nodiscard]] bool clientTickStale(std::chrono::milliseconds minimum = std::chrono::seconds(1));
+/// A default timeout for `base` at 20 TPS, stretched by the game's slowdown up to `cap`.
+[[nodiscard]] std::chrono::milliseconds tickScaled(std::chrono::milliseconds base, std::chrono::milliseconds cap);
+
+// ---------------------------------------------------------------------------------------------
 // World snapshot and absolute look (GameState.cpp, Look.cpp; config gameHooks)
 // ---------------------------------------------------------------------------------------------
 void startGameState();

@@ -101,6 +101,8 @@ bool Mod::enable() {
     installGameInputHooks();
     startWindowWatcher();
     installMoveInputHooks(); // before the pipe: an early "input" must not take the key fallback
+    // Before the pipe: the ops that wait for a tick read its cadence.
+    if (gOptions.gameHooks || gOptions.allowSend || gOptions.allowStack) startTickCadence();
     startPipeServer();
     startInputTrace();
     startGameState();
@@ -136,6 +138,7 @@ bool Mod::disable() {
     uninstallTapLoopback();
     uninstallTapJournal();
     uninstallMoveInputHooks();
+    stopTickCadence();
     return true;
 }
 

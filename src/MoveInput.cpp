@@ -3,7 +3,9 @@
 //
 // An override {move x/z, jump, sneak, sprint} lives until its dead-man deadline (ttlMs, default
 // 300 ms): a controller that stops refreshing it (crashed, hung, disconnected) never leaves the
-// player running. "release", ttlMs:0 and a control-client disconnect clear it at once.
+// player running. "release", ttlMs:0 and a control-client disconnect clear it at once. ttlTicks
+// instead counts client ticks, so the override covers the same game time at any game speed; it
+// also ends once the client stops ticking for a while (kTtlStale: out of the world, paused).
 //
 // Two post-hooks on the client's ECS input systems apply it, once per client tick:
 //   * ClientInputUpdateSystem::extractRawHIDInput fills RawMoveInputComponent from the device
@@ -52,6 +54,8 @@ struct Override {
     float             x = 0, z = 0; // player_auth_input move_vector: x = left - right, z = forward - back
     bool              jump = false, sneak = false, sprint = false;
     Clock::time_point deadline{};
+    bool              byTicks = false; // ttlTicks: live while the tick count is <= untilTick
+    uint64_t          untilTick = 0;
     bool              active = false;
     uint64_t          owner  = 0; // the control-pipe client that set it (currentPipeClient(); 0 = manager)
 };
@@ -62,17 +66,32 @@ Override   gOverride; // guarded by gMutex
 bool                  gInstalled = false;
 std::atomic<bool>     gRawHooked{false}, gStateHooked{false};
 std::atomic<uint64_t> gTicks{}, gApplied{};
+std::atomic<uint64_t> gRawTicks{}; // extractRawHIDInput calls: the first input system of a tick
 
 constexpr float   kDead     = 0.3f;  // a stick past this counts as the matching direction key
 constexpr int64_t kMaxTtlMs = 60000; // longer requests are cut to this: the switch stays a dead-man one
+constexpr int64_t kMaxTtlTicks = 1200; // likewise (60 s at 20 TPS)
+// A ttlTicks override ends when the client has not ticked for this long (or 20 of its intervals):
+// longer than the 1 s of the ops, so a sudden slowdown (0.05x: 1 s a tick) never cuts it.
+constexpr auto kTtlStale = std::chrono::seconds(5);
 
 bool viaHooks() { return gRawHooked.load() && gStateHooked.load(); }
+
+// The ticks ttlTicks counts: the player input updates the hooks see (one per client tick, counted
+// where the first hook runs so both apply the same ticks), or the client level ticks for the key
+// fallback.
+uint64_t ttlTickNow() { return viaHooks() ? gRawTicks.load() : clientTicks(); }
+
+bool expired(Override const& o) {
+    if (!o.byTicks) return Clock::now() >= o.deadline;
+    return ttlTickNow() > o.untilTick || clientTickStale(kTtlStale);
+}
 
 // The live override, or nothing once it expired (the dead-man switch).
 std::optional<Override> live() {
     std::lock_guard lock(gMutex);
     if (!gOverride.active) return std::nullopt;
-    if (Clock::now() >= gOverride.deadline) {
+    if (expired(gOverride)) {
         gOverride.active = false;
         return std::nullopt;
     }
@@ -162,6 +181,7 @@ LL_TYPE_STATIC_HOOK(
     ::Optional<::WasInWaterFlagComponent const> isInWater
 ) {
     origin(abilities, moveInput, synchedActorData, rawMoveInput, sneaking, isInWater);
+    ++gRawTicks;
     auto o = toApply();
     if (!o) return;
     writeState(rawMoveInput.mRawInput.get(), *o);
@@ -333,9 +353,12 @@ json moveInputOp(json const& j) {
         {"ok",  true                       },
         {"via", viaHooks() ? "hooks" : "keys"},
     };
-    bool action = j.contains("move") || j.contains("jump") || j.contains("sneak") || j.contains("sprint") || j.contains("ttlMs");
+    bool action = j.contains("move") || j.contains("jump") || j.contains("sneak") || j.contains("sprint") || j.contains("ttlMs")
+        || j.contains("ttlTicks");
     if (!action) {
-        r["active"] = live().has_value();
+        auto o      = live();
+        r["active"] = o.has_value();
+        if (o && o->byTicks) r["ticksLeft"] = o->untilTick - std::min(o->untilTick, ttlTickNow());
         r["hooks"]  = {
             {"raw",   gRawHooked.load()  },
             {"state", gStateHooked.load()}
@@ -355,11 +378,27 @@ json moveInputOp(json const& j) {
         o.jump   = j.value("jump", false);
         o.sneak  = j.value("sneak", false);
         o.sprint = j.value("sprint", false);
-        auto ttl = j.value("ttlMs", int64_t{300});
-        if (ttl < 0) return badArgs("ttlMs must be >= 0");
-        ttl = std::min(ttl, kMaxTtlMs);
-        o.active   = ttl > 0;
-        o.deadline = Clock::now() + std::chrono::milliseconds(ttl);
+        if (j.contains("ttlTicks")) {
+            if (j.contains("ttlMs")) return badArgs("ttlMs and ttlTicks are exclusive");
+            auto ticks = j.at("ttlTicks").get<int64_t>();
+            if (ticks < 0) return badArgs("ttlTicks must be >= 0");
+            if (ticks > 0 && clientTickStale(kTtlStale))
+                return {
+                    {"ok",    false                                         },
+                    {"code",  "not_in_level"                                },
+                    {"error", "ttlTicks: the client is not ticking (not in a world, or paused)"}
+                };
+            ticks       = std::min(ticks, kMaxTtlTicks);
+            o.active    = ticks > 0;
+            o.byTicks   = true;
+            o.untilTick = ttlTickNow() + static_cast<uint64_t>(ticks);
+        } else {
+            auto ttl = j.value("ttlMs", int64_t{300});
+            if (ttl < 0) return badArgs("ttlMs must be >= 0");
+            ttl = std::min(ttl, kMaxTtlMs);
+            o.active   = ttl > 0;
+            o.deadline = Clock::now() + std::chrono::milliseconds(ttl);
+        }
         o.owner    = currentPipeClient();
     } catch (json::exception const& e) {
         return badArgs(e.what());
