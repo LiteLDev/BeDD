@@ -36,7 +36,7 @@ call it before every run. A server's mods live in `plugins\`, so the module goes
 |---|---|
 | `-Name` | the server, a folder under `%LOCALAPPDATA%\BeDD\servers` (`BEDD_SERVERS_DIR`); default `server` |
 | `-Port`, `-PortV6` | default: the server's ports from before, else the first free pair of 19140/19141, 19142/19143, …, so servers never meet a game's 19132 or each other |
-| `-Transport` | default `nethernet`, the BDS default (BDS 1.26.51 warns that players cannot connect over `raknet`) |
+| `-Transport` | default `raknet`: `Join-BeDDServer` joins over RakNet. BDS 1.26.51 logs a "TRANSPORT TYPE ERROR" (players cannot connect without NetherNet); ignore it, they can. A join over `nethernet` to a server kept on loopback hangs |
 | `-ServerIp` | default `127.0.0.1`: only games on this PC join; `''` listens on every interface |
 | `-OnlineMode` | default `$false`: games join without Xbox authentication |
 | `-LevelName`, `-Gamemode`, `-Difficulty`, `-LevelSeed`, `-MaxPlayers`, `-AllowCheats` | `server.properties` (defaults `Bedrock level`, `creative`, `peaceful`, random, 10, `$true`) |

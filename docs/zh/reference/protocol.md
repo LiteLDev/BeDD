@@ -141,9 +141,9 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 - 离开世界时客户端回到 1；进入世界时应用 `timeScale`（默认 1），所以上一个世界的设置不会带过来。
 - 错误：`not_in_level`；`remote`（世界在本游戏没有主持的服务器上：无法从客户端改它的速度）；`server_led`（该服务器运行 BeDD 并已发来它的速度：
   到那边去改）；`timeout`（某一边没有及时应用：它的线程运行时仍会应用，`effective` 会显示）；`refused`；`bad_args`。
-- 服务器主导：运行 BeDD 的服务器在速度改变时以及玩家加入时，给每个玩家发送 level_event 包（`event_id` 3007 SimTimeScale，位置 0,0,0，
-  `data` = 速度的 float 位按 int32）。客户端应用它（挂钩 `ClientNetworkHandler::handle(LevelEventPacket)`，在游戏自己处理之后，
-  且只在游戏没有自己达到该速度时）。
+- 服务器主导：运行 BeDD 的服务器在速度或暂停改变时以及玩家加入时，给每个玩家发送 level_event 包（`event_id` 3007 SimTimeScale，位置 0,0,0，
+  `data` = 速度的 float 位按 int32，服务器暂停时为 0）。客户端应用它（挂钩 `ClientNetworkHandler::handle(LevelEventPacket)`，在游戏自己处理之后，
+  且只在游戏没有自己达到该速度时）；0 让客户端暂停，并保留原速度供恢复时使用。
 
 ## 谁发什么（bedboo `bedd` 传输）
 
@@ -162,7 +162,7 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 
 用 `--target_type=server` 构建的 BeDD 运行在装了 LeviLamina 的 Bedrock 专用服务器里，以同样的格式提供
 `\\.\pipe\<pipeName>`（默认 `BeDD-Server`）。游戏速度由服务端主导：它把自己的速度用 LevelEvent 包（`mEventId` 3007，
-SimTimeScale；`mPos` 0,0,0；`mData` 为浮点速度的位）广播给每个玩家，速度改变时发一次，每个玩家生成后再单独发一次；客户端上的 BeDD 跟随它。
+SimTimeScale；`mPos` 0,0,0；`mData` 为浮点速度的位，暂停时为 0）广播给每个玩家，速度或暂停改变时发一次，每个玩家生成后再单独发一次；客户端上的 BeDD 跟随它。
 其他操作回答 `unknown op`。
 
 | 操作 | 字段 | 回复 |

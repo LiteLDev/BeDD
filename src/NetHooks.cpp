@@ -155,6 +155,20 @@ in6_addr loopbackV6(SOCKET s) {
     return in6addr_loopback;
 }
 
+std::string addressText(sockaddr const* a) {
+    char        buf[INET6_ADDRSTRLEN]{};
+    void const* in = a->sa_family == AF_INET ? static_cast<void const*>(&reinterpret_cast<sockaddr_in const*>(a)->sin_addr)
+                                             : static_cast<void const*>(&reinterpret_cast<sockaddr_in6 const*>(a)->sin6_addr);
+    return inet_ntop(a->sa_family, in, buf, sizeof(buf)) ? buf : "?";
+}
+
+// Trace mode: what a bind asked for, and how the rebind to loopback went (WSA error on failure).
+void logRebind(int type, sockaddr const* asked, unsigned port, int result) {
+    int err = result == 0 ? 0 : WSAGetLastError();
+    log().info("bind {} {}:{} -> loopback: {}", type == SOCK_DGRAM ? "udp" : "tcp", addressText(asked), port, result == 0 ? "ok" : "error " + std::to_string(err));
+    WSASetLastError(err);
+}
+
 int WSAAPI d_bind(SOCKET s, sockaddr const* name, int namelen) {
     if (!name) return o_bind(s, name, namelen);
     int type = 0, typeLen = sizeof(type);
@@ -165,18 +179,24 @@ int WSAAPI d_bind(SOCKET s, sockaddr const* name, int namelen) {
             // An outgoing UDP socket (port 0) is bound implicitly towards an allowed host off the PC
             // (allowHosts); everything else, listeners (a fixed port: LAN hosting) included, on loopback.
             bool out = type == SOCK_DGRAM && a.sin_port == 0 && gRoute4;
-            if (options().trace) log().info("bind {} port {}: {}", type == SOCK_DGRAM ? "udp" : "tcp", ntohs(a.sin_port), out ? "implicit, towards allowHosts" : "to loopback");
-            if (out) return implicitBind(s, *gRoute4);
+            if (out) {
+                if (options().trace) log().info("bind udp {}:0: implicit, towards allowHosts", addressText(name));
+                return implicitBind(s, *gRoute4);
+            }
             a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
             gRebound.fetch_add(1, std::memory_order_relaxed);
-            return o_bind(s, reinterpret_cast<sockaddr const*>(&a), sizeof(a));
+            int r = o_bind(s, reinterpret_cast<sockaddr const*>(&a), sizeof(a));
+            if (options().trace) logRebind(type, name, ntohs(a.sin_port), r);
+            return r;
         }
     } else if (name->sa_family == AF_INET6 && namelen >= static_cast<int>(sizeof(sockaddr_in6))) {
         sockaddr_in6 a = *reinterpret_cast<sockaddr_in6 const*>(name);
         if (rebindV6(a.sin6_addr) && (type == SOCK_DGRAM || a.sin6_port != 0)) {
             auto route = type == SOCK_DGRAM && a.sin6_port == 0 ? route6(s) : std::nullopt;
-            if (options().trace) log().info("bind {} [v6] port {}: {}", type == SOCK_DGRAM ? "udp" : "tcp", ntohs(a.sin6_port), route ? "implicit, towards allowHosts" : "to loopback");
-            if (route) return implicitBind(s, *route);
+            if (route) {
+                if (options().trace) log().info("bind udp [{}]:0: implicit, towards allowHosts", addressText(name));
+                return implicitBind(s, *route);
+            }
             a.sin6_addr = loopbackV6(s);
             gRebound.fetch_add(1, std::memory_order_relaxed);
             int r = o_bind(s, reinterpret_cast<sockaddr const*>(&a), sizeof(a));
@@ -185,6 +205,7 @@ int WSAAPI d_bind(SOCKET s, sockaddr const* name, int namelen) {
                 a.sin6_addr = in6addr_loopback;
                 r           = o_bind(s, reinterpret_cast<sockaddr const*>(&a), sizeof(a));
             }
+            if (options().trace) logRebind(type, name, ntohs(a.sin6_port), r);
             return r;
         }
     }
@@ -293,12 +314,6 @@ std::array gHooks{
 };
 constexpr size_t kSendHooks = 3;
 
-std::string addressText(sockaddr const* a) {
-    char        buf[INET6_ADDRSTRLEN]{};
-    void const* in = a->sa_family == AF_INET ? static_cast<void const*>(&reinterpret_cast<sockaddr_in const*>(a)->sin_addr)
-                                             : static_cast<void const*>(&reinterpret_cast<sockaddr_in6 const*>(a)->sin6_addr);
-    return inet_ntop(a->sa_family, in, buf, sizeof(buf)) ? buf : "?";
-}
 
 // allowHosts -> gAllowNames, gAllowAddrs, gRoute4/gRoute6. Before the hooks go in.
 void resolveAllowHosts() {

@@ -5,8 +5,8 @@
 // straight into the simulation timer (Minecraft::mSimTimer), since Minecraft::setSimTimeScale
 // multiplies the current scale and caps the product at 10, and the pause with setSimTimePause. It
 // broadcasts the absolute scale to every player as a LevelEvent packet, event 3007 (SimTimeScale)
-// with the float's bits as data; a player who joins later gets it once it has spawned
-// (PlayerJoinEvent). BeDD on the client follows that event. Config timeScale is applied once the
+// with the float's bits as data, 0 while paused; a player who joins later gets it once it has
+// spawned (PlayerJoinEvent). BeDD on the client follows that event. Config timeScale is applied once the
 // server has started (LeviLamina enables mods only after that: then right away).
 //
 // A ServerLevelTickEvent listener counts the ticks the server really runs: the `server` op and the
@@ -159,9 +159,15 @@ bool setTimer(std::optional<float> scale, std::optional<bool> paused) {
     return true;
 }
 
-// On the server thread: tell the players the scale the server runs at.
+// What the players are told: the scale the server runs at, 0 while it is paused.
+float announcedScale(Minecraft& mc) {
+    float scale = mc.mSimTimer.mTimeScale;
+    return mc.getSimPaused() ? 0.0f : scale;
+}
+
+// On the server thread: tell the players.
 void broadcastScale() {
-    if (auto mc = ll::service::getMinecraft()) sendScale(mc->mSimTimer.mTimeScale, nullptr);
+    if (auto mc = ll::service::getMinecraft()) sendScale(announcedScale(*mc), nullptr);
 }
 
 // On the server thread: set, then tell the players.
@@ -274,7 +280,7 @@ void startServerTimeScale() {
         }
         auto mc = ll::service::getMinecraft();
         if (!mc) return;
-        float scale = mc->mSimTimer.mTimeScale;
+        float scale = announcedScale(*mc);
         sendScale(scale, &p);
         if (options().trace) log().info("time scale {} sent to {}", scale, p.getRealName());
     });

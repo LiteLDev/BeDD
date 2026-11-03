@@ -382,9 +382,10 @@ world it hosts): the client and its local server, together.
   client); `server_led` (that server runs BeDD and has sent its scale: change it there); `timeout` (a side did not
   apply it in time: it still does once its thread runs, and `effective` shows it); `refused`; `bad_args`.
 - Server-led: a server running BeDD sends each player a level_event packet (`event_id` 3007 SimTimeScale, position
-  0,0,0, `data` = the scale's float bits as int32) when its scale changes and when the player joins. The client applies
-  it (hooked `ClientNetworkHandler::handle(LevelEventPacket)`, after the game's own handling, and only where the game
-  did not already reach that scale).
+  0,0,0, `data` = the scale's float bits as int32, 0 while the server is paused) when its scale or pause changes and
+  when the player joins. The client applies it (hooked `ClientNetworkHandler::handle(LevelEventPacket)`, after the
+  game's own handling, and only where the game did not already reach that scale); 0 pauses the client, keeping its
+  scale for the resume.
 
 #### Who sends what (bedboo transport `bedd`)
 
@@ -531,8 +532,8 @@ their seq and order and carry flag `replay`.
 BeDD built with `--target_type=server` runs inside a Bedrock Dedicated Server with LeviLamina and
 serves `\\.\pipe\<pipeName>` (default `BeDD-Server`) with the same framing. The server leads the
 game speed: it broadcasts its scale to every player as a LevelEvent packet (`mEventId` 3007,
-SimTimeScale; `mPos` 0,0,0; `mData` the bits of the float scale), whenever it changes and to each
-player once it has spawned; BeDD on a client follows it. Other ops answer `unknown op`.
+SimTimeScale; `mPos` 0,0,0; `mData` the bits of the float scale, 0 while paused), whenever it or
+the pause changes and to each player once it has spawned; BeDD on a client follows it. Other ops answer `unknown op`.
 
 | op | fields | reply |
 |---|---|---|

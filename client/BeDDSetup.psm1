@@ -578,7 +578,9 @@ function Copy-BeDDServerModule([string]$ModuleDir, [string]$PluginsDir, [string]
 # ready in <servers>\<Name> and returns it (Get-BeDDServer). Fast when nothing is missing; one setup
 # at a time on the PC. Everything is a parameter (no prompts):
 #   -Port / -PortV6     default: what the server already has, else the first free pair from 19140;
-#   -Transport          default nethernet (BDS 1.26.51 says players cannot connect over raknet);
+#   -Transport          default raknet: a game joins a server by address (Join-BeDDServer) over
+#                       RakNet. BDS 1.26.51 logs that players cannot connect without nethernet; they
+#                       can, and a join over nethernet to a server kept on loopback hangs;
 #   -ServerIp           default 127.0.0.1 (used with nethernet): only games on this PC join; '' =
 #                       every interface. BeDD's module binds the server to loopback anyway;
 #   -OnlineMode         default off (test clients join without Xbox authentication);
@@ -594,7 +596,7 @@ function Initialize-BeDDServer(
     [string]$ServersDir,
     [int]$Port = 0,
     [int]$PortV6 = 0,
-    [ValidateSet('raknet', 'nethernet')][string]$Transport = 'nethernet',
+    [ValidateSet('raknet', 'nethernet')][string]$Transport = 'raknet',
     [string]$ServerIp = '127.0.0.1',
     [bool]$OnlineMode = $false,
     [string]$LevelName = 'Bedrock level',

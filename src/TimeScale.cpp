@@ -9,9 +9,9 @@
 // over the last two seconds (ClientLevelTickEvent, ServerLevelTickEvent), not the requested ones.
 //
 // On a server of its own (client + server mode) BeDD runs inside the server too and leads: it sends
-// every player a LevelEvent packet 3007 (SimTimeScale, mData = the scale's float bits), and the
-// hooked ClientNetworkHandler::handle(LevelEventPacket) applies it to the client here (unless the
-// game already did). From then on a set answers code:"server_led"; on any other remote server it
+// every player a LevelEvent packet 3007 (SimTimeScale, mData = the scale's float bits; 0 = paused),
+// and the hooked ClientNetworkHandler::handle(LevelEventPacket) applies it to the client here
+// (unless the game already did). From then on a set answers code:"server_led"; on any other remote server it
 // answers code:"remote", since nothing of the server can be changed from the client.
 #include "BeDD.h"
 
@@ -274,10 +274,12 @@ void onExit() {
     });
 }
 
-// A 3007 from the server, on the client thread after the game has handled the packet.
+// A 3007 from the server, on the client thread after the game has handled the packet. Scale 0: the
+// server paused (the client keeps its scale for the resume).
 void onServerScale(float scale, float before) {
     auto mc = ll::service::getMinecraft(true);
     if (!mc) return;
+    bool  pause = scale == 0;
     float after = mc->mSimTimer.mTimeScale;
     bool  local = gLocal;
     {
@@ -287,17 +289,24 @@ void onServerScale(float scale, float before) {
             log().info("timescale: a SimTimeScale level event of {} took the client timer from {} to {} by itself", scale, before, after);
         }
     }
-    // Not fighting the game: set it only where it did not take the scale as given (it multiplies).
-    if (after != scale) setScale(*mc, scale);
+    if (pause) {
+        if (after != before) setScale(*mc, before); // whatever the game made of a 0
+        if (!mc->getSimPaused()) mc->setSimTimePause(true);
+    } else {
+        if (mc->getSimPaused()) mc->setSimTimePause(false);
+        // Not fighting the game: set it only where it did not take the scale as given (it multiplies).
+        if (after != scale) setScale(*mc, scale);
+    }
     Readback        c{true, mc->mSimTimer.mTimeScale, mc->getSimPaused(), mc->mSimTimer.mTicksPerSecond};
     std::lock_guard lock(gMutex);
     gClientBack = c;
     // The local server's own broadcast (should it send one) only echoes what was set here.
     if (local) return;
     gServerLed = true;
-    gScale     = scale;
-    gSource    = "server";
-    if (options().trace) log().info("timescale: the server set {}", scale);
+    gPaused    = pause;
+    if (!pause) gScale = scale;
+    gSource = "server";
+    if (options().trace) log().info("timescale: the server {}", pause ? "paused" : "set " + std::to_string(scale));
 }
 
 } // namespace
@@ -321,7 +330,7 @@ LL_TYPE_INSTANCE_HOOK(
     origin(source, packet);
     if (!scaleEvent) return;
     float scale = std::bit_cast<float>(static_cast<int32_t>(packet.mData));
-    if (!std::isfinite(scale) || scale <= 0) {
+    if (!std::isfinite(scale) || scale < 0) {
         log().warn("timescale: ignored a SimTimeScale level event with scale {}", scale);
         return;
     }

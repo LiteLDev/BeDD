@@ -33,7 +33,7 @@ BDS（从 minecraft.net 下载，约 100 MB）。和准备游戏一样，已经�
 |---|---|
 | `-Name` | 服务器名，即 `%LOCALAPPDATA%\BeDD\servers` 下的文件夹（`BEDD_SERVERS_DIR`）；默认 `server` |
 | `-Port`、`-PortV6` | 默认：这台服务器之前的端口，否则取 19140/19141、19142/19143……中第一对空闲的，不会撞上游戏的 19132，服务器之间也不会撞 |
-| `-Transport` | 默认 `nethernet`，即 BDS 的默认值（BDS 1.26.51 提示玩家无法通过 `raknet` 连接） |
+| `-Transport` | 默认 `raknet`：`Join-BeDDServer` 通过 RakNet 加入。BDS 1.26.51 会记录 "TRANSPORT TYPE ERROR"（说没有 NetherNet 玩家无法连接），忽略即可，实际能连上。对只用回环的服务器用 `nethernet` 加入会卡住 |
 | `-ServerIp` | 默认 `127.0.0.1`：只有本机的游戏能加入；`''` 监听所有接口 |
 | `-OnlineMode` | 默认 `$false`：游戏加入时不做 Xbox 验证 |
 | `-LevelName`、`-Gamemode`、`-Difficulty`、`-LevelSeed`、`-MaxPlayers`、`-AllowCheats` | `server.properties`（默认 `Bedrock level`、`creative`、`peaceful`、随机、10、`$true`） |
