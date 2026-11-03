@@ -54,7 +54,8 @@ function Connect-BeDD([int]$TimeoutSeconds = 180, [string]$PipeName) {
         try {
             if (-not $script:Pipe -or -not $script:Pipe.IsConnected) { Open-BeDDPipe 2000 }
             $r = Invoke-BeDD @{ op = 'ping' } -NoThrow
-            if ($r.ok -and $r.hwnd -ne 0) { return $r }
+            # A server (BDS with BeDD) has no window: its ping has no hwnd ($null -ne 0) or target "server".
+            if ($r.ok -and ($r.hwnd -ne 0 -or $r.target -eq 'server')) { return $r }
             $last = 'game window not created yet'
         } catch {
             $last = $_.Exception.Message
@@ -95,9 +96,12 @@ function Get-BeDDState { Invoke-BeDD @{ op = 'state' } }
 function Get-BeDDWorld { Invoke-BeDD @{ op = 'world' } }
 
 # Turns the player to an absolute yaw/pitch in degrees (player_auth_input convention: yaw 0 = +Z,
-# 90 = -X; pitch -90 = up) and returns once it is within 0.5 degrees (config gameHooks).
-function Set-BeDDLook([Parameter(Mandatory)][double]$Yaw, [Parameter(Mandatory)][double]$Pitch, [int]$TimeoutMs = 1000) {
-    Invoke-BeDD @{ op = 'look'; yaw = $Yaw; pitch = $Pitch; timeoutMs = $TimeoutMs }
+# 90 = -X; pitch -90 = up) and returns once it is within 0.5 degrees (config gameHooks). Without
+# -TimeoutMs the game's default applies (1000 ms, longer at a slower game speed).
+function Set-BeDDLook([Parameter(Mandatory)][double]$Yaw, [Parameter(Mandatory)][double]$Pitch, [int]$TimeoutMs) {
+    $r = @{ op = 'look'; yaw = $Yaw; pitch = $Pitch }
+    if ($PSBoundParameters.ContainsKey('TimeoutMs')) { $r.timeoutMs = $TimeoutMs }
+    Invoke-BeDD $r
 }
 
 # Client-area size (the window stays off screen: the manager window shows the game), never activating the window.
@@ -190,21 +194,45 @@ function Set-BeDDButton(
 }
 
 # Moves the local player through the game's own input pipeline (config "gameHooks": true) until
-# -TtlMs runs out: -X = left - right, -Z = forward - back, each in [-1, 1]. -TtlMs 0 stops at once.
-# -Query returns the op's state ({active, via, hooks}) instead.
-function Set-BeDDInput([double]$X = 0, [double]$Z = 0, [switch]$Jump, [switch]$Sneak, [switch]$Sprint, [int]$TtlMs = 300, [switch]$Query) {
+# -TtlMs runs out, or for -TtlTicks client ticks (the same game time at any game speed; not with
+# -TtlMs): -X = left - right, -Z = forward - back, each in [-1, 1]. -TtlMs 0 / -TtlTicks 0 stops at
+# once. -Query returns the op's state ({active, via, hooks, ticksLeft}) instead.
+function Set-BeDDInput([double]$X = 0, [double]$Z = 0, [switch]$Jump, [switch]$Sneak, [switch]$Sprint, [int]$TtlMs = 300, [int]$TtlTicks, [switch]$Query) {
     if ($Query) { return Invoke-BeDD @{ op = 'input' } }
-    Invoke-BeDD @{ op = 'input'; move = @{ x = $X; z = $Z }; jump = [bool]$Jump; sneak = [bool]$Sneak; sprint = [bool]$Sprint; ttlMs = $TtlMs }
+    $r = @{ op = 'input'; move = @{ x = $X; z = $Z }; jump = [bool]$Jump; sneak = [bool]$Sneak; sprint = [bool]$Sprint }
+    if ($PSBoundParameters.ContainsKey('TtlTicks')) {
+        if ($PSBoundParameters.ContainsKey('TtlMs')) { throw 'Set-BeDDInput: -TtlMs and -TtlTicks are exclusive' }
+        $r.ttlTicks = $TtlTicks
+    } else { $r.ttlMs = $TtlMs }
+    Invoke-BeDD $r
 }
 
 # The local client sends one serverbound packet (needs allowSend; ids in sendAllow only): -Base64 or
 # -Bytes is the varint header + body, as bedrock-protocol serializes it. Without either, returns the
 # allowed ids. Returns the reply (packetId, name); with -NoThrow also a failed one (code, error).
-function Send-BeDDPacket([string]$Base64, [byte[]]$Bytes, [int]$TimeoutMs = 2000, [switch]$NoThrow) {
-    $r = @{ op = 'send'; timeoutMs = $TimeoutMs }
+# Without -TimeoutMs the game's default applies (2000 ms, longer at a slower game speed).
+function Send-BeDDPacket([string]$Base64, [byte[]]$Bytes, [int]$TimeoutMs, [switch]$NoThrow) {
+    $r = @{ op = 'send' }
+    if ($PSBoundParameters.ContainsKey('TimeoutMs')) { $r.timeoutMs = $TimeoutMs }
     if ($PSBoundParameters.ContainsKey('Bytes')) { $r.buf = [Convert]::ToBase64String($Bytes) }
     elseif ($PSBoundParameters.ContainsKey('Base64')) { $r.buf = $Base64 }
     Invoke-BeDD $r -NoThrow:$NoThrow
+}
+
+# Joins a server by address through the game's own external-server join (`join` op), from the
+# title screen or from inside a world (left first). Returns once the connection attempt started;
+# with -Wait once the client is in the server's world (throws when the join fails or times out).
+# Without -Host: where the client plays now ({mode, connection none|local|remote, host, port,
+# joining, last}). A server off the PC needs Remote mode (Start-BeDDGame.ps1 -Mode Remote
+# -ServerHost, config allowHosts).
+# (-Host is an alias: $Host is PowerShell's own.)
+function Join-BeDDServer(
+    [Alias('Host')][string]$ServerHost, [ValidateRange(1, 65535)][int]$Port = 19132, [switch]$Wait, [int]$TimeoutMs = 60000
+) {
+    if (-not $ServerHost) { return Invoke-BeDD @{ op = 'join' } }
+    $r = @{ op = 'join'; host = $ServerHost; port = $Port; wait = [bool]$Wait }
+    if ($PSBoundParameters.ContainsKey('TimeoutMs')) { $r.timeoutMs = $TimeoutMs }
+    Invoke-BeDD $r
 }
 
 Add-Type -AssemblyName System.Drawing
@@ -261,18 +289,35 @@ function Save-BeDDScreenshot([Parameter(Mandatory)][string]$Path) {
 # it; the reply maps its request ids to the client's (map, requestIds). Without -Buffer: the probe
 # ({enabled, via}; ok is false while allowStack is off). -View: the inventory as the client shows it.
 # Invoke-BeDD writes a request again after a broken pipe: check with -View before resending a buffer.
-function Send-BeDDStack($Buffer, [switch]$View, [int]$TimeoutMs = 2000) {
+function Send-BeDDStack($Buffer, [switch]$View, [int]$TimeoutMs) {
     $r = @{ op = 'stack' }
     if ($View) { $r.view = $true }
     elseif ($null -ne $Buffer) {
         $r.buf = if ($Buffer -is [byte[]]) { [Convert]::ToBase64String($Buffer) } else { [string]$Buffer }
-        $r.timeoutMs = $TimeoutMs
+        if ($PSBoundParameters.ContainsKey('TimeoutMs')) { $r.timeoutMs = $TimeoutMs }
     }
     Invoke-BeDD $r -NoThrow:(-not $View -and $null -eq $Buffer)
+}
+
+# Game speed of the client and the local server it hosts (`timescale` op; config timeScale applies
+# one on entering a world). Returns {scale, paused, source, tps{client, server}, ticksPerSecond}: the
+# tick rates are measured, so a scale the game cannot keep up with shows as fewer ticks.
+function Get-BeDDTimeScale { Invoke-BeDD @{ op = 'timescale' } }
+
+# Sets the game speed (-Scale 0.05..20, 1 = normal) and/or pauses it (-Paused, -Paused:$false
+# resumes); returns once the client and the local server both run at it. On a remote server it fails
+# (code remote), and on a server running BeDD the server leads (code server_led).
+function Set-BeDDTimeScale([double]$Scale, [switch]$Paused, [int]$TimeoutMs = 2000) {
+    $r = @{ op = 'timescale'; timeoutMs = $TimeoutMs }
+    if ($PSBoundParameters.ContainsKey('Scale')) { $r.scale = $Scale }
+    if ($PSBoundParameters.ContainsKey('Paused')) { $r.paused = [bool]$Paused }
+    if ($r.Count -eq 2) { throw 'Set-BeDDTimeScale: give -Scale and/or -Paused' }
+    Invoke-BeDD $r
 }
 
 Export-ModuleMember -Function Connect-BeDD, Set-BeDDPipe, Disconnect-BeDD, Test-BeDD, Invoke-BeDD,
     Set-BeDDCrashLogger, Get-BeDDState, Set-BeDDWindow, Send-BeDDKey, Send-BeDDText,
     Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot,
     Get-BeDDWorld, Set-BeDDLook,
-    Set-BeDDInput, Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton, Send-BeDDPacket, Send-BeDDStack
+    Set-BeDDInput, Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton, Send-BeDDPacket, Send-BeDDStack,
+    Get-BeDDTimeScale, Set-BeDDTimeScale, Join-BeDDServer

@@ -121,6 +121,7 @@ Save-BeDDScreenshot C:\temp\shot.png       # works while the window is covered
 | `Set-BeDDButton attack -Action down -ReleaseOnBlockChange` | hold attack/use/pick for game ticks or until the targeted block breaks, without blocking the pipe (`gameHooks`) |
 | `Send-BeDDPacket -Base64 ...` | the player sends a chat or command packet a script serialized (`allowSend`) |
 | `Send-BeDDStack -Buffer ...` / `-View` | the player sends an item stack request a script serialized; `-View` shows the inventory as the client sees it (`allowStack`) |
+| `Get-BeDDTimeScale` / `Set-BeDDTimeScale 3` | the game speed of a world this game hosts, client and local server together, with the ticks per second measured; `-Paused` stops the ticks, `-Paused:$false` resumes them |
 
 Key names: letters, digits, `ESC`, `ENTER`, `BACK`, `TAB`, `SPACE`, `SHIFT`, `CTRL`, `ALT`, arrows
 (`LEFT`...), `HOME`, `END`, `PGUP`, `PGDN`, `INSERT`, `DELETE`, `F1`..`F24`, `SLASH`, `GRAVE`,
@@ -148,6 +149,20 @@ tripping over each other:
   "An error has occurred" (code "Blaze").
 - A run that joins a server online sets `$script:ExclusiveSignaling = $true` before `Start-Game`
   and gets the PC to itself while the other games close.
+
+### Client and server
+
+Besides a game on its own (in a singleplayer world, or joined to a remote server), Be.D.D. runs a Bedrock Dedicated Server with BeDD's server module next to the game, both scripted, the server's game speed leading the client's:
+
+```powershell
+Import-Module .\BeDDSetup.psm1
+Initialize-BeDDServer -Name s1 -ModuleDir ..\BeDD-server   # BDS 1.26.51 + LeviLamina via lip, ports from 19140
+$s = & .\Start-BeDDServer.ps1 -Name s1                      # no window; log in logs\console.log
+Connect-BeDD -PipeName $s.PipeName                          # BeDD-Server-s1
+& .\Start-BeDDServer.ps1 -Name s1 -Stop
+```
+
+See [Client and server modes](https://docs.levimc.org/BeDD/guide/modes).
 
 ### The manager window
 
@@ -226,10 +241,13 @@ game start.
 | `clientWidth`, `clientHeight` | game window size (0 = leave it), so clicks land in the same place every run |
 | `pipeName` | one per game instance when several run at once |
 | `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new instance, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). Dedicated servers your harness starts still ask once per server folder; **Cancel** is fine |
+| `mode` | where the world runs: `ClientOnly` (default: a local world), `ClientServer` (a dedicated server with BeDD on this PC; `loopbackOnly` stays), `Remote` (a server without BeDD, possibly off the PC). See [Debug modes](https://docs.levimc.org/BeDD/guide/configuration#debug-modes). `state` and `join` report it |
+| `allowHosts` | host names or addresses `loopbackOnly` still lets the game reach (Remote mode's server; `Start-BeDDGame.ps1 -Mode Remote -ServerHost` writes it). Those hosts are queried, the game's outgoing UDP socket can reach them without a firewall prompt, and datagrams to any other host off the PC are refused (`state` `stats.sendsRefused`). Hosts on the PC need no entry |
 | `managerScript` | path of `BeDDManager.ps1` (`Install-BeDDMod` writes it): the game starts the manager window with it when none runs |
 | `mute` | default `true`: the game makes no sound |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
 | `pipeInstances` | default `4`: scripts that may use the game's pipe at once (each one's held keys, buttons and `input` override are released when it disconnects); `1` = one at a time |
+| `timeScale` | default `1`: the game speed (0.05..20) of every world this game hosts, set when it enters one (`Set-BeDDTimeScale` changes it later; on a remote server it does nothing) |
 | `gameHooks` | default `false`: hook the game's own systems for the ops bedboo uses: `world` and `look` (`Get-BeDDWorld`, `Set-BeDDLook`), `input` (`Set-BeDDInput`: walk, jump, sneak and sprint whatever the key bindings), `slot`, `action` and `button` (`Set-BeDDSlot`, `Invoke-BeDDAction`, `Set-BeDDButton`: hotbar, drop/inventory/perspective/pause, attack/use/pick held for game ticks or until the targeted block breaks); see CONTRIBUTING.md |
 | `tap` | default `false`: serve `\\.\pipe\<pipeName>-tap`, a binary stream of the game packets the client receives and sends, for [bedboo](https://github.com/LiteLDev/bedboo)'s transport `bedd` (see CONTRIBUTING.md, Tap protocol), with a join journal so a reader can attach in the middle of a session. It carries the whole session of the signed-in player, so only your user can open it. While it is on the client asks servers not to use its blob cache, so every chunk arrives in full |
 | `tapLoopback` | default `true`, used only with `tap`: also tap singleplayer worlds and LAN worlds this game hosts (packets re-serialized; LAN guests' traffic is left out) |

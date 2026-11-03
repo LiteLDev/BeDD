@@ -12,7 +12,7 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 | op | 字段 | |
 |---|---|---|
 | `ping` | | `protocol`、`pid`、`hwnd`、`client{w,h}`、`cursor{x,y}`、`realForeground`、`managed` |
-| `state` | | `ping` 的字段 + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal}`、`clients`（当前连接的控制管道客户端数）、`hooks{name: installed}`（各功能安装的每个游戏钩子；功能关闭时为 `false`） |
+| `state` | | `ping` 的字段 + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal, sendsRefused}`、`clients`（当前连接的控制管道客户端数）、`hooks{name: installed}`（各功能安装的每个游戏钩子；功能关闭时为 `false`）、`mode`（ClientOnly\|ClientServer\|Remote，配置 `mode`）、`connection{connection none\|local\|remote, inLevel, host, port}`（客户端在哪里玩） |
 | `key` | `key`（名字）或 `vk`；`action` press\|down\|up；`holdMs` | 名字：字母、数字、ESC、ENTER、BACK、TAB、SPACE、SHIFT、CTRL、ALT、LEFT/UP/RIGHT/DOWN、HOME、END、PGUP、PGDN、INSERT、DELETE、F1..F24、SLASH、GRAVE、MINUS、EQUALS |
 | `text` | `text`；`delayMs` | 每个 UTF-16 单元一个 `WM_CHAR` |
 | `mouse` | `action` move\|down\|up\|click\|wheel；`x`,`y`（客户区像素）或 `rx`,`ry`（比例）；`button` left\|right\|middle；`notches`；`holdMs` | 先移动虚拟光标（给了坐标时），再在虚拟 GameInput 鼠标上按按钮/滚轮 |
@@ -21,12 +21,13 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 | `focus` | | 重新发送"获得焦点"消息 |
 | `window` | `clientWidth`、`clientHeight` | 从不激活窗口；窗口留在屏幕外 |
 | `flush` | | 等到所有已投递的输入都分发完 |
+| `join` | `host`、`port`（19132）、`wait`、`timeoutMs`（60000） | 客户端通过游戏自己的外部服务器加入流程（`ClientInstance::connectToThirdPartyServer`）按地址加入服务器，可以在标题界面，也可以在世界里（先退出世界）。开始连接后回复 `started:true`，带 `wait:true` 时进入世界后回复 `joined:true`；`left`：先退出了一个世界。错误码：`join_failed`（客户端放弃了，界面上显示原因）、`timeout`（`screen`：游戏可能还在连接）、`busy`（已有加入在进行）、`not_allowed`（`loopbackOnly` 不让游戏访问的本机以外主机：不在 `allowHosts` 里）、`bad_args`。不带 `host`：`mode`、`connection` none\|local\|remote、`host`、`port`、`inLevel`、`joining`（进行中的加入）、`last`（上一次的结果）。本机以外的服务器需要 Remote 模式（配置 `allowHosts`） |
 
 ## 多个客户端
 
 可以同时连接多个客户端（配置 `pipeInstances`，默认 4；1 = 一次一个），每个由自己的线程服务。投递窗口输入的操作是串行的，
-所以两个客户端的按键或输入的文字不会交错；`ping`、`state`、`tap`、`world`、`look`、`input`、`send` 和 `stack` 不加这把锁
-（它们只读，或把工作交给客户端线程）。一个客户端断开（或其进程退出）时，释放它持有的东西，且不动其他客户端持有的：
+所以两个客户端的按键或输入的文字不会交错；`ping`、`state`、`tap`、`world`、`look`、`input`、`send`、`stack`、`timescale` 和 `join` 不加这把锁
+（它们只读，或把工作交给游戏线程）。一个客户端断开（或其进程退出）时，释放它持有的东西，且不动其他客户端持有的：
 它的按键和鼠标按钮、它发起的 `button` 按住、它设置的 `input` 覆盖。管理窗口通过管理连接转发的操作既不串行，也不归属任何客户端。
 
 对有按客户端状态的单元（`src/BeDD.h`）：`currentPipeClient()` 是当前线程所服务客户端的 id（从 1 开始，不复用；管理连接和游戏线程上为 0）。
@@ -44,13 +45,17 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 |---|---|---|---|
 | `tap` | `tap` | `enabled`、`pipe`、`attached`（有读取方连接）、`link{state up\|down, type remote\|local, address}`、`journal{frames, bytes, complete}`（当前加入日志）、`lastReplay`（上一个读取方回放了什么）、`replay`（装了日志）、`counters{in, out, dropped, sent, readers}`、`hooks` | （无） |
 | `world` | `gameHooks` | `inLevel`、`levelEpoch`（每进入一个世界 +1）、`topScreen`（如 `hud_screen`、`pause_screen`）、`mouseGrabbed`、`showingMenu`、`inputMode` mouse\|touch\|gamepad\|undefined、`player{runtimeId, eye{x,y,z}, rot{yaw,pitch}, slot}`（不在世界里时为 null）、`tick`（见到的客户端刻数） | （无） |
-| `look` | `gameHooks` | `{inLevel, yaw, pitch, tick}` | `yaw`、`pitch`、`timeoutMs`（1000，最多 60000） |
-| `input` | `gameHooks` | `active`、`via` hooks\|keys、`hooks{raw,state}`、`tick`、`applied` | `move{x,z}`、`jump`、`sneak`、`sprint`、`ttlMs`（300） |
+| `look` | `gameHooks` | `{inLevel, yaw, pitch, tick}` | `yaw`、`pitch`、`timeoutMs`（1000\*，最多 60000） |
+| `input` | `gameHooks` | `active`、`via` hooks\|keys、`hooks{raw,state}`、`tick`、`applied`、`ticksLeft`（`ttlTicks` 覆盖） | `move{x,z}`、`jump`、`sneak`、`sprint`、`ttlMs`（300）或 `ttlTicks` |
 | `slot` | `gameHooks` | `{slot}`（不在世界里时为 null） | `slot` 0..8 |
 | `action` | `gameHooks` | `{names}` | `name` drop\|dropAll\|inventory\|perspective\|pause |
 | `button` | `gameHooks` | `{held}` | `button` attack\|use\|pick；`action` down\|up\|click；`holdTicks`；`releaseOn` blockChange |
-| `send` | `allowSend` | `{allow}`（`sendAllow` 里的 id） | `buf`、`timeoutMs`（2000，最多 10000） |
-| `stack` | `allowStack` | `{enabled, via:"raw", stats{sent, answered, rejected, failed, resyncs}}` | `buf`、`timeoutMs`（2000）；或 `view:true` |
+| `send` | `allowSend` | `{allow}`（`sendAllow` 里的 id） | `buf`、`timeoutMs`（2000\*，最多 10000） |
+| `stack` | `allowStack` | `{enabled, via:"raw", stats{sent, answered, rejected, failed, resyncs}}` | `buf`、`timeoutMs`（2000\*）；或 `view:true` |
+
+\* 以及 `slot`、`action`、`button` 的 `timeoutMs`（1000）：这些默认值适用于每秒 20 刻及更快。客户端走刻更慢时（游戏速度更慢），
+不带 `timeoutMs` 的请求相应地等得更久（默认值乘以实测刻间隔除以 50 ms，最多到该操作的上限）；调用方给出的 `timeoutMs` 原样使用。
+同样，“客户端在世界里”（`slot`、`action`、`button`、`send`、`stack` 的 `not_in_level`）指 20 个刻间隔（至少 1 秒）内有过客户端刻。
 
 - **`world`** 是客户端线程拍的快照：界面字段每帧更新（`ClientInstance::$update` 后置钩子，因为暂停的单人世界不走刻），玩家字段每个客户端刻更新。
   管道线程只复制它。
@@ -60,7 +65,8 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
   `busy`（被更新的 `look` 取代）、`bad_args`。
 - **`input`** 在游戏自己的输入管线里移动本地玩家，所以每个 `player_auth_input` 都由客户端自己构建。`move` 是 player_auth_input 的移动向量
   （`x` = 左 - 右，`z` = 前 - 后，各自限制在 [-1, 1]；斜向会被归一化）。这个覆盖是一个"死人开关"：请求后 `ttlMs`（最多 60000）结束，
-  所以控制方想继续移动时要不断刷新；`ttlMs:0`、`release` 和所属客户端断开会立即结束它。
+  所以控制方想继续移动时要不断刷新；`ttlMs:0`、`release` 和所属客户端断开会立即结束它。`ttlTicks`（最多 1200；不能与 `ttlMs` 同时给，否则 `bad_args`）
+  改为在那么多个客户端刻之后结束，在任何游戏速度下都是同样的游戏时间；客户端停止走刻 5 秒（离开世界、暂停）时它也会结束，不走刻时请求它会得到 `not_in_level`，探测回复用 `ticksLeft` 报告剩余刻数。
   - `via:"hooks"`：挂在 `ClientInputUpdateSystem::extractRawHIDInput`（写 `RawMoveInputComponent::mRawInput`/`mRawMove`）和
     `inputHandlerUpdatePlayerState`（在原函数前后写 `MoveInputComponent::mInputState`/`mRawInputState`：`MoveInputState` 标志
     `SneakDown`=0、`JumpDown`=7、`SprintDown`=8、`Up`..`Right`=13..16 以及跳跃/潜行输入边沿 21..26，外加 `mAnalogMoveVector`）的后置钩子。
@@ -113,6 +119,32 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
   包括打开的容器。被拒绝的请求两边都不改变，所以不重新同步。
 - 服务器会检查每个请求（堆 id、打开的界面、配方）。请求需要的界面（背包、箱子）必须已经在游戏里打开：用 `action inventory`、`key E` 或使用方块打开。
 
+## `timescale`：游戏速度
+
+不受配置项控制。它改变本游戏主持的世界（单人世界，或它主持的局域网世界）的速度：客户端和它的本地服务器一起改。
+
+| 形式 | 回复 |
+|---|---|
+| `{op:"timescale"}`（探测） | `{ok, scale, paused, source, tps:{client, server}, ticksPerSecond, effective:{client, server}, local, inLevel}` |
+| `{op:"timescale", scale?, paused?, timeoutMs=2000}` | 与探测相同的字段，在客户端和本地服务器都以它运行之后回复 |
+
+- `scale` 限制在 0.05..20（1 = 正常，每秒 20 刻）。`paused:true` 让两边都停止刻（`Minecraft::setSimTimePause`），`false` 恢复。
+  游戏自己的暂停菜单也以同样方式暂停和恢复。
+- `source`：`default`（1，未设置）、`config`（`timeScale`，进入世界时应用）、`local`（通过管道设置）、`server`（运行 BeDD 的服务器设置的）。
+- `tps.client`、`tps.server`：客户端和本地服务器每秒的刻数，按最近 2 秒测量（所以比改动滞后至多 2 秒；暂停时为 0）。
+  远程服务器上 `tps.server` 为 `null`。`ticksPerSecond`：客户端计时器的基准速率（20）。`effective.client` / `effective.server`：
+  各自的 Minecraft 上次应用改动后报告的 `{scale, paused, ticksPerSecond}`（第一次之前为 `null`）。
+- 每一边在自己的线程上修改：服务器通过 `ServerInstance::queueForServerThread`，客户端在下一次 `ClientInstance::update` 之后
+  （刻暂停时画面帧仍在继续）。速度直接写入模拟计时器（`Timer::mTimeScale`）：`Minecraft::setSimTimeScale` 会把当前速度相乘并封顶为 10，
+  不是幂等的。计时器每帧只追赶有限的刻数，所以 `tps` 显示游戏实际达到的速度。本地世界中客户端与服务器一致：
+  0.05 → 1、0.5 → 10、2 → 40、3 → 60、5 → 100、10 → 200、20 → 400 刻每秒；再次设置相同速度不会有变化。
+- 离开世界时客户端回到 1；进入世界时应用 `timeScale`（默认 1），所以上一个世界的设置不会带过来。
+- 错误：`not_in_level`；`remote`（世界在本游戏没有主持的服务器上：无法从客户端改它的速度）；`server_led`（该服务器运行 BeDD 并已发来它的速度：
+  到那边去改）；`timeout`（某一边没有及时应用：它的线程运行时仍会应用，`effective` 会显示）；`refused`；`bad_args`。
+- 服务器主导：运行 BeDD 的服务器在速度或暂停改变时以及玩家加入时，给每个玩家发送 level_event 包（`event_id` 3007 SimTimeScale，位置 0,0,0，
+  `data` = 速度的 float 位按 int32，服务器暂停时为 0）。客户端应用它（挂钩 `ClientNetworkHandler::handle(LevelEventPacket)`，在游戏自己处理之后，
+  且只在游戏没有自己达到该速度时）；0 让客户端暂停，并保留原速度供恢复时使用。
+
 ## 谁发什么（bedboo `bedd` 传输）
 
 真实客户端拥有每个服务端方向的数据包；bedboo 把它本来要发的东西变成意图。此表与 bedboo 的 `lib/bedd/authority.js` 相同。
@@ -125,6 +157,25 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 | unsupported | book_edit、block_pick_request、crafting_event、set_default_game_type，以及其他所有 | bedboo 抛出 BeddUnsupportedError（ERR_BEDD_UNSUPPORTED） |
 
 只有在 `stack` 探测不回答 `ok` 时，item_stack_request 才算 unsupported。
+
+## 服务端目标（客户端服务端共同调试模式）
+
+用 `--target_type=server` 构建的 BeDD 运行在装了 LeviLamina 的 Bedrock 专用服务器里，以同样的格式提供
+`\\.\pipe\<pipeName>`（默认 `BeDD-Server`）。游戏速度由服务端主导：它把自己的速度用 LevelEvent 包（`mEventId` 3007，
+SimTimeScale；`mPos` 0,0,0；`mData` 为浮点速度的位，暂停时为 0）广播给每个玩家，速度或暂停改变时发一次，每个玩家生成后再单独发一次；客户端上的 BeDD 跟随它。
+其他操作回答 `unknown op`。
+
+| 操作 | 字段 | 回复 |
+|---|---|---|
+| `ping` | | `protocol`、`pid`、`target:"server"`（没有 `hwnd`） |
+| `state` | | `target:"server"`、`clients`、`loopbackOnly`、`stats{loopbackRebinds, serverQueriesRefused}` |
+| `server` | | `tick`（世界当前刻）、`tps`（最近 2 秒实测的刻数）、`paused`、`port`（`server-port`）、`players[{name, xuid}]` |
+| `timescale` | 无：探测 | `scale`、`paused`、`source` default\|config\|local、`tps{client:null, server}`（实测）、`ticksPerSecond`（速度要求的：20 × scale，暂停时为 0） |
+| `timescale` | `scale` 0.05..20 和/或 `paused` true\|false；`timeoutMs`（5000） | 改变后的探测结果。在服务器线程上执行（`ServerInstance::queueForServerThread`，暂停时也会执行）：速度直接写进模拟计时器（`Minecraft::setSimTimeScale` 是乘法且上限为 10），暂停用 `setSimTimePause` |
+| `command` | `command`（开头的 `/` 可有可无）；`timeoutMs`（10000） | `success`、`successCount`、`output[]`（翻译后的各行），和服务器控制台执行的一样 |
+
+错误：`not_in_level`（服务器还没启动）、`bad_args`、`timeout`（服务器线程没有回应）。`tps.server` 是服务器实际达到的：
+速度很高时，如果一刻的耗时超过速度允许的时间，它会低于 `ticksPerSecond`。
 
 ## 管理管道
 

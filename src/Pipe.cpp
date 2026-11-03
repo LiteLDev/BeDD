@@ -32,6 +32,9 @@ std::atomic<bool> gStopping{false};
 
 // The control-pipe client the current thread serves (0 = none: the manager link, the game thread).
 thread_local uint64_t tClient = 0;
+
+#ifndef LL_PLAT_S // the game client's ops; a server's are below (#else)
+
 // Which client last pressed each virtual key / mouse button (0 = nobody, or not a pipe client).
 std::array<std::atomic<uint64_t>, 256> gKeyOwner{};
 
@@ -269,6 +272,9 @@ json handle(json const& j) {
         json tap = json::parse(tapHooks());
         for (auto& [name, on] : tap.items()) r["hooks"][name] = on;
         r["clients"] = pipeClients();
+        r["mode"]       = options().mode;
+        r["connection"] = connectionInfo();
+        r["stats"]["sendsRefused"] = sendsRefused();
         auto jn               = tapJournalStats();
         r["stats"]["journal"] = {
             {"enabled",   jn.enabled  },
@@ -379,11 +385,49 @@ json handle(json const& j) {
         r = sendOp(j);
     } else if (op == "stack") {
         r = stackOp(j);
+    } else if (op == "timescale") {
+        r = timeScaleOp(j);
+    } else if (op == "join") {
+        r = joinOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
     return r;
 }
+
+#else // LL_PLAT_S
+
+// Inside a Bedrock Dedicated Server: no window and no input, so the server's own ops only.
+json handle(json const& j) {
+    std::string op = j.value("op", "");
+    json        r{
+        {"ok", true}
+    };
+    if (op == "ping") {
+        r["protocol"] = kProtocol;
+        r["pid"]      = GetCurrentProcessId();
+        r["target"]   = "server";
+    } else if (op == "state") {
+        r["target"]       = "server";
+        r["clients"]      = pipeClients();
+        r["loopbackOnly"] = options().loopbackOnly;
+        r["stats"]        = {
+            {"loopbackRebinds",      loopbackRebinds()     },
+            {"serverQueriesRefused", serverQueriesRefused()},
+        };
+    } else if (op == "server") {
+        r = serverInfoOp(j);
+    } else if (op == "timescale") {
+        r = serverTimeScaleOp(j);
+    } else if (op == "command") {
+        r = serverCommandOp(j);
+    } else {
+        throw std::runtime_error("unknown op '" + op + "' (this is the server target)");
+    }
+    return r;
+}
+
+#endif // LL_PLAT_S
 
 } // namespace
 
@@ -437,14 +481,18 @@ std::mutex gInputMutex;
 int maxInstances() { return std::clamp(options().pipeInstances, 1, PIPE_UNLIMITED_INSTANCES - 1); }
 
 // Ops that run without gInputMutex: they post no window input. `tap` and `world` only read;
-// `look`, `input`, `send` and `stack` hand their work to the client thread (and may wait for it,
-// up to their timeoutMs), so serializing them would only stall the other clients.
+// `look`, `input`, `send`, `stack`, `timescale` and `join` hand their work to the client thread (and
+// may wait for it, up to their timeoutMs), so serializing them would only stall the other clients.
 bool concurrentOp(std::string const& line) {
+#ifdef LL_PLAT_S
+    (void)line;
+    return true; // a server posts no window input (and its ops may wait on the server thread)
+#endif
     json req = json::parse(line, nullptr, false);
     if (!req.is_object()) return true;
     std::string op = req.value("op", "");
     return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
-        || op == "stack";
+        || op == "stack" || op == "timescale" || op == "join";
 }
 
 std::string handleClientLine(std::string const& line) {
@@ -452,6 +500,8 @@ std::string handleClientLine(std::string const& line) {
     std::lock_guard lock(gInputMutex);
     return handleControlLine(line);
 }
+
+#ifndef LL_PLAT_S // a server holds no input for its clients
 
 // Lets go of the keys and mouse buttons the client still holds (and nobody pressed after it).
 // A key-down is in the virtual state only once the game thread dispatched it, so a key it owns is
@@ -477,13 +527,17 @@ void releaseClientInput(uint64_t id) {
     if (posted) flush(1s);
 }
 
+#endif // LL_PLAT_S
+
 // The per-client disconnect path: everything a client left behind is released here. Units with
 // per-client state register with onPipeClientGone() (or add their one-line release call below).
 void clientGone(uint64_t id) {
     std::lock_guard input(gInputMutex);
+#ifndef LL_PLAT_S
     releaseClientInput(id);
     clearMoveInputOf(id);      // the `input` override, if this client set it (MoveInput.cpp)
     releaseGameButtonsOf(id);  // `button` holds of this client (GameActions.cpp)
+#endif
     std::vector<std::function<void(uint64_t)>> callbacks;
     {
         std::lock_guard lock(gGoneMutex);

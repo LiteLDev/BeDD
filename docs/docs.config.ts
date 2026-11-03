@@ -15,6 +15,7 @@ interface Labels {
   scripts: string;
   usage: string;
   severalGames: string;
+  modes: string;
   harness: string;
   configuration: string;
   troubleshooting: string;
@@ -36,6 +37,7 @@ const LABELS: Record<string, Labels> = {
     scripts: 'Writing tests',
     usage: 'Driving the game',
     severalGames: 'Several games at once',
+    modes: 'Client and server modes',
     harness: 'Plugging into a harness',
     configuration: 'Configuration',
     troubleshooting: 'Troubleshooting',
@@ -55,6 +57,7 @@ const LABELS: Record<string, Labels> = {
     scripts: '编写测试',
     usage: '驱动游戏',
     severalGames: '多开',
+    modes: '客户端与服务端模式',
     harness: '接入测试框架',
     configuration: '配置',
     troubleshooting: '常见问题',
@@ -86,6 +89,7 @@ const sidebar = (p: string, t: Labels): Record<string, NavEntry[]> => {
       items: [
         { text: t.usage, link: `${p}guide/usage` },
         { text: t.severalGames, link: `${p}guide/several-games` },
+        { text: t.modes, link: `${p}guide/modes` },
         { text: t.harness, link: `${p}guide/harness` },
         { text: t.configuration, link: `${p}guide/configuration` },
         { text: t.troubleshooting, link: `${p}guide/troubleshooting` },

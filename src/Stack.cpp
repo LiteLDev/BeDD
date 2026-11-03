@@ -71,8 +71,6 @@ using json = nlohmann::json;
 using namespace std::chrono_literals;
 
 constexpr int kItemStackRequest = 147;
-// The client ticks its level ~20 times a second while in a world; longer without a tick = not in one.
-constexpr auto kTickStale = 1s;
 // Caller ids remembered for renaming stack ids (a request names at most a few pending ones).
 constexpr size_t kIdMapCap = 256;
 // Request ids given out here: odd and negative like the client's own (-1, -3, -5, ...), but far
@@ -93,7 +91,6 @@ std::mutex                       gMutex;
 std::deque<std::shared_ptr<Job>> gJobs;
 ll::event::ListenerPtr           gListener;
 bool                             gHooked = false;
-std::atomic<int64_t>             gLastTickMs{0};
 std::atomic<uint64_t>            gSent{}, gAnswered{}, gRejected{}, gFailed{}, gResyncs{};
 
 // Client thread only (the client level tick and the client's packet handlers both run there).
@@ -102,11 +99,6 @@ std::deque<int>              gIdOrder;
 std::unordered_set<int>      gAwaiting; // client ids sent here whose response has not arrived
 std::deque<int>              gAwaitingOrder;
 std::atomic<bool>            gResyncDue{false};
-
-int64_t nowMs() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
-        .count();
-}
 
 json fail(std::string code, std::string const& error) {
     ++gFailed;
@@ -312,7 +304,6 @@ void resync(Level& level) {
 }
 
 void onTick(ll::event::ClientLevelTickEvent& ev) {
-    gLastTickMs = nowMs();
     if (gResyncDue.exchange(false)) resync(ev.level());
     std::deque<std::shared_ptr<Job>> jobs;
     {
@@ -409,7 +400,9 @@ json stackOp(json const& req) {
               {"failed", gFailed.load()},
               {"resyncs", gResyncs.load()}}},
         };
-    auto timeout = req.contains("timeoutMs") && req["timeoutMs"].is_number_integer() ? req["timeoutMs"].get<int>() : 2000;
+    // The default (2000) is stretched at a slower game speed.
+    auto timeout = req.contains("timeoutMs") && req["timeoutMs"].is_number_integer() ? req["timeoutMs"].get<int>()
+                                                                                    : static_cast<int>(tickScaled(2000ms, 60000ms).count());
     if (timeout <= 0 || timeout > 60000) return fail("bad_args", "'timeoutMs' must be 1..60000");
     auto job  = std::make_shared<Job>();
     job->view = req.contains("view") && req["view"].is_boolean() && req["view"].get<bool>();
@@ -424,7 +417,8 @@ json stackOp(json const& req) {
             return fail("bad_args", "packet id " + std::to_string(id) + " is not item_stack_request (147)");
         job->body = bytes->substr(n);
     }
-    if (nowMs() - gLastTickMs.load() > std::chrono::milliseconds(kTickStale).count())
+    // No client tick for 20 ticks of its current cadence (at least 1 s): not in a world.
+    if (clientTickStale())
         return fail("not_in_level", "the client is not in a world");
     auto done = job->done.get_future();
     {

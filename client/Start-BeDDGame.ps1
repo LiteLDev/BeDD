@@ -19,17 +19,28 @@
   opened (downloaded if needed) for you to install the game. Without -Instance it starts the base
   instance BeDD finds (or its clone for -Slot 2 and up).
 
+  -Mode is where the world runs, written into mods\BeDD\config\config.json (config `mode`,
+  Set-BeDDMode) before the game starts: ClientOnly (a local world; the default), ClientServer (a BDS
+  with BeDD on this PC; loopbackOnly stays), Remote (a server without BeDD at -ServerHost, which goes
+  into allowHosts when it is off the PC). Without -Mode the config is left as it is.
+
 .EXAMPLE
   & bin\BeDD\Start-BeDDGame.ps1 -Instance 1.26.51.01-hi2
   & bin\BeDD\Start-BeDDGame.ps1 -Slot 2
+  & bin\BeDD\Start-BeDDGame.ps1 -Slot 2 -Mode Remote -ServerHost 192.168.1.20
 #>
 param(
     [string]$Instance,
     [int]$Slot = 1,
     [string]$VersionsDir,
-    [string]$Label
+    [string]$Label,
+    [ValidateSet('ClientOnly', 'ClientServer', 'Remote')][string]$Mode,
+    [string]$ServerHost
 )
 $ErrorActionPreference = 'Stop'
+# Before any setup work (which can take minutes); Set-BeDDMode checks the same.
+if ($ServerHost -and $Mode -ne 'Remote') { throw '[BeDD] -ServerHost is for -Mode Remote' }
+if ($Mode -eq 'Remote' -and -not $ServerHost) { throw '[BeDD] -Mode Remote needs -ServerHost (the server the game joins)' }
 
 # "LiftOff" for a script in a LiftOff checkout, "LiftOff (fix-x)" in its worktree .claude\worktrees\fix-x.
 function Get-CallerLabel {
@@ -89,6 +100,7 @@ $exe = Join-Path $dir 'Minecraft.Windows.exe'
 if (-not (Test-Path (Join-Path $dir 'mods\BeDD\BeDD.dll'))) {
     throw "[BeDD] $Instance has no mods\BeDD (Install-BeDDMod): a game without it would show a window of its own"
 }
+if ($Mode) { Set-BeDDMode -ModsDir $ready.ModsDir -Mode $Mode -ServerHost $ServerHost }
 # LeviLamina's crash logger in the game process instead of CrashLogger.exe, a console program that
 # would flash a console window on the desktop as the game starts (see Set-BeDDCrashLogger in
 # BeDD.psm1).

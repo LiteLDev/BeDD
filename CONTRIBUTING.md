@@ -23,7 +23,9 @@ See [Development](#development) below. The code is small:
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
 | `src/Audio.cpp` | FMOD hooks: the game's master channel group is muted (`mute`) |
-| `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`: no firewall prompt, no queries to servers off the PC) |
+| `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`: no firewall prompt, no queries to servers off the PC; `allowHosts`: the one server Remote mode reaches); in the server target too |
+| `src/ServerTimeScale.cpp` | server target only: the `server`, `timescale` and `command` ops, config `timeScale`, LevelEvent 3007 to the players |
+| `src/Join.cpp` | `join` op: the client joins a server by address (the game's own external-server join, on the client thread); where the client plays, for `state` |
 | `src/Pipe.cpp` | control pipe and protocol |
 | `src/Manager.cpp` | link to the session's manager window |
 | `src/Trace.cpp` | trace-mode input logging |
@@ -32,6 +34,7 @@ See [Development](#development) below. The code is small:
 | `src/GameState.cpp`, `src/Look.cpp` | `world` snapshot and absolute `look` (`gameHooks`) |
 | `src/GameActions.cpp` | `slot`, `action` and tick-based `button` ops (`gameHooks`) |
 | `src/Stack.cpp` | `stack` op (`allowStack`): item stack requests sent by the local client |
+| `src/TimeScale.cpp` | `timescale` op and `timeScale`: game speed of the client and its local server, tick rates, a BeDD server's scale (level event 3007) |
 | `src/TapSink.h` | the frame type and sink chain every tap publisher shares (keep it byte-identical) |
 | `src/Tap.cpp`, `src/Tap.h` | tap pipe: framing, markers, writer thread, the `tap` op |
 | `src/NetTap.cpp` | tap capture on a remote server link, and the blob cache switch |
@@ -79,6 +82,19 @@ xmake -y        # -> bin\BeDD\ (DLL, manifest and everything in client\)
 ```
 
 The mod packer reads the version from `git describe`, so the repository needs at least one commit.
+
+**Server target** (the client+server mode): `tools/build.ps1 -TargetType server`, or
+`--target_type=server` above, builds the mod a Bedrock Dedicated Server with LeviLamina runs, into
+`bin\BeDD-server\` (DLL and manifest, platform `server`). It holds the control pipe, the loopback-only
+network and the server ops (`src/ServerTimeScale.cpp`) and nothing of the client (`xmake.lua` lists
+its files; the rest of `src/` needs the client's LeviLamina headers). Copy the folder into the
+server's `plugins\` (LeviLamina's mods folder on a server, `plugins\BeDD-server\`); it reads
+`plugins\BeDD-server\config\config.json` and serves `\\.\pipe\BeDD-Server`.
+
+`xmake-requires.lock` pins the packages of both targets, but xmake rewrites it with the configured
+target's pins only. `tools/build.ps1` puts it back after building; by hand, `git checkout
+xmake-requires.lock` before you configure the other target (CI does the same). To move a pin,
+configure each target, keep both targets' entries, and commit the union.
 
 `tools\dev.ps1 [-Trace]` is a playground: it takes the shared e2e lock
 (`%APPDATA%\levilauncher.exe\bei-e2e.lock`), deploys the mod into the instance BeDD finds (set up
@@ -180,7 +196,7 @@ version (`ping`.`protocol`) stays 1: newer ops are found by calling them (below)
 | op | fields | |
 |---|---|---|
 | `ping` | | `protocol`, `pid`, `hwnd`, `client{w,h}`, `cursor{x,y}`, `realForeground`, `managed` |
-| `state` | | `ping` fields + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal}`, `clients` (control-pipe clients connected now), `hooks{name: installed}` (each game hook a feature installed; `false` while the feature is off) |
+| `state` | | `ping` fields + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal, sendsRefused}`, `clients` (control-pipe clients connected now), `hooks{name: installed}` (each game hook a feature installed; `false` while the feature is off), `mode` (ClientOnly\|ClientServer\|Remote, config `mode`), `connection{connection none\|local\|remote, inLevel, host, port}` (where the client plays) |
 | `key` | `key` (name) or `vk`; `action` press\|down\|up; `holdMs` | names: letters, digits, ESC, ENTER, BACK, TAB, SPACE, SHIFT, CTRL, ALT, LEFT/UP/RIGHT/DOWN, HOME, END, PGUP, PGDN, INSERT, DELETE, F1..F24, SLASH, GRAVE, MINUS, EQUALS |
 | `text` | `text`; `delayMs` | one `WM_CHAR` per UTF-16 unit |
 | `mouse` | `action` move\|down\|up\|click\|wheel; `x`,`y` (client px) or `rx`,`ry` (fractions); `button` left\|right\|middle; `notches`; `holdMs` | moves the virtual cursor (if a point is given), then buttons/wheel on the virtual GameInput mouse |
@@ -189,13 +205,14 @@ version (`ping`.`protocol`) stays 1: newer ops are found by calling them (below)
 | `focus` | | re-sends the "focus gained" messages |
 | `window` | `clientWidth`, `clientHeight` | never activates the window; it stays off screen |
 | `flush` | | waits until everything posted was dispatched |
+| `join` | `host`, `port` (19132), `wait`, `timeoutMs` (60000) | the client joins a server by address through the game's own external-server join (`ClientInstance::connectToThirdPartyServer`), from the title screen or from inside a world, which it leaves first. Replies `started:true` once it connects, with `wait:true` `joined:true` once it is in the level; `left`: a world was left first. Codes: `join_failed` (the client gave up and shows why), `timeout` (`screen`: the game may still be connecting), `busy` (a join is in progress), `not_allowed` (a host off the PC that `loopbackOnly` keeps the game from: not in `allowHosts`), `bad_args`. Without `host`: `mode`, `connection` none\|local\|remote, `host`, `port`, `inLevel`, `joining` (the attempt in progress), `last` (how the last one ended). A server off the PC needs Remote mode (config `allowHosts`) |
 
 #### Several clients
 
 Several clients can be connected at once (config `pipeInstances`, default 4; 1 = one at a time),
 each served by its own thread. Ops that post window input are serialized, so two clients never
-interleave a press or a typed text; `ping`, `state`, `tap`, `world`, `look`, `input`, `send` and
-`stack` run without that lock (they only read, or hand their work to the client thread). What a
+interleave a press or a typed text; `ping`, `state`, `tap`, `world`, `look`, `input`, `send`,
+`stack`, `timescale` and `join` run without that lock (they only read, or hand their work to the game threads). What a
 client holds is released when it disconnects (or its process dies), and nothing another client
 holds: its keys and mouse buttons, the `button` holds it made and the `input` override it set. Ops
 the manager window forwards over the manager link are neither serialized nor owned.
@@ -220,13 +237,20 @@ of every op is read-only.
 |---|---|---|---|
 | `tap` | `tap` | `enabled`, `pipe`, `attached` (a reader is connected), `link{state up\|down, type remote\|local, address}`, `journal{frames, bytes, complete}` (the join journal now), `lastReplay` (what the last reader was replayed), `replay` (a journal is installed), `counters{in, out, dropped, sent, readers}`, `hooks` | (none) |
 | `world` | `gameHooks` | `inLevel`, `levelEpoch` (+1 per world joined), `topScreen` (e.g. `hud_screen`, `pause_screen`), `mouseGrabbed`, `showingMenu`, `inputMode` mouse\|touch\|gamepad\|undefined, `player{runtimeId, eye{x,y,z}, rot{yaw,pitch}, slot}` (null outside a world), `tick` (client ticks seen) | (none) |
-| `look` | `gameHooks` | `{inLevel, yaw, pitch, tick}` | `yaw`, `pitch`, `timeoutMs` (1000, at most 60000) |
-| `input` | `gameHooks` | `active`, `via` hooks\|keys, `hooks{raw,state}`, `tick`, `applied` | `move{x,z}`, `jump`, `sneak`, `sprint`, `ttlMs` (300) |
+| `look` | `gameHooks` | `{inLevel, yaw, pitch, tick}` | `yaw`, `pitch`, `timeoutMs` (1000\*, at most 60000) |
+| `input` | `gameHooks` | `active`, `via` hooks\|keys, `hooks{raw,state}`, `tick`, `applied`, `ticksLeft` (a `ttlTicks` override) | `move{x,z}`, `jump`, `sneak`, `sprint`, `ttlMs` (300) or `ttlTicks` |
 | `slot` | `gameHooks` | `{slot}` (null outside a world) | `slot` 0..8 |
 | `action` | `gameHooks` | `{names}` | `name` drop\|dropAll\|inventory\|perspective\|pause |
 | `button` | `gameHooks` | `{held}` | `button` attack\|use\|pick; `action` down\|up\|click; `holdTicks`; `releaseOn` blockChange |
-| `send` | `allowSend` | `{allow}` (the ids in `sendAllow`) | `buf`, `timeoutMs` (2000, at most 10000) |
-| `stack` | `allowStack` | `{enabled, via:"raw", stats{sent, answered, rejected, failed, resyncs}}` | `buf`, `timeoutMs` (2000); or `view:true` |
+| `send` | `allowSend` | `{allow}` (the ids in `sendAllow`) | `buf`, `timeoutMs` (2000\*, at most 10000) |
+| `stack` | `allowStack` | `{enabled, via:"raw", stats{sent, answered, rejected, failed, resyncs}}` | `buf`, `timeoutMs` (2000\*); or `view:true` |
+
+\* And `timeoutMs` (1000) of `slot`, `action` and `button`: these defaults hold at 20 ticks a second
+and faster. When the client ticks slower (a slower game speed), a request without `timeoutMs`
+waits that much longer (the default times the measured tick interval over 50 ms, up to the op's
+maximum); a `timeoutMs` the caller passes is used as given. Likewise "the client is in a world"
+(`not_in_level` of `slot`, `action`, `button`, `send`, `stack`) means a client tick within
+20 tick intervals, at least 1 s.
 
 - **`world`** is a snapshot the client thread takes: the screen fields every frame (a
   `ClientInstance::$update` post-hook, because a paused singleplayer world does not tick), the
@@ -243,7 +267,10 @@ of every op is read-only.
   `z` = forward - back, each clamped to [-1, 1]; a diagonal is normalized). The override is a
   dead-man switch: it ends `ttlMs` (at most 60000) after the request, so a controller refreshes it
   while it wants to keep moving; `ttlMs:0`, `release` and the owning client disconnecting end it at
-  once.
+  once. `ttlTicks` (at most 1200; not with `ttlMs`, that is `bad_args`) ends it after that many
+  client ticks instead, the same game time at any game speed; it also ends once the client stops
+  ticking for 5 s (out of the world, paused), is `not_in_level` when asked for while it is not
+  ticking, and the probe reports the ticks left as `ticksLeft`.
   - `via:"hooks"`: post-hooks on `ClientInputUpdateSystem::extractRawHIDInput` (writes
     `RawMoveInputComponent::mRawInput`/`mRawMove`) and `inputHandlerUpdatePlayerState` (writes
     `MoveInputComponent::mInputState`/`mRawInputState` before and after the original:
@@ -323,6 +350,42 @@ them on.
 - The server checks every request (stack ids, open screen, recipe). A screen the request needs (the
   inventory, a chest) must already be open in the game: open it with `action inventory`, `key E` or
   by using the block.
+
+#### `timescale`: game speed
+
+Not behind a config key. It changes the speed of a world this game hosts (singleplayer, or a LAN
+world it hosts): the client and its local server, together.
+
+| Form | Reply |
+|---|---|
+| `{op:"timescale"}` (probe) | `{ok, scale, paused, source, tps:{client, server}, ticksPerSecond, effective:{client, server}, local, inLevel}` |
+| `{op:"timescale", scale?, paused?, timeoutMs=2000}` | the probe's fields, once the client and the local server both run at it |
+
+- `scale` is clamped to 0.05..20 (1 = normal, 20 ticks a second). `paused:true` stops the ticks of both sides
+  (`Minecraft::setSimTimePause`) and `false` resumes them. The game's own pause menu pauses and resumes the same
+  way.
+- `source`: `default` (1, nothing set), `config` (`timeScale`, applied on entering the world), `local` (set through the
+  pipe), `server` (a server running BeDD set it).
+- `tps.client`, `tps.server`: ticks of the client and of the local server per second, measured over the last 2 s (so
+  they trail a change by up to 2 s; 0 while paused). `tps.server` is `null` on a remote server. `ticksPerSecond`: the
+  client timer's base rate (20). `effective.client` / `effective.server`: `{scale, paused, ticksPerSecond}` as each
+  side's Minecraft reported them after it last applied a change (`null` before the first).
+- Each side is changed on its own thread: the server's through `ServerInstance::queueForServerThread`, the client's
+  after the next `ClientInstance::update` (frames go on while the ticks are paused). The scale is written to the sim
+  timer (`Timer::mTimeScale`) directly: `Minecraft::setSimTimeScale` multiplies the current scale and caps it at 10,
+  so it is not idempotent. A timer catches up only a few ticks per frame, so `tps` shows what the game achieves. With
+  a local world, client and server alike: 0.05 → 1, 0.5 → 10, 2 → 40, 3 → 60, 5 → 100, 10 → 200, 20 → 400 ticks a
+  second; the same scale set again changes nothing.
+- Leaving a world puts the client back to 1; entering one applies `timeScale` (default 1), so nothing of the last
+  world carries over.
+- Errors: `not_in_level`; `remote` (the world is on a server this game does not host: its speed cannot change from the
+  client); `server_led` (that server runs BeDD and has sent its scale: change it there); `timeout` (a side did not
+  apply it in time: it still does once its thread runs, and `effective` shows it); `refused`; `bad_args`.
+- Server-led: a server running BeDD sends each player a level_event packet (`event_id` 3007 SimTimeScale, position
+  0,0,0, `data` = the scale's float bits as int32, 0 while the server is paused) when its scale or pause changes and
+  when the player joins. The client applies it (hooked `ClientNetworkHandler::handle(LevelEventPacket)`, after the
+  game's own handling, and only where the game did not already reach that scale); 0 pauses the client, keeping its
+  scale for the resume.
 
 #### Who sends what (bedboo transport `bedd`)
 
@@ -463,6 +526,27 @@ their seq and order and carry flag `replay`.
   `seen` (clientbound frames), `compacted` (replaced by a later frame with the same key), `pruned`
   (entities whose add frame `remove_entity` deleted), `transient` (not kept), `overCap` (not kept
   past `tapJournalMiB`), `resets` and `replays`.
+
+#### Server target (client+server mode)
+
+BeDD built with `--target_type=server` runs inside a Bedrock Dedicated Server with LeviLamina and
+serves `\\.\pipe\<pipeName>` (default `BeDD-Server`) with the same framing. The server leads the
+game speed: it broadcasts its scale to every player as a LevelEvent packet (`mEventId` 3007,
+SimTimeScale; `mPos` 0,0,0; `mData` the bits of the float scale, 0 while paused), whenever it or
+the pause changes and to each player once it has spawned; BeDD on a client follows it. Other ops answer `unknown op`.
+
+| op | fields | reply |
+|---|---|---|
+| `ping` | | `protocol`, `pid`, `target:"server"` (no `hwnd`) |
+| `state` | | `target:"server"`, `clients`, `loopbackOnly`, `stats{loopbackRebinds, serverQueriesRefused}` |
+| `server` | | `tick` (the level's current tick), `tps` (ticks measured over the last 2 s), `paused`, `port` (`server-port`), `players[{name, xuid}]` |
+| `timescale` | none: probe | `scale`, `paused`, `source` default\|config\|local, `tps{client:null, server}` (measured), `ticksPerSecond` (what the scale asks for: 20 × scale, 0 while paused) |
+| `timescale` | `scale` 0.05..20 and/or `paused` true\|false; `timeoutMs` (5000) | as the probe, after the change. Runs on the server thread (`ServerInstance::queueForServerThread`, which also runs while paused): the scale goes straight into the simulation timer (`Minecraft::setSimTimeScale` multiplies and caps at 10), the pause through `setSimTimePause` |
+| `command` | `command` (a leading `/` is optional); `timeoutMs` (10000) | `success`, `successCount`, `output[]` (the translated lines), run as the server console would |
+
+Errors: `not_in_level` (the server has not started), `bad_args`, `timeout` (the server thread did
+not answer). `tps.server` is what the server achieves: at a high scale it may stay below
+`ticksPerSecond` when a tick takes longer than the scale allows.
 
 ### Manager pipe
 

@@ -40,10 +40,20 @@ struct Options {
     /// Log message and API-hook statistics every few seconds.
     bool trace = false;
     /// Control pipe name (\\.\pipe\<name>); one per game instance when several run in parallel.
+#ifdef LL_PLAT_S
+    std::string pipeName = "BeDD-Server";
+#else
     std::string pipeName = "BeDD";
+#endif
     /// Keep the game on the PC: wildcard bind()s become loopback ones (no firewall prompts) and
     /// servers off the PC are not queried (no bogus "LAN worlds").
     bool loopbackOnly = true;
+    /// Host names / IPs loopbackOnly still lets the game reach (Remote mode's server): servers off
+    /// the PC are queried, and UDP goes out on the PC's address towards them, to them only.
+    std::vector<std::string> allowHosts;
+    /// Where the world runs: "ClientOnly" (a local world), "ClientServer" (a BDS with BeDD on this
+    /// PC), "Remote" (a server without BeDD). Start-BeDDGame.ps1 -Mode writes it; `state` reports it.
+    std::string mode = "ClientOnly";
     /// BeDDManager.ps1, started (-Ensure) when no manager window runs; Install-BeDDMod writes it.
     std::string managerScript;
     /// Mute the game (FMOD master channel group): headless games stay silent.
@@ -67,6 +77,9 @@ struct Options {
     std::vector<int> sendAllow{9, 77};
     /// Allow the `stack` op: the local client sends item stack requests a caller serialized (Stack.cpp).
     bool allowStack = false;
+    /// Game speed, 0.05..20; 1 = normal. A client applies it on entering a world it hosts
+    /// (TimeScale.cpp); a server once it has started, and broadcasts it to its players (LevelEvent 3007).
+    float timeScale = 1.0f;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -200,6 +213,8 @@ void                   installNetHooks();
 void                   uninstallNetHooks();
 [[nodiscard]] uint64_t loopbackRebinds();
 [[nodiscard]] uint64_t serverQueriesRefused();
+/// Datagrams to hosts off the PC that are not in allowHosts, refused (only while allowHosts names one).
+[[nodiscard]] uint64_t sendsRefused();
 
 /// Trace.cpp: log the game's input events (trace mode only).
 void startInputTrace();
@@ -243,6 +258,21 @@ struct TapJournalStats {
 // ---------------------------------------------------------------------------------------------
 void startManagerLink();
 void stopManagerLink();
+
+// ---------------------------------------------------------------------------------------------
+// Tick cadence (TickCadence.cpp): the measured client tick interval, so waits follow the game speed.
+// ---------------------------------------------------------------------------------------------
+/// One client level tick listener (gameHooks, allowSend or allowStack).
+void startTickCadence();
+void stopTickCadence();
+/// Client level ticks seen (any thread).
+[[nodiscard]] uint64_t clientTicks();
+/// The smoothed client tick interval: 50 ms at 20 TPS and faster, longer at a slower game speed.
+[[nodiscard]] std::chrono::microseconds clientTickInterval();
+/// No client tick within max(minimum, 20 tick intervals): not in a world, or paused.
+[[nodiscard]] bool clientTickStale(std::chrono::milliseconds minimum = std::chrono::seconds(1));
+/// A default timeout for `base` at 20 TPS, stretched by the game's slowdown up to `cap`.
+[[nodiscard]] std::chrono::milliseconds tickScaled(std::chrono::milliseconds base, std::chrono::milliseconds cap);
 
 // ---------------------------------------------------------------------------------------------
 // World snapshot and absolute look (GameState.cpp, Look.cpp; config gameHooks)
@@ -344,4 +374,43 @@ void installStack();
 void uninstallStack();
 /// The `stack` op: the whole reply (`ok`, `code` on errors).
 [[nodiscard]] nlohmann::json stackOp(nlohmann::json const& req);
+} // namespace bedd
+
+// ---------------------------------------------------------------------------------------------
+// Time scale (TimeScale.cpp): the `timescale` op and config timeScale, client and local server.
+// ---------------------------------------------------------------------------------------------
+namespace bedd {
+/// Tick listeners (rates, config timeScale on entry, reset on exit) and the SimTimeScale level event hook.
+void installTimeScale();
+void uninstallTimeScale();
+/// The `timescale` op: the whole reply (`ok`, `code` on errors).
+[[nodiscard]] nlohmann::json timeScaleOp(nlohmann::json const& req);
+} // namespace bedd
+
+// ---------------------------------------------------------------------------------------------
+// Join (Join.cpp): the `join` op, the client joins a server by address.
+// ---------------------------------------------------------------------------------------------
+namespace bedd {
+/// Level join/leave listeners (always: they also tell `state` where the client plays).
+void installJoin();
+void uninstallJoin();
+/// The `join` op: the whole reply (`ok`, `code` on errors). Without `host`: the current connection.
+[[nodiscard]] nlohmann::json joinOp(nlohmann::json const& req);
+/// {inLevel, connection none|local|remote, host, port} for `state`.
+[[nodiscard]] nlohmann::json connectionInfo();
+} // namespace bedd
+
+// ---------------------------------------------------------------------------------------------
+// Server target (ServerTimeScale.cpp, target_type=server): BeDD inside a Bedrock Dedicated Server.
+// ---------------------------------------------------------------------------------------------
+#include <nlohmann/json_fwd.hpp>
+
+namespace bedd {
+/// Tick counter, config timeScale at ServerStartedEvent, the scale re-sent to each joining player.
+void startServerTimeScale();
+void stopServerTimeScale();
+/// The server's `server`, `timescale` and `command` ops: the whole reply (`ok`, `code` on errors).
+[[nodiscard]] nlohmann::json serverInfoOp(nlohmann::json const& req);
+[[nodiscard]] nlohmann::json serverTimeScaleOp(nlohmann::json const& req);
+[[nodiscard]] nlohmann::json serverCommandOp(nlohmann::json const& req);
 } // namespace bedd

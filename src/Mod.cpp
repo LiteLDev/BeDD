@@ -50,6 +50,16 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.trace        = j.value("trace", gOptions.trace);
     gOptions.pipeName     = j.value("pipeName", gOptions.pipeName);
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
+    if (auto it = j.find("allowHosts"); it != j.end() && it->is_array()) {
+        for (auto const& h : *it)
+            if (h.is_string() && !h.get<std::string>().empty()) gOptions.allowHosts.push_back(h.get<std::string>());
+            else log().warn("allowHosts: {} is not a host name or address; ignored", h.dump());
+    }
+    gOptions.mode = j.value("mode", gOptions.mode);
+    if (gOptions.mode != "ClientOnly" && gOptions.mode != "ClientServer" && gOptions.mode != "Remote") {
+        log().warn("mode: '{}' is not ClientOnly, ClientServer or Remote; using ClientOnly", gOptions.mode);
+        gOptions.mode = "ClientOnly";
+    }
     gOptions.managerScript = j.value("managerScript", gOptions.managerScript);
     gOptions.mute         = j.value("mute", gOptions.mute);
     gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
@@ -65,7 +75,13 @@ void readOptions(std::filesystem::path const& file) {
             else log().warn("sendAllow: {} is not a packet id (0..1023); ignored", id.dump());
     }
     gOptions.allowStack   = j.value("allowStack", gOptions.allowStack);
+    if (auto it = j.find("timeScale"); it != j.end()) {
+        if (it->is_number() && it->get<double>() >= 0.05 && it->get<double>() <= 20) gOptions.timeScale = it->get<float>();
+        else log().warn("timeScale: {} is not a number in 0.05..20; using 1", it->dump());
+    }
 }
+
+#ifndef LL_PLAT_S
 
 bool Mod::load() {
     // Flush every message so the harness sees them immediately.
@@ -95,6 +111,8 @@ bool Mod::enable() {
     installGameInputHooks();
     startWindowWatcher();
     installMoveInputHooks(); // before the pipe: an early "input" must not take the key fallback
+    // Before the pipe: the ops that wait for a tick read its cadence.
+    if (gOptions.gameHooks || gOptions.allowSend || gOptions.allowStack) startTickCadence();
     startPipeServer();
     startInputTrace();
     startGameState();
@@ -103,8 +121,10 @@ bool Mod::enable() {
     if (gOptions.tapLoopback) installTapLoopback();
     if (gOptions.tap) installTapJournal();
     installGameActions();
+    installJoin();
     if (gOptions.allowSend) installSend();
     if (gOptions.allowStack) installStack();
+    installTimeScale();
     log().info("BeDD enabled");
     return true;
 }
@@ -114,8 +134,10 @@ bool Mod::disable() {
     stopLook();
     stopGameState();
     uninstallGameActions(); // first: its tick listener drives the virtual mouse
+    uninstallJoin(); // first: answers a join the pipe thread waits on, so stopPipeServer() can join it
     uninstallSend(); // first: answers a send the pipe thread waits on, so stopPipeServer() can join it
     uninstallStack(); // likewise for a waiting stack request
+    uninstallTimeScale(); // its set waits on the game threads with a timeout (it cannot hang the join)
     stopInputTrace();
     stopManagerLink();
     stopPipeServer();
@@ -128,8 +150,45 @@ bool Mod::disable() {
     uninstallTapLoopback();
     uninstallTapJournal();
     uninstallMoveInputHooks();
+    stopTickCadence();
     return true;
 }
+
+#else // LL_PLAT_S
+
+// In a Bedrock Dedicated Server there is no window, input, audio or manager window to take over:
+// the loopback-only network, the control pipe and the server units only (xmake.lua builds no
+// other source file).
+bool Mod::load() {
+    getSelf().getLogger().setFlushLevel(ll::io::LogLevel::Trace);
+    readOptions(getSelf().getConfigDir() / "config.json");
+    // Before the server opens its ports (load() runs before it starts): no firewall prompts.
+    if (gOptions.loopbackOnly) installNetHooks();
+    log().info(
+        "BeDD loaded (server): trace={} pipe={} loopbackOnly={} timeScale={}",
+        gOptions.trace,
+        gOptions.pipeName,
+        gOptions.loopbackOnly,
+        gOptions.timeScale
+    );
+    return true;
+}
+
+bool Mod::enable() {
+    startServerTimeScale(); // before the pipe: the tick counter runs before the first `server` op
+    startPipeServer();
+    log().info("BeDD enabled (server)");
+    return true;
+}
+
+bool Mod::disable() {
+    stopPipeServer(); // first: an op waiting on the server thread times out, then its client thread is joined
+    stopServerTimeScale();
+    uninstallNetHooks();
+    return true;
+}
+
+#endif // LL_PLAT_S
 
 } // namespace
 

@@ -105,6 +105,7 @@ Save-BeDDScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 | `Set-BeDDButton attack -Action down -ReleaseOnBlockChange` | 按游戏刻或直到目标方块破坏为止按住攻击/使用/选取，不阻塞管道（`gameHooks`） |
 | `Send-BeDDPacket -Base64 ...` | 让玩家发送脚本序列化好的聊天或命令数据包（`allowSend`） |
 | `Send-BeDDStack -Buffer ...` / `-View` | 让玩家发送脚本序列化好的物品堆请求；`-View` 显示客户端看到的背包（`allowStack`） |
+| `Get-BeDDTimeScale` / `Set-BeDDTimeScale 3` | 本游戏主持的世界的游戏速度（客户端和本地服务器一起），并给出实测的每秒刻数；`-Paused` 停止刻，`-Paused:$false` 恢复 |
 
 按键名：字母、数字、`ESC`、`ENTER`、`BACK`、`TAB`、`SPACE`、`SHIFT`、`CTRL`、`ALT`、方向键（`LEFT` 等）、
 `HOME`、`END`、`PGUP`、`PGDN`、`INSERT`、`DELETE`、`F1`..`F24`、`SLASH`、`GRAVE`、`MINUS`、`EQUALS`。
@@ -127,6 +128,20 @@ Connect-BeDD -PipeName BeDD-1.26.51.01-hi2   # 该实例配置里的 pipeName
 - 测试存档用 `Set-WorldSinglePlayer <存档目录>`（框架垫片里提供）设成单人：同一台电脑上的游戏共用一个联机登录，
   多个多人存档同时打开会报"发生错误"（代码 "Blaze"）。
 - 需要在线加入服务器的测试，在 `Start-Game` 之前设 `$script:ExclusiveSignaling = $true`，等其他游戏关掉后独占整台电脑。
+
+### 客户端与服务端
+
+除了单独一个游戏（进单人世界，或连到远程服务器），Be.D.D. 还能在游戏旁边运行一台装了 BeDD 服务端模块的 Bedrock 专用服务器，两端都能用脚本驱动，客户端的游戏速度跟随服务端：
+
+```powershell
+Import-Module .\BeDDSetup.psm1
+Initialize-BeDDServer -Name s1 -ModuleDir ..\BeDD-server   # 用 lip 装 BDS 1.26.51 + LeviLamina，端口从 19140 起
+$s = & .\Start-BeDDServer.ps1 -Name s1                      # 没有窗口；日志在 logs\console.log
+Connect-BeDD -PipeName $s.PipeName                          # BeDD-Server-s1
+& .\Start-BeDDServer.ps1 -Name s1 -Stop
+```
+
+见[客户端与服务端模式](https://docs.levimc.org/BeDD/zh/guide/modes)。
 
 ### 管理窗口
 
@@ -193,10 +208,13 @@ public static void Key(ushort vk, bool up) { if (KeyRedirect != null) { KeyRedir
 | `clientWidth`、`clientHeight` | 游戏窗口大小（0 表示不改），每次运行点击位置都一样 |
 | `pipeName` | 多开时每个实例一个 |
 | `loopbackOnly` | 默认 `true`：游戏只在本机通信，新实例不会弹 Windows 防火墙提示，也不会去查询本机以外的游戏服务器（否则它们可能以"局域网世界"出现在测试存档前面）。测试框架自己启动的专用服务器每个服务器目录还是会问一次，点**取消**即可 |
+| `mode` | 世界在哪里运行：`ClientOnly`（默认：本地世界）、`ClientServer`（本机上装了 BeDD 的专用服务器；`loopbackOnly` 不变）、`Remote`（没装 BeDD 的服务器，可以在本机以外）。见[调试模式](https://docs.levimc.org/BeDD/zh/guide/configuration#调试模式)。`state` 和 `join` 会报告它 |
+| `allowHosts` | `loopbackOnly` 仍然允许游戏访问的主机名或地址（Remote 模式的服务器；`Start-BeDDGame.ps1 -Mode Remote -ServerHost` 会写）。会查询这些主机，游戏的出站 UDP 套接字能连到它们且不弹防火墙提示，发往本机以外其他主机的数据报会被拒绝（`state` 的 `stats.sendsRefused`）。本机上的主机不用写 |
 | `managerScript` | `BeDDManager.ps1` 的路径（`Install-BeDDMod` 会写）：没有管理窗口时游戏用它启动一个 |
 | `mute` | 默认 `true`：游戏不出声 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
 | `pipeInstances` | 默认 `4`：可同时使用游戏管道的脚本数（某个脚本断开时，它按住的键、鼠标按钮和 `input` 移动覆盖都会松开）；`1` 表示一次一个 |
+| `timeScale` | 默认 `1`：本游戏主持的每个世界的游戏速度（0.05..20），进入世界时设置（之后可用 `Set-BeDDTimeScale` 修改；在远程服务器上不起作用） |
 | `gameHooks` | 默认 `false`：挂钩游戏自身的系统，供 bedboo 用的操作使用：`world` 与 `look`（`Get-BeDDWorld`、`Set-BeDDLook`）、`input`（`Set-BeDDInput`：行走、跳跃、潜行、疾跑，与按键绑定无关）、`slot`、`action` 与 `button`（`Set-BeDDSlot`、`Invoke-BeDDAction`、`Set-BeDDButton`：快捷栏、丢弃/背包/视角/暂停、按游戏刻或直到目标方块破坏为止按住攻击/使用/选取）；见 CONTRIBUTING.md |
 | `tap` | 默认 `false`：提供 `\\.\pipe\<pipeName>-tap`，一个二进制流，包含客户端收发的游戏数据包，供 [bedboo](https://github.com/LiteLDev/bedboo) 的 `bedd` 传输使用（见 CONTRIBUTING.md 的 Tap protocol），并带加入日志，读取方可在会话中途接入。它包含登录玩家的整个会话，所以只有你的用户能打开。打开时客户端会请服务器不使用它的 blob 缓存，每个区块都完整发送 |
 | `tapLoopback` | 默认 `true`，只在 `tap` 打开时生效：单人世界和本游戏开的局域网世界也接到 tap 管道上（数据包重新序列化；局域网访客的流量不包括在内） |

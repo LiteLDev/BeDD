@@ -16,11 +16,36 @@
 |---|---|
 | `clientWidth`、`clientHeight` | 游戏窗口大小（0 表示不改），每次运行点击位置都一样 |
 | `pipeName` | 多开时每个实例一个 |
-| `loopbackOnly` | 默认 `true`：游戏只在本机通信，新实例不会弹 Windows 防火墙提示，也不会去查询本机以外的游戏服务器（否则它们可能以"局域网世界"出现在测试存档前面）。测试框架自己启动的专用服务器每个服务器目录还是会问一次，点**取消**即可 |
+| `loopbackOnly` | 默认 `true`：游戏只在本机通信，新实例不会弹 Windows 防火墙提示，也不会去查询本机以外的游戏服务器（否则它们可能以"局域网世界"出现在测试存档前面）。测试框架自己启动的专用服务器每个服务器目录还是会问一次（点**取消**即可），除非它运行 BeDD 的服务端目标：那里它同样默认开启，让服务器只用本机回环（IPv4/IPv6 端口、局域网发现和 NetherNet），所以不会弹提示；`state` 会报告它。此时服务器端口只能通过 `127.0.0.1` 访问 |
+| `mode` | 世界在哪里运行：`ClientOnly`（默认：本地世界）、`ClientServer`（本机上装了 BeDD 的专用服务器；`loopbackOnly` 不变）、`Remote`（没装 BeDD 的服务器，可以在本机以外）。见[调试模式](/zh/guide/configuration#调试模式)。`state` 和 `join` 会报告它 |
+| `allowHosts` | `loopbackOnly` 仍然允许游戏访问的主机名或地址（Remote 模式的服务器；`Start-BeDDGame.ps1 -Mode Remote -ServerHost` 会写）。会查询这些主机，游戏的出站 UDP 套接字能连到它们且不弹防火墙提示，发往本机以外其他主机的数据报会被拒绝（`state` 的 `stats.sendsRefused`）。本机上的主机不用写 |
 | `managerScript` | `BeDDManager.ps1` 的路径（`Install-BeDDMod` 会写）：没有管理窗口时游戏用它启动[管理窗口](/zh/guide/several-games#管理窗口) |
 | `mute` | 默认 `true`：游戏不出声 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
 | `pipeInstances` | 默认 `4`：可同时使用游戏管道的脚本数（某个脚本断开时，它按住的键、鼠标按钮和 `input` 移动覆盖都会松开）；`1` 表示一次一个 |
+| `timeScale` | 默认 `1`：本游戏主持的每个世界的游戏速度（0.05..20），进入世界时设置（之后可用 `Set-BeDDTimeScale` 修改）。在装了 BeDD 的服务器上由服务器的速度主导，客户端跟随；在没装 BeDD 的服务器上不起作用。在 BeDD 服务端目标里：服务器启动后生效并发给玩家 |
+
+## 调试模式
+
+每种模式下 BeDD 游戏都是无头运行的；模式说的是世界在哪里运行。`Start-BeDDGame.ps1 -Mode` 和 `Install-BeDDMod -Mode` 会写入它
+（`Set-BeDDMode`）；不带 `-Mode` 时 `Start-BeDDGame.ps1` 不改配置。
+
+| 模式 | 世界运行在 | 网络 |
+|---|---|---|
+| `ClientOnly`（默认） | 客户端里：本地世界，和以前一样 | 只用回环 |
+| `ClientServer` | 本机上装了 BeDD 的专用服务器里；服务器的游戏速度带动客户端 | 只用回环：用 `127.0.0.1` 加入 |
+| `Remote` | 没装 BeDD 的服务器里（`-ServerHost`），可以在本机以外；客户端改不了它的游戏速度 | 只用回环，`-ServerHost` 除外（`allowHosts`） |
+
+`Join-BeDDServer -Host 127.0.0.1 -Port 19132 -Wait` 在任何模式下都能加入服务器，标题界面或世界里都可以
+（[驱动游戏](/zh/guide/usage#服务器)）。
+
+### 不弹防火墙提示
+
+BeDD 游戏从不让 Windows 防火墙弹出"允许访问？"：程序（按完整 exe 路径算，所以每个克隆实例都是新的）第一次把套接字显式绑定到回环以外的地址时，
+防火墙就会问。有 `loopbackOnly` 时，三种模式下所有通配绑定都改绑到回环。Remote 模式下 `allowHosts` 只改一件事：客户端的出站 UDP 套接字
+（绑定通配地址、端口 0）根本不显式绑定，而是向允许的服务器 connect，由系统隐式绑定（防火墙不会为此询问）；监听套接字（局域网开服、局域网发现）
+仍在回环上，发往本机以外其他主机的数据报会被拒绝。不要为了连远程服务器关掉 `loopbackOnly`：那样每个新实例都会再弹提示。
+你自己启动的专用服务器是另一个程序：没有 BeDD 回环绑定的服务器每个服务器目录会问一次。
 
 ## 给 bedboo 用的配置项
 
@@ -47,3 +72,4 @@
 | `BEDD_RETURN_FOCUS` | 模块 | 一个窗口句柄：游戏启动时若仍激活了自己，前台还给这个窗口（`Start-BeDDGame.ps1` 和垫片的 `Start-Game` 会设置它） |
 | `BEDD_DIR` | 你的测试框架 | Be.D.D. 解压的位置（[安装](/zh/guide/installation#让测试框架自己下载)） |
 | `BEDD_INSTANCE`、`BEDD_VERSIONS_DIR`、`BEDD_LAUNCHER_DATA`、`BEDD_LEVILAUNCHER`、`BEDD_LIP` | `BeDDSetup.psm1` | 游戏实例和工具在哪里（[在新电脑上准备](/zh/guide/new-pc#用哪个实例)） |
+| `BEDD_SERVERS_DIR` | `BeDDSetup.psm1`、`Start-BeDDServer.ps1` | [客户端 + 服务端模式](/zh/guide/modes)的专用服务器放在哪里（默认 `%LOCALAPPDATA%\BeDD\servers`） |

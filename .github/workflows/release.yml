@@ -39,12 +39,21 @@ jobs:
 
       - run: xmake -v -y
 
+      # xmake rewrote the lock with the client's pins only: the server builds from the committed one.
+      - run: git checkout -- xmake-requires.lock
+
+      - run: xmake f -a x64 -m release -p windows -v --target_type=server -y
+
+      - run: xmake -v -y
+
       - name: Check version
         shell: pwsh
         run: |
           $expected = "${{ github.ref_name }}".TrimStart('v')
-          $actual = (Get-Content bin/BeDD/manifest.json | ConvertFrom-Json).version
-          if ($actual -ne $expected) { throw "manifest version $actual does not match tag $expected" }
+          foreach ($mod in 'BeDD', 'BeDD-server') {
+            $actual = (Get-Content bin/$mod/manifest.json | ConvertFrom-Json).version
+            if ($actual -ne $expected) { throw "$mod manifest version $actual does not match tag $expected" }
+          }
 
       - name: Package
         shell: pwsh
@@ -52,6 +61,9 @@ jobs:
           Copy-Item COPYING, COPYING.LESSER, README.md, README.zh-CN.md -Destination bin/BeDD/
           Remove-Item bin/BeDD/*.pdb -ErrorAction SilentlyContinue
           Compress-Archive -Path bin/BeDD -DestinationPath bedd-client-windows-x64.zip
+          Copy-Item COPYING, COPYING.LESSER, README.md, README.zh-CN.md -Destination bin/BeDD-server/
+          Remove-Item bin/BeDD-server/*.pdb -ErrorAction SilentlyContinue
+          Compress-Archive -Path bin/BeDD-server -DestinationPath bedd-server-windows-x64.zip
 
       - name: Release notes
         shell: pwsh
@@ -69,4 +81,5 @@ jobs:
         with:
           files: |
             bedd-client-windows-x64.zip
+            bedd-server-windows-x64.zip
           body_path: RELEASE_NOTES.md

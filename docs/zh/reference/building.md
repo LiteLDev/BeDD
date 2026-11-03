@@ -18,6 +18,16 @@ xmake -y        # -> bin\BeDD\（DLL、manifest 以及 client\ 里的所有文�
 
 模组打包器从 `git describe` 读取版本号，所以仓库至少要有一个提交。
 
+**服务端目标**（客户端服务端共同调试模式）：`tools/build.ps1 -TargetType server`，或上面换成 `--target_type=server`，
+构建装了 LeviLamina 的 Bedrock 专用服务器（BDS）运行的模组，输出到 `bin\BeDD-server\`（DLL 和 manifest，平台 `server`）。
+它只有控制管道、只用本机网络和服务端操作（`src/ServerTimeScale.cpp`），不含客户端的任何部分（文件由 `xmake.lua` 列出；
+`src/` 的其余部分需要客户端版 LeviLamina 的头文件）。把这个目录复制到服务器的 `plugins\`（服务器上 LeviLamina 的模组目录，
+即 `plugins\BeDD-server\`）；它读取 `plugins\BeDD-server\config\config.json`，提供 `\\.\pipe\BeDD-Server`。
+
+`xmake-requires.lock` 锁定两个目标的包，但 xmake 会把它改写成只含当前配置目标的锁定项。`tools/build.ps1` 构建完会把它恢复；
+手动构建时，配置另一个目标前先 `git checkout xmake-requires.lock`（CI 也这样做）。要更新锁定版本，分别配置两个目标，
+保留两边的条目，提交合并后的文件。
+
 `tools\dev.ps1 [-Trace]` 是一个试验场：它拿到共享的 e2e 锁（`%APPDATA%\levilauncher.exe\bei-e2e.lock`），把模块部署进 BeDD 找到的实例
 （新电脑上先准备好，见[在新电脑上准备](/zh/guide/new-pc)），没有管理窗口时先启动它，通过 LeviLauncher 启动游戏（游戏显示在管理窗口里），并把每次前台和光标锁定的变化记录到
 `tools\out\desktop-watch.log`，直到游戏退出或 `tools\out\dev.stop` 存在（`tools\out\dev.restart` 会重新部署并重启，不释放锁）。
@@ -45,7 +55,8 @@ xmake -y        # -> bin\BeDD\（DLL、manifest 以及 client\ 里的所有文�
 | `src/ApiHooks.cpp` | user32 钩子（光标、按键状态、前台、激活、原始输入） |
 | `src/GameInputHooks.cpp` | GameInput v2 钩子（虚拟鼠标、键盘读数） |
 | `src/Audio.cpp` | FMOD 钩子：静音游戏的主通道组（`mute`） |
-| `src/NetHooks.cpp` | 只用本机网络（`loopbackOnly`：没有防火墙提示，不查询本机以外的服务器） |
+| `src/NetHooks.cpp` | 只用本机网络（`loopbackOnly`：没有防火墙提示，不查询本机以外的服务器）；服务端目标也有 |
+| `src/ServerTimeScale.cpp` | 仅服务端目标：`server`、`timescale`、`command` 操作，配置 `timeScale`，向玩家发 LevelEvent 3007 |
 | `src/Pipe.cpp` | 控制管道和协议 |
 | `src/Manager.cpp` | 与会话管理窗口的连接 |
 | `src/Trace.cpp` | trace 模式的输入日志 |
