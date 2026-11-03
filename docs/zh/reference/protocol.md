@@ -25,8 +25,8 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 ## 多个客户端
 
 可以同时连接多个客户端（配置 `pipeInstances`，默认 4；1 = 一次一个），每个由自己的线程服务。投递窗口输入的操作是串行的，
-所以两个客户端的按键或输入的文字不会交错；`ping`、`state`、`tap`、`world`、`look`、`input`、`send` 和 `stack` 不加这把锁
-（它们只读，或把工作交给客户端线程）。一个客户端断开（或其进程退出）时，释放它持有的东西，且不动其他客户端持有的：
+所以两个客户端的按键或输入的文字不会交错；`ping`、`state`、`tap`、`world`、`look`、`input`、`send`、`stack` 和 `timescale` 不加这把锁
+（它们只读，或把工作交给游戏线程）。一个客户端断开（或其进程退出）时，释放它持有的东西，且不动其他客户端持有的：
 它的按键和鼠标按钮、它发起的 `button` 按住、它设置的 `input` 覆盖。管理窗口通过管理连接转发的操作既不串行，也不归属任何客户端。
 
 对有按客户端状态的单元（`src/BeDD.h`）：`currentPipeClient()` 是当前线程所服务客户端的 id（从 1 开始，不复用；管理连接和游戏线程上为 0）。
@@ -112,6 +112,32 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
   `inventory_transaction {type: inventory_mismatch}`。这是客户端自己背包不同步时发的包，服务器会回发整个背包。客户端随后显示服务器的状态，
   包括打开的容器。被拒绝的请求两边都不改变，所以不重新同步。
 - 服务器会检查每个请求（堆 id、打开的界面、配方）。请求需要的界面（背包、箱子）必须已经在游戏里打开：用 `action inventory`、`key E` 或使用方块打开。
+
+## `timescale`：游戏速度
+
+不受配置项控制。它改变本游戏主持的世界（单人世界，或它主持的局域网世界）的速度：客户端和它的本地服务器一起改。
+
+| 形式 | 回复 |
+|---|---|
+| `{op:"timescale"}`（探测） | `{ok, scale, paused, source, tps:{client, server}, ticksPerSecond, effective:{client, server}, local, inLevel}` |
+| `{op:"timescale", scale?, paused?, timeoutMs=2000}` | 与探测相同的字段，在客户端和本地服务器都以它运行之后回复 |
+
+- `scale` 限制在 0.05..20（1 = 正常，每秒 20 刻）。`paused:true` 让两边都停止刻（`Minecraft::setSimTimePause`），`false` 恢复。
+  游戏自己的暂停菜单也以同样方式暂停和恢复。
+- `source`：`default`（1，未设置）、`config`（`timeScale`，进入世界时应用）、`local`（通过管道设置）、`server`（运行 BeDD 的服务器设置的）。
+- `tps.client`、`tps.server`：客户端和本地服务器每秒的刻数，按最近 2 秒测量（所以比改动滞后至多 2 秒；暂停时为 0）。
+  远程服务器上 `tps.server` 为 `null`。`ticksPerSecond`：客户端计时器的基准速率（20）。`effective.client` / `effective.server`：
+  各自的 Minecraft 上次应用改动后报告的 `{scale, paused, ticksPerSecond}`（第一次之前为 `null`）。
+- 每一边在自己的线程上修改：服务器通过 `ServerInstance::queueForServerThread`，客户端在下一次 `ClientInstance::update` 之后
+  （刻暂停时画面帧仍在继续）。速度直接写入模拟计时器（`Timer::mTimeScale`）：`Minecraft::setSimTimeScale` 会把当前速度相乘并封顶为 10，
+  不是幂等的。计时器每帧只追赶有限的刻数，所以 `tps` 显示游戏实际达到的速度。本地世界中客户端与服务器一致：
+  0.05 → 1、0.5 → 10、2 → 40、3 → 60、5 → 100、10 → 200、20 → 400 刻每秒；再次设置相同速度不会有变化。
+- 离开世界时客户端回到 1；进入世界时应用 `timeScale`（默认 1），所以上一个世界的设置不会带过来。
+- 错误：`not_in_level`；`remote`（世界在本游戏没有主持的服务器上：无法从客户端改它的速度）；`server_led`（该服务器运行 BeDD 并已发来它的速度：
+  到那边去改）；`timeout`（某一边没有及时应用：它的线程运行时仍会应用，`effective` 会显示）；`refused`；`bad_args`。
+- 服务器主导：运行 BeDD 的服务器在速度改变时以及玩家加入时，给每个玩家发送 level_event 包（`event_id` 3007 SimTimeScale，位置 0,0,0，
+  `data` = 速度的 float 位按 int32）。客户端应用它（挂钩 `ClientNetworkHandler::handle(LevelEventPacket)`，在游戏自己处理之后，
+  且只在游戏没有自己达到该速度时）。
 
 ## 谁发什么（bedboo `bedd` 传输）
 

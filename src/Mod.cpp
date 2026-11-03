@@ -65,6 +65,10 @@ void readOptions(std::filesystem::path const& file) {
             else log().warn("sendAllow: {} is not a packet id (0..1023); ignored", id.dump());
     }
     gOptions.allowStack   = j.value("allowStack", gOptions.allowStack);
+    if (auto it = j.find("timeScale"); it != j.end()) {
+        if (it->is_number() && it->get<double>() >= 0.05 && it->get<double>() <= 20) gOptions.timeScale = it->get<float>();
+        else log().warn("timeScale: {} is not a number in 0.05..20; using 1", it->dump());
+    }
 }
 
 bool Mod::load() {
@@ -105,6 +109,7 @@ bool Mod::enable() {
     installGameActions();
     if (gOptions.allowSend) installSend();
     if (gOptions.allowStack) installStack();
+    installTimeScale();
     log().info("BeDD enabled");
     return true;
 }
@@ -116,6 +121,7 @@ bool Mod::disable() {
     uninstallGameActions(); // first: its tick listener drives the virtual mouse
     uninstallSend(); // first: answers a send the pipe thread waits on, so stopPipeServer() can join it
     uninstallStack(); // likewise for a waiting stack request
+    uninstallTimeScale(); // its set waits on the game threads with a timeout (it cannot hang the join)
     stopInputTrace();
     stopManagerLink();
     stopPipeServer();

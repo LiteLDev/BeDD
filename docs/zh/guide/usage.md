@@ -35,6 +35,7 @@ Save-BeDDScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 | `Set-BeDDButton attack -Action down -ReleaseOnBlockChange` | 按游戏刻或直到目标方块破坏为止按住攻击/使用/选取，不阻塞管道（`gameHooks`） |
 | `Send-BeDDPacket -Base64 ...` | 让玩家发送脚本序列化好的聊天或命令数据包（`allowSend`） |
 | `Send-BeDDStack -Buffer ...` / `-View` | 让玩家发送脚本序列化好的物品堆请求；`-View` 显示客户端看到的背包（`allowStack`） |
+| `Get-BeDDTimeScale` / `Set-BeDDTimeScale 3` | 本游戏主持的世界的游戏速度（客户端和本地服务器一起），并给出实测的每秒刻数；`-Paused` 停止刻，`-Paused:$false` 恢复 |
 
 标着 `gameHooks`、`allowSend` 或 `allowStack` 的命令需要打开对应的[配置项](/zh/guide/configuration)；它们是为
 [bedboo](https://github.com/LiteLDev/bedboo) 的 `bedd` 传输准备的。`Invoke-BeDD @{ op = '...' }` 可以原样发送
