@@ -2,6 +2,8 @@
 
 每个游戏实例有自己的控制管道，所以一台测试机可以同时跑好几个游戏。克隆一个实例只要几秒钟、约 90 MB。
 
+测试还需要本机的专用服务器时，每次运行同样各起一台，名字和端口各不相同：见[客户端与服务端模式](/zh/guide/modes)。
+
 <video controls muted playsinline preload="none" poster="/BeDD/showcase/desktop-poster.webp" src="/BeDD/showcase/desktop.mp4" width="1280" height="720" style="width:100%;height:auto"></video>
 
 ```powershell

@@ -72,3 +72,4 @@ BeDD 游戏从不让 Windows 防火墙弹出"允许访问？"：程序（按完�
 | `BEDD_RETURN_FOCUS` | 模块 | 一个窗口句柄：游戏启动时若仍激活了自己，前台还给这个窗口（`Start-BeDDGame.ps1` 和垫片的 `Start-Game` 会设置它） |
 | `BEDD_DIR` | 你的测试框架 | Be.D.D. 解压的位置（[安装](/zh/guide/installation#让测试框架自己下载)） |
 | `BEDD_INSTANCE`、`BEDD_VERSIONS_DIR`、`BEDD_LAUNCHER_DATA`、`BEDD_LEVILAUNCHER`、`BEDD_LIP` | `BeDDSetup.psm1` | 游戏实例和工具在哪里（[在新电脑上准备](/zh/guide/new-pc#用哪个实例)） |
+| `BEDD_SERVERS_DIR` | `BeDDSetup.psm1`、`Start-BeDDServer.ps1` | [客户端 + 服务端模式](/zh/guide/modes)的专用服务器放在哪里（默认 `%LOCALAPPDATA%\BeDD\servers`） |

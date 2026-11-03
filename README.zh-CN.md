@@ -129,6 +129,20 @@ Connect-BeDD -PipeName BeDD-1.26.51.01-hi2   # 该实例配置里的 pipeName
   多个多人存档同时打开会报"发生错误"（代码 "Blaze"）。
 - 需要在线加入服务器的测试，在 `Start-Game` 之前设 `$script:ExclusiveSignaling = $true`，等其他游戏关掉后独占整台电脑。
 
+### 客户端与服务端
+
+除了单独一个游戏（进单人世界，或连到远程服务器），Be.D.D. 还能在游戏旁边运行一台装了 BeDD 服务端模块的 Bedrock 专用服务器，两端都能用脚本驱动，客户端的游戏速度跟随服务端：
+
+```powershell
+Import-Module .\BeDDSetup.psm1
+Initialize-BeDDServer -Name s1 -ModuleDir ..\BeDD-server   # 用 lip 装 BDS 1.26.51 + LeviLamina，端口从 19140 起
+$s = & .\Start-BeDDServer.ps1 -Name s1                      # 没有窗口；日志在 logs\console.log
+Connect-BeDD -PipeName $s.PipeName                          # BeDD-Server-s1
+& .\Start-BeDDServer.ps1 -Name s1 -Stop
+```
+
+见[客户端与服务端模式](https://docs.levimc.org/BeDD/zh/guide/modes)。
+
 ### 管理窗口
 
 本次登录后第一次运行 `Start-BeDDGame.ps1` 时会打开**管理窗口**，之后的运行（不管来自哪个终端、测试框架或 agent）都复用它。
