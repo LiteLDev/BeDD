@@ -272,6 +272,9 @@ json handle(json const& j) {
         json tap = json::parse(tapHooks());
         for (auto& [name, on] : tap.items()) r["hooks"][name] = on;
         r["clients"] = pipeClients();
+        r["mode"]       = options().mode;
+        r["connection"] = connectionInfo();
+        r["stats"]["sendsRefused"] = sendsRefused();
         auto jn               = tapJournalStats();
         r["stats"]["journal"] = {
             {"enabled",   jn.enabled  },
@@ -384,6 +387,8 @@ json handle(json const& j) {
         r = stackOp(j);
     } else if (op == "timescale") {
         r = timeScaleOp(j);
+    } else if (op == "join") {
+        r = joinOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
@@ -476,8 +481,8 @@ std::mutex gInputMutex;
 int maxInstances() { return std::clamp(options().pipeInstances, 1, PIPE_UNLIMITED_INSTANCES - 1); }
 
 // Ops that run without gInputMutex: they post no window input. `tap` and `world` only read;
-// `look`, `input`, `send`, `stack` and `timescale` hand their work to the client thread (and may wait for it,
-// up to their timeoutMs), so serializing them would only stall the other clients.
+// `look`, `input`, `send`, `stack`, `timescale` and `join` hand their work to the client thread (and
+// may wait for it, up to their timeoutMs), so serializing them would only stall the other clients.
 bool concurrentOp(std::string const& line) {
 #ifdef LL_PLAT_S
     (void)line;
@@ -487,7 +492,7 @@ bool concurrentOp(std::string const& line) {
     if (!req.is_object()) return true;
     std::string op = req.value("op", "");
     return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
-        || op == "stack" || op == "timescale";
+        || op == "stack" || op == "timescale" || op == "join";
 }
 
 std::string handleClientLine(std::string const& line) {

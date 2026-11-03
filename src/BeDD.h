@@ -48,6 +48,12 @@ struct Options {
     /// Keep the game on the PC: wildcard bind()s become loopback ones (no firewall prompts) and
     /// servers off the PC are not queried (no bogus "LAN worlds").
     bool loopbackOnly = true;
+    /// Host names / IPs loopbackOnly still lets the game reach (Remote mode's server): servers off
+    /// the PC are queried, and UDP goes out on the PC's address towards them, to them only.
+    std::vector<std::string> allowHosts;
+    /// Where the world runs: "ClientOnly" (a local world), "ClientServer" (a BDS with BeDD on this
+    /// PC), "Remote" (a server without BeDD). Start-BeDDGame.ps1 -Mode writes it; `state` reports it.
+    std::string mode = "ClientOnly";
     /// BeDDManager.ps1, started (-Ensure) when no manager window runs; Install-BeDDMod writes it.
     std::string managerScript;
     /// Mute the game (FMOD master channel group): headless games stay silent.
@@ -207,6 +213,8 @@ void                   installNetHooks();
 void                   uninstallNetHooks();
 [[nodiscard]] uint64_t loopbackRebinds();
 [[nodiscard]] uint64_t serverQueriesRefused();
+/// Datagrams to hosts off the PC that are not in allowHosts, refused (only while allowHosts names one).
+[[nodiscard]] uint64_t sendsRefused();
 
 /// Trace.cpp: log the game's input events (trace mode only).
 void startInputTrace();
@@ -377,6 +385,19 @@ void installTimeScale();
 void uninstallTimeScale();
 /// The `timescale` op: the whole reply (`ok`, `code` on errors).
 [[nodiscard]] nlohmann::json timeScaleOp(nlohmann::json const& req);
+} // namespace bedd
+
+// ---------------------------------------------------------------------------------------------
+// Join (Join.cpp): the `join` op, the client joins a server by address.
+// ---------------------------------------------------------------------------------------------
+namespace bedd {
+/// Level join/leave listeners (always: they also tell `state` where the client plays).
+void installJoin();
+void uninstallJoin();
+/// The `join` op: the whole reply (`ok`, `code` on errors). Without `host`: the current connection.
+[[nodiscard]] nlohmann::json joinOp(nlohmann::json const& req);
+/// {inLevel, connection none|local|remote, host, port} for `state`.
+[[nodiscard]] nlohmann::json connectionInfo();
 } // namespace bedd
 
 // ---------------------------------------------------------------------------------------------

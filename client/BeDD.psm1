@@ -218,6 +218,22 @@ function Send-BeDDPacket([string]$Base64, [byte[]]$Bytes, [int]$TimeoutMs, [swit
     Invoke-BeDD $r -NoThrow:$NoThrow
 }
 
+# Joins a server by address through the game's own external-server join (`join` op), from the
+# title screen or from inside a world (left first). Returns once the connection attempt started;
+# with -Wait once the client is in the server's world (throws when the join fails or times out).
+# Without -Host: where the client plays now ({mode, connection none|local|remote, host, port,
+# joining, last}). A server off the PC needs Remote mode (Start-BeDDGame.ps1 -Mode Remote
+# -ServerHost, config allowHosts).
+# (-Host is an alias: $Host is PowerShell's own.)
+function Join-BeDDServer(
+    [Alias('Host')][string]$ServerHost, [ValidateRange(1, 65535)][int]$Port = 19132, [switch]$Wait, [int]$TimeoutMs = 60000
+) {
+    if (-not $ServerHost) { return Invoke-BeDD @{ op = 'join' } }
+    $r = @{ op = 'join'; host = $ServerHost; port = $Port; wait = [bool]$Wait }
+    if ($PSBoundParameters.ContainsKey('TimeoutMs')) { $r.timeoutMs = $TimeoutMs }
+    Invoke-BeDD $r
+}
+
 Add-Type -AssemblyName System.Drawing
 if (-not ('BeDD.Win' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -303,4 +319,4 @@ Export-ModuleMember -Function Connect-BeDD, Set-BeDDPipe, Disconnect-BeDD, Test-
     Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot,
     Get-BeDDWorld, Set-BeDDLook,
     Set-BeDDInput, Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton, Send-BeDDPacket, Send-BeDDStack,
-    Get-BeDDTimeScale, Set-BeDDTimeScale
+    Get-BeDDTimeScale, Set-BeDDTimeScale, Join-BeDDServer

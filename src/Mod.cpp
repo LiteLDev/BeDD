@@ -50,6 +50,16 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.trace        = j.value("trace", gOptions.trace);
     gOptions.pipeName     = j.value("pipeName", gOptions.pipeName);
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
+    if (auto it = j.find("allowHosts"); it != j.end() && it->is_array()) {
+        for (auto const& h : *it)
+            if (h.is_string() && !h.get<std::string>().empty()) gOptions.allowHosts.push_back(h.get<std::string>());
+            else log().warn("allowHosts: {} is not a host name or address; ignored", h.dump());
+    }
+    gOptions.mode = j.value("mode", gOptions.mode);
+    if (gOptions.mode != "ClientOnly" && gOptions.mode != "ClientServer" && gOptions.mode != "Remote") {
+        log().warn("mode: '{}' is not ClientOnly, ClientServer or Remote; using ClientOnly", gOptions.mode);
+        gOptions.mode = "ClientOnly";
+    }
     gOptions.managerScript = j.value("managerScript", gOptions.managerScript);
     gOptions.mute         = j.value("mute", gOptions.mute);
     gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
@@ -111,6 +121,7 @@ bool Mod::enable() {
     if (gOptions.tapLoopback) installTapLoopback();
     if (gOptions.tap) installTapJournal();
     installGameActions();
+    installJoin();
     if (gOptions.allowSend) installSend();
     if (gOptions.allowStack) installStack();
     installTimeScale();
@@ -123,6 +134,7 @@ bool Mod::disable() {
     stopLook();
     stopGameState();
     uninstallGameActions(); // first: its tick listener drives the virtual mouse
+    uninstallJoin(); // first: answers a join the pipe thread waits on, so stopPipeServer() can join it
     uninstallSend(); // first: answers a send the pipe thread waits on, so stopPipeServer() can join it
     uninstallStack(); // likewise for a waiting stack request
     uninstallTimeScale(); // its set waits on the game threads with a timeout (it cannot hang the join)

@@ -12,7 +12,7 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 | op | 字段 | |
 |---|---|---|
 | `ping` | | `protocol`、`pid`、`hwnd`、`client{w,h}`、`cursor{x,y}`、`realForeground`、`managed` |
-| `state` | | `ping` 的字段 + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal}`、`clients`（当前连接的控制管道客户端数）、`hooks{name: installed}`（各功能安装的每个游戏钩子；功能关闭时为 `false`） |
+| `state` | | `ping` 的字段 + `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal, sendsRefused}`、`clients`（当前连接的控制管道客户端数）、`hooks{name: installed}`（各功能安装的每个游戏钩子；功能关闭时为 `false`）、`mode`（ClientOnly\|ClientServer\|Remote，配置 `mode`）、`connection{connection none\|local\|remote, inLevel, host, port}`（客户端在哪里玩） |
 | `key` | `key`（名字）或 `vk`；`action` press\|down\|up；`holdMs` | 名字：字母、数字、ESC、ENTER、BACK、TAB、SPACE、SHIFT、CTRL、ALT、LEFT/UP/RIGHT/DOWN、HOME、END、PGUP、PGDN、INSERT、DELETE、F1..F24、SLASH、GRAVE、MINUS、EQUALS |
 | `text` | `text`；`delayMs` | 每个 UTF-16 单元一个 `WM_CHAR` |
 | `mouse` | `action` move\|down\|up\|click\|wheel；`x`,`y`（客户区像素）或 `rx`,`ry`（比例）；`button` left\|right\|middle；`notches`；`holdMs` | 先移动虚拟光标（给了坐标时），再在虚拟 GameInput 鼠标上按按钮/滚轮 |
@@ -21,11 +21,12 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 | `focus` | | 重新发送"获得焦点"消息 |
 | `window` | `clientWidth`、`clientHeight` | 从不激活窗口；窗口留在屏幕外 |
 | `flush` | | 等到所有已投递的输入都分发完 |
+| `join` | `host`、`port`（19132）、`wait`、`timeoutMs`（60000） | 客户端通过游戏自己的外部服务器加入流程（`ClientInstance::connectToThirdPartyServer`）按地址加入服务器，可以在标题界面，也可以在世界里（先退出世界）。开始连接后回复 `started:true`，带 `wait:true` 时进入世界后回复 `joined:true`；`left`：先退出了一个世界。错误码：`join_failed`（客户端放弃了，界面上显示原因）、`timeout`（`screen`：游戏可能还在连接）、`busy`（已有加入在进行）、`not_allowed`（`loopbackOnly` 不让游戏访问的本机以外主机：不在 `allowHosts` 里）、`bad_args`。不带 `host`：`mode`、`connection` none\|local\|remote、`host`、`port`、`inLevel`、`joining`（进行中的加入）、`last`（上一次的结果）。本机以外的服务器需要 Remote 模式（配置 `allowHosts`） |
 
 ## 多个客户端
 
 可以同时连接多个客户端（配置 `pipeInstances`，默认 4；1 = 一次一个），每个由自己的线程服务。投递窗口输入的操作是串行的，
-所以两个客户端的按键或输入的文字不会交错；`ping`、`state`、`tap`、`world`、`look`、`input`、`send`、`stack` 和 `timescale` 不加这把锁
+所以两个客户端的按键或输入的文字不会交错；`ping`、`state`、`tap`、`world`、`look`、`input`、`send`、`stack`、`timescale` 和 `join` 不加这把锁
 （它们只读，或把工作交给游戏线程）。一个客户端断开（或其进程退出）时，释放它持有的东西，且不动其他客户端持有的：
 它的按键和鼠标按钮、它发起的 `button` 按住、它设置的 `input` 覆盖。管理窗口通过管理连接转发的操作既不串行，也不归属任何客户端。
 

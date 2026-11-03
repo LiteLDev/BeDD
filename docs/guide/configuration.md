@@ -19,12 +19,38 @@ program, and its console window would flash on the desktop at every game start.
 | `clientWidth`, `clientHeight` | game window size (0 = leave it), so clicks land in the same place every run |
 | `pipeName` | one per game instance when several run at once |
 | `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new instance, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). Dedicated servers your harness starts still ask once per server folder (**Cancel** is fine), unless they run BeDD's server target: there it is on by default too and keeps the server on loopback (its IPv4/IPv6 ports, LAN discovery and NetherNet), so no prompt; `state` reports it. Its port is then reachable at `127.0.0.1` only |
+| `mode` | where the world runs: `ClientOnly` (default: a local world), `ClientServer` (a dedicated server with BeDD on this PC; `loopbackOnly` stays), `Remote` (a server without BeDD, possibly off the PC). See [Debug modes](/guide/configuration#debug-modes). `state` and `join` report it |
+| `allowHosts` | host names or addresses `loopbackOnly` still lets the game reach (Remote mode's server; `Start-BeDDGame.ps1 -Mode Remote -ServerHost` writes it). Those hosts are queried, the game's outgoing UDP socket can reach them without a firewall prompt, and datagrams to any other host off the PC are refused (`state` `stats.sendsRefused`). Hosts on the PC need no entry |
 | `managerScript` | path of `BeDDManager.ps1` (`Install-BeDDMod` writes it): the game starts the [manager window](/guide/several-games#the-manager-window) with it when none runs |
 | `mute` | default `true`: the game makes no sound |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
-| `timeScale` | server target: game speed (0.05..20, default `1`) applied once the server has started and sent to its players, whose BeDD follows it |
 | `pipeInstances` | default `4`: scripts that may use the game's pipe at once (each one's held keys, buttons and `input` override are released when it disconnects); `1` = one at a time |
-| `timeScale` | default `1`: the game speed (0.05..20) of every world this game hosts, set when it enters one (`Set-BeDDTimeScale` changes it later; on a remote server it does nothing) |
+| `timeScale` | default `1`: the game speed (0.05..20) of every world this game hosts, set when it enters one (`Set-BeDDTimeScale` changes it later). On a server with BeDD the server's speed leads and the client follows it; on a server without BeDD it does nothing. In BeDD's server target: applied once the server has started and sent to its players |
+
+## Debug modes
+
+A BeDD game runs headless in every mode; the mode is about where the world runs. `Start-BeDDGame.ps1 -Mode` and
+`Install-BeDDMod -Mode` write it (`Set-BeDDMode`); without `-Mode`, `Start-BeDDGame.ps1` leaves the config as it is.
+
+| Mode | The world runs | Network |
+|---|---|---|
+| `ClientOnly` (default) | in the client: a local world, as before | loopback only |
+| `ClientServer` | in a dedicated server with BeDD on this PC; its game speed drives the client's | loopback only: join it at `127.0.0.1` |
+| `Remote` | in a server without BeDD (`-ServerHost`), possibly off the PC; the client cannot change its game speed | loopback only, except for `-ServerHost` (`allowHosts`) |
+
+`Join-BeDDServer -Host 127.0.0.1 -Port 19132 -Wait` joins a server in any mode, from the title screen or from inside a
+world ([Driving the game](/guide/usage#servers)).
+
+### No firewall prompts
+
+A BeDD game never makes Windows Firewall ask "allow access?": the firewall asks the first time a program (by full exe
+path, so every clone instance anew) binds a socket explicitly to an address other than loopback. With `loopbackOnly`
+every wildcard bind goes to loopback instead, in all three modes. In Remote mode, `allowHosts` changes one thing: the
+client's outgoing UDP socket (a wildcard bind to port 0) is not bound explicitly at all but connected towards the
+allowed server, which binds it implicitly (the firewall does not ask for that); listening sockets (LAN hosting, LAN
+discovery) stay on loopback, and datagrams to other hosts off the PC are refused. Do not turn `loopbackOnly` off to
+reach a remote server: every new instance would prompt again. A dedicated server you start yourself is another
+program: one without BeDD's loopback binding asks once per server folder.
 
 ## Keys for bedboo
 

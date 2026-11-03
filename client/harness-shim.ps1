@@ -32,8 +32,12 @@ if (-not (Get-Variable -Name WindowH -Scope Script -ErrorAction SilentlyContinue
 # Copies the mod into <ModsDir>\BeDD with its config.json. Call it after the harness has deployed
 # its own mod and moved other mods aside. The game then runs headless inside the session's manager
 # window (the mod starts the manager if none runs). -TimeScale: the game speed of every world it
-# enters (config timeScale, 1 = normal).
-function Install-BeDDMod([Parameter(Mandatory)][string]$ModsDir, [switch]$Trace, [string]$PipeName = 'BeDD', [double]$TimeScale = 1) {
+# enters (config timeScale, 1 = normal). -Mode is where the world runs (config `mode`,
+# Set-BeDDMode): ClientOnly (default), ClientServer, or Remote with -ServerHost.
+function Install-BeDDMod(
+    [Parameter(Mandatory)][string]$ModsDir, [switch]$Trace, [string]$PipeName = 'BeDD', [double]$TimeScale = 1,
+    [ValidateSet('ClientOnly', 'ClientServer', 'Remote')][string]$Mode = 'ClientOnly', [string]$ServerHost
+) {
     $dest = Join-Path $ModsDir 'BeDD'
     if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
     New-Item -ItemType Directory -Force (Join-Path $dest 'config') | Out-Null
@@ -42,6 +46,7 @@ function Install-BeDDMod([Parameter(Mandatory)][string]$ModsDir, [switch]$Trace,
         managerScript = Join-Path $script:BeDDDir 'BeDDManager.ps1' }
     if ($PSBoundParameters.ContainsKey('TimeScale')) { $config.timeScale = $TimeScale }
     $config | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $dest 'config\config.json')
+    Set-BeDDMode -ModsDir $ModsDir -Mode $Mode -ServerHost $ServerHost
     # No console window flashing up as the game starts (LeviLamina's CrashLogger.exe).
     Set-BeDDCrashLogger $ModsDir
     Set-BeDDPipe $PipeName

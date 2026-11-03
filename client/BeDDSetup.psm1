@@ -387,5 +387,28 @@ function New-BeDDClone([Parameter(Mandatory)][string]$Source, [Parameter(Mandato
     Write-Setup "clone $name ready at $dst"
 }
 
+# Writes the debug mode into <ModsDir>\BeDD\config\config.json (config `mode`, `allowHosts`), for the
+# game's next start: ClientOnly (a local world, the default), ClientServer (a BDS with BeDD on this
+# PC: loopbackOnly as it is) or Remote (-ServerHost, a server without BeDD: a host off the PC goes
+# into allowHosts, the one host loopbackOnly lets the game reach). Install-BeDDMod and
+# Start-BeDDGame.ps1 -Mode call it.
+function Set-BeDDMode(
+    [Parameter(Mandatory)][string]$ModsDir,
+    [Parameter(Mandatory)][ValidateSet('ClientOnly', 'ClientServer', 'Remote')][string]$Mode,
+    [string]$ServerHost
+) {
+    if ($Mode -eq 'Remote' -and -not $ServerHost) { throw '[BeDD] -Mode Remote needs -ServerHost (the server the game joins)' }
+    if ($Mode -ne 'Remote' -and $ServerHost) { throw "[BeDD] -ServerHost is for -Mode Remote, not $Mode" }
+    $Mode = 'ClientOnly', 'ClientServer', 'Remote' | Where-Object { $_ -eq $Mode } # the mod compares the case
+    $file = Join-Path $ModsDir 'BeDD\config\config.json'
+    if (-not (Test-Path $file)) { throw "[BeDD] $file does not exist (Install-BeDDMod writes it)" }
+    $c = Get-Content $file -Raw | ConvertFrom-Json
+    $c | Add-Member -NotePropertyName mode -NotePropertyValue $Mode -Force
+    $c.PSObject.Properties.Remove('allowHosts')
+    $onPc = $ServerHost -eq 'localhost' -or $ServerHost -match '^127\.' -or $ServerHost -in '::1', '[::1]'
+    if ($Mode -eq 'Remote' -and -not $onPc) { $c | Add-Member -NotePropertyName allowHosts -NotePropertyValue @($ServerHost) }
+    [IO.File]::WriteAllText($file, ($c | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
+}
+
 Export-ModuleMember -Function Get-LeviLauncherData, Get-BeDDVersionsDir, Find-BeDDBaseInstance, Get-BeDDInstance,
-    Initialize-BeDDInstance, New-BeDDClone, Find-LeviLauncher, Get-BeDDLip
+    Initialize-BeDDInstance, New-BeDDClone, Find-LeviLauncher, Get-BeDDLip, Set-BeDDMode
