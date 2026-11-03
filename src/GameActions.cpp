@@ -1,8 +1,8 @@
 // `slot`, `action` and `button` control-pipe ops (config `gameHooks`): hotbar slot, the game's own
 // button actions (drop, inventory, perspective, pause) and held mouse buttons counted in game ticks.
 //
-// The pipe thread never touches the game: it queues a command and waits (timeoutMs, default 1000)
-// until the next ClientLevelTickEvent, on the client thread, has applied it. Slot and actions call
+// The pipe thread never touches the game: it queues a command and waits (timeoutMs, default 1000,
+// stretched at a slower game speed) until the next ClientLevelTickEvent, on the client thread, has applied it. Slot and actions call
 // the ClientInputCallbacks::handle* statics the game's own key bindings call, so the client sends
 // mob_equipment, drops and opens screens itself. handleSlotSelectButtonPress leaves the slot alone
 // for a keyboard player (1.26.51), so `slot` then presses the hotbar key '1'..'9' instead (the
@@ -84,7 +84,6 @@ int64_t                               gKeyDownTick = 0;
 std::array<Held, kButtons.size()>     gHeld{};
 int64_t                               gTick = 0;
 int                                   gSlot = -1;
-std::chrono::steady_clock::time_point gLastTick{};
 
 ll::event::ListenerPtr gTickListener;
 
@@ -127,7 +126,7 @@ void postKey(int vk, bool down) {
     post(Event{.msg = static_cast<UINT>(down ? WM_KEYDOWN : WM_KEYUP), .wp = static_cast<WPARAM>(vk), .lp = lp, .vk = vk, .vkDown = down});
 }
 
-bool inLevel() { return gTick > 0 && std::chrono::steady_clock::now() - gLastTick < 1s; }
+bool inLevel() { return gTick > 0 && !clientTickStale(); }
 
 // True when the client's hit result no longer points at the block `h` was pressed on, or that block changed.
 bool targetChanged(Held const& h, LocalPlayer& player) {
@@ -207,7 +206,6 @@ json apply(Command& c, ClientInstance& client, LocalPlayer& player) {
 void onTick() {
     std::lock_guard lock(gMutex);
     ++gTick;
-    gLastTick = std::chrono::steady_clock::now();
     auto         client = ll::service::getClientInstance();
     LocalPlayer* player = client ? client->getLocalPlayer() : nullptr;
     if (player) gSlot = player->getSelectedItemSlot();
@@ -263,7 +261,8 @@ json disabled(std::string const& op) {
 
 // Queue for the tick listener and wait for its reply.
 json run(std::string const& op, json const& req) {
-    auto timeout = std::chrono::milliseconds(std::clamp(req.value("timeoutMs", 1000), 50, 60000));
+    auto timeout = req.contains("timeoutMs") ? std::chrono::milliseconds(std::clamp(req["timeoutMs"].get<int>(), 50, 60000))
+                                             : tickScaled(1000ms, 60000ms);
     auto c       = std::make_shared<Command>(Command{op, req});
     c->owner     = currentPipeClient();
     std::unique_lock lock(gMutex);

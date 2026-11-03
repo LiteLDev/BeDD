@@ -44,13 +44,17 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 |---|---|---|---|
 | `tap` | `tap` | `enabled`、`pipe`、`attached`（有读取方连接）、`link{state up\|down, type remote\|local, address}`、`journal{frames, bytes, complete}`（当前加入日志）、`lastReplay`（上一个读取方回放了什么）、`replay`（装了日志）、`counters{in, out, dropped, sent, readers}`、`hooks` | （无） |
 | `world` | `gameHooks` | `inLevel`、`levelEpoch`（每进入一个世界 +1）、`topScreen`（如 `hud_screen`、`pause_screen`）、`mouseGrabbed`、`showingMenu`、`inputMode` mouse\|touch\|gamepad\|undefined、`player{runtimeId, eye{x,y,z}, rot{yaw,pitch}, slot}`（不在世界里时为 null）、`tick`（见到的客户端刻数） | （无） |
-| `look` | `gameHooks` | `{inLevel, yaw, pitch, tick}` | `yaw`、`pitch`、`timeoutMs`（1000，最多 60000） |
-| `input` | `gameHooks` | `active`、`via` hooks\|keys、`hooks{raw,state}`、`tick`、`applied` | `move{x,z}`、`jump`、`sneak`、`sprint`、`ttlMs`（300） |
+| `look` | `gameHooks` | `{inLevel, yaw, pitch, tick}` | `yaw`、`pitch`、`timeoutMs`（1000\*，最多 60000） |
+| `input` | `gameHooks` | `active`、`via` hooks\|keys、`hooks{raw,state}`、`tick`、`applied`、`ticksLeft`（`ttlTicks` 覆盖） | `move{x,z}`、`jump`、`sneak`、`sprint`、`ttlMs`（300）或 `ttlTicks` |
 | `slot` | `gameHooks` | `{slot}`（不在世界里时为 null） | `slot` 0..8 |
 | `action` | `gameHooks` | `{names}` | `name` drop\|dropAll\|inventory\|perspective\|pause |
 | `button` | `gameHooks` | `{held}` | `button` attack\|use\|pick；`action` down\|up\|click；`holdTicks`；`releaseOn` blockChange |
-| `send` | `allowSend` | `{allow}`（`sendAllow` 里的 id） | `buf`、`timeoutMs`（2000，最多 10000） |
-| `stack` | `allowStack` | `{enabled, via:"raw", stats{sent, answered, rejected, failed, resyncs}}` | `buf`、`timeoutMs`（2000）；或 `view:true` |
+| `send` | `allowSend` | `{allow}`（`sendAllow` 里的 id） | `buf`、`timeoutMs`（2000\*，最多 10000） |
+| `stack` | `allowStack` | `{enabled, via:"raw", stats{sent, answered, rejected, failed, resyncs}}` | `buf`、`timeoutMs`（2000\*）；或 `view:true` |
+
+\* 以及 `slot`、`action`、`button` 的 `timeoutMs`（1000）：这些默认值适用于每秒 20 刻及更快。客户端走刻更慢时（游戏速度更慢），
+不带 `timeoutMs` 的请求相应地等得更久（默认值乘以实测刻间隔除以 50 ms，最多到该操作的上限）；调用方给出的 `timeoutMs` 原样使用。
+同样，“客户端在世界里”（`slot`、`action`、`button`、`send`、`stack` 的 `not_in_level`）指 20 个刻间隔（至少 1 秒）内有过客户端刻。
 
 - **`world`** 是客户端线程拍的快照：界面字段每帧更新（`ClientInstance::$update` 后置钩子，因为暂停的单人世界不走刻），玩家字段每个客户端刻更新。
   管道线程只复制它。
@@ -60,7 +64,8 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
   `busy`（被更新的 `look` 取代）、`bad_args`。
 - **`input`** 在游戏自己的输入管线里移动本地玩家，所以每个 `player_auth_input` 都由客户端自己构建。`move` 是 player_auth_input 的移动向量
   （`x` = 左 - 右，`z` = 前 - 后，各自限制在 [-1, 1]；斜向会被归一化）。这个覆盖是一个"死人开关"：请求后 `ttlMs`（最多 60000）结束，
-  所以控制方想继续移动时要不断刷新；`ttlMs:0`、`release` 和所属客户端断开会立即结束它。
+  所以控制方想继续移动时要不断刷新；`ttlMs:0`、`release` 和所属客户端断开会立即结束它。`ttlTicks`（最多 1200；不能与 `ttlMs` 同时给，否则 `bad_args`）
+  改为在那么多个客户端刻之后结束，在任何游戏速度下都是同样的游戏时间；客户端停止走刻 5 秒（离开世界、暂停）时它也会结束，不走刻时请求它会得到 `not_in_level`，探测回复用 `ticksLeft` 报告剩余刻数。
   - `via:"hooks"`：挂在 `ClientInputUpdateSystem::extractRawHIDInput`（写 `RawMoveInputComponent::mRawInput`/`mRawMove`）和
     `inputHandlerUpdatePlayerState`（在原函数前后写 `MoveInputComponent::mInputState`/`mRawInputState`：`MoveInputState` 标志
     `SneakDown`=0、`JumpDown`=7、`SprintDown`=8、`Up`..`Right`=13..16 以及跳跃/潜行输入边沿 21..26，外加 `mAnalogMoveVector`）的后置钩子。

@@ -220,13 +220,20 @@ of every op is read-only.
 |---|---|---|---|
 | `tap` | `tap` | `enabled`, `pipe`, `attached` (a reader is connected), `link{state up\|down, type remote\|local, address}`, `journal{frames, bytes, complete}` (the join journal now), `lastReplay` (what the last reader was replayed), `replay` (a journal is installed), `counters{in, out, dropped, sent, readers}`, `hooks` | (none) |
 | `world` | `gameHooks` | `inLevel`, `levelEpoch` (+1 per world joined), `topScreen` (e.g. `hud_screen`, `pause_screen`), `mouseGrabbed`, `showingMenu`, `inputMode` mouse\|touch\|gamepad\|undefined, `player{runtimeId, eye{x,y,z}, rot{yaw,pitch}, slot}` (null outside a world), `tick` (client ticks seen) | (none) |
-| `look` | `gameHooks` | `{inLevel, yaw, pitch, tick}` | `yaw`, `pitch`, `timeoutMs` (1000, at most 60000) |
-| `input` | `gameHooks` | `active`, `via` hooks\|keys, `hooks{raw,state}`, `tick`, `applied` | `move{x,z}`, `jump`, `sneak`, `sprint`, `ttlMs` (300) |
+| `look` | `gameHooks` | `{inLevel, yaw, pitch, tick}` | `yaw`, `pitch`, `timeoutMs` (1000\*, at most 60000) |
+| `input` | `gameHooks` | `active`, `via` hooks\|keys, `hooks{raw,state}`, `tick`, `applied`, `ticksLeft` (a `ttlTicks` override) | `move{x,z}`, `jump`, `sneak`, `sprint`, `ttlMs` (300) or `ttlTicks` |
 | `slot` | `gameHooks` | `{slot}` (null outside a world) | `slot` 0..8 |
 | `action` | `gameHooks` | `{names}` | `name` drop\|dropAll\|inventory\|perspective\|pause |
 | `button` | `gameHooks` | `{held}` | `button` attack\|use\|pick; `action` down\|up\|click; `holdTicks`; `releaseOn` blockChange |
-| `send` | `allowSend` | `{allow}` (the ids in `sendAllow`) | `buf`, `timeoutMs` (2000, at most 10000) |
-| `stack` | `allowStack` | `{enabled, via:"raw", stats{sent, answered, rejected, failed, resyncs}}` | `buf`, `timeoutMs` (2000); or `view:true` |
+| `send` | `allowSend` | `{allow}` (the ids in `sendAllow`) | `buf`, `timeoutMs` (2000\*, at most 10000) |
+| `stack` | `allowStack` | `{enabled, via:"raw", stats{sent, answered, rejected, failed, resyncs}}` | `buf`, `timeoutMs` (2000\*); or `view:true` |
+
+\* And `timeoutMs` (1000) of `slot`, `action` and `button`: these defaults hold at 20 ticks a second
+and faster. When the client ticks slower (a slower game speed), a request without `timeoutMs`
+waits that much longer (the default times the measured tick interval over 50 ms, up to the op's
+maximum); a `timeoutMs` the caller passes is used as given. Likewise "the client is in a world"
+(`not_in_level` of `slot`, `action`, `button`, `send`, `stack`) means a client tick within
+20 tick intervals, at least 1 s.
 
 - **`world`** is a snapshot the client thread takes: the screen fields every frame (a
   `ClientInstance::$update` post-hook, because a paused singleplayer world does not tick), the
@@ -243,7 +250,10 @@ of every op is read-only.
   `z` = forward - back, each clamped to [-1, 1]; a diagonal is normalized). The override is a
   dead-man switch: it ends `ttlMs` (at most 60000) after the request, so a controller refreshes it
   while it wants to keep moving; `ttlMs:0`, `release` and the owning client disconnecting end it at
-  once.
+  once. `ttlTicks` (at most 1200; not with `ttlMs`, that is `bad_args`) ends it after that many
+  client ticks instead, the same game time at any game speed; it also ends once the client stops
+  ticking for 5 s (out of the world, paused), is `not_in_level` when asked for while it is not
+  ticking, and the probe reports the ticks left as `ticksLeft`.
   - `via:"hooks"`: post-hooks on `ClientInputUpdateSystem::extractRawHIDInput` (writes
     `RawMoveInputComponent::mRawInput`/`mRawMove`) and `inputHandlerUpdatePlayerState` (writes
     `MoveInputComponent::mInputState`/`mRawInputState` before and after the original:
