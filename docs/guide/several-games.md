@@ -3,6 +3,9 @@
 Each game instance has its own control pipe, so one test PC runs several games side by side. A clone of an instance
 takes a few seconds and about 90 MB.
 
+A test that also needs a dedicated server on the PC starts one per run the same way, with its own name and ports:
+see [Client and server modes](/guide/modes).
+
 <video controls muted playsinline preload="none" poster="/BeDD/showcase/desktop-poster.webp" src="/BeDD/showcase/desktop.mp4" width="1280" height="720" style="width:100%;height:auto"></video>
 
 ```powershell

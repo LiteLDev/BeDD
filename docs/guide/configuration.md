@@ -49,3 +49,4 @@ default; keep them off unless a harness needs them (see [Security](/reference/pr
 | `BEDD_RETURN_FOCUS` | the module | a window handle that gets the foreground back if the game still activates itself while starting (`Start-BeDDGame.ps1` and the shim's `Start-Game` set it) |
 | `BEDD_DIR` | your harness | where Be.D.D. is unpacked ([Installation](/guide/installation#let-the-harness-fetch-it)) |
 | `BEDD_INSTANCE`, `BEDD_VERSIONS_DIR`, `BEDD_LAUNCHER_DATA`, `BEDD_LEVILAUNCHER`, `BEDD_LIP` | `BeDDSetup.psm1` | where the game instance and tools are ([Setting up a new PC](/guide/new-pc#which-instance)) |
+| `BEDD_SERVERS_DIR` | `BeDDSetup.psm1`, `Start-BeDDServer.ps1` | where the dedicated servers of [client + server mode](/guide/modes) live (default `%LOCALAPPDATA%\BeDD\servers`) |

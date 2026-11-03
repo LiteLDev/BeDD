@@ -387,5 +387,313 @@ function New-BeDDClone([Parameter(Mandatory)][string]$Source, [Parameter(Mandato
     Write-Setup "clone $name ready at $dst"
 }
 
+# --- Bedrock Dedicated Servers (client + server mode) ---------------------------------------------
+#
+#   $s = Initialize-BeDDServer -Name s1 -ModuleDir bin\BeDD-server   # %LOCALAPPDATA%\BeDD\servers\s1
+#   & bin\BeDD\Start-BeDDServer.ps1 -Name s1                          # $s.Port, $s.PipeName
+#
+# lip installs LeviLamina's server package into an empty folder, and that package brings the
+# official BDS of $GameVersion with it (github.com/LiteLDev/bds, downloaded from minecraft.net by
+# bdsdown). Mods of a server live in plugins\, not mods\. Override: BEDD_SERVERS_DIR.
+
+# The first port Initialize-BeDDServer hands out (IPv4; IPv6 is the next one). 19132, Bedrock's
+# default, is left to the games and servers you start by hand.
+$script:ServerBasePort = 19140
+
+# Where BeDD's servers live: %LOCALAPPDATA%\BeDD\servers, or BEDD_SERVERS_DIR.
+function Get-BeDDServersDir {
+    if ($env:BEDD_SERVERS_DIR) { return $env:BEDD_SERVERS_DIR }
+    return Join-Path $env:LOCALAPPDATA 'BeDD\servers'
+}
+
+# -ServersDir as a full path (the default when empty): process paths and the console host, which
+# runs in the server folder, need one.
+function Resolve-BeDDServersDir([string]$ServersDir) {
+    if (-not $ServersDir) { $ServersDir = Get-BeDDServersDir }
+    return $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ServersDir).TrimEnd('\')
+}
+
+# key=value lines of a server.properties as an ordered dictionary (comments left out).
+function Read-BeDDServerProperties([string]$Path) {
+    $p = [ordered]@{}
+    if (-not (Test-Path $Path)) { return $p }
+    foreach ($line in Get-Content $Path) {
+        if ($line -match '^\s*([^#=\s][^=]*?)\s*=(.*)$') { $p[$Matches[1]] = $Matches[2].Trim() }
+    }
+    return $p
+}
+
+# Sets keys of a server.properties in place (comments and other keys stay), adding the ones it
+# lacks. Writes only when something changed; returns whether it did.
+function Set-BeDDServerProperties([string]$Path, [System.Collections.IDictionary]$Values) {
+    $lines = [System.Collections.Generic.List[string]]::new()
+    if (Test-Path $Path) { $lines.AddRange([string[]]@(Get-Content $Path)) }
+    $left = [ordered]@{}
+    foreach ($k in $Values.Keys) { $left[$k] = [string]$Values[$k] }
+    $changed = $false
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -notmatch '^\s*([^#=\s][^=]*?)\s*=(.*)$' -or -not $left.Contains($Matches[1])) { continue }
+        $k = $Matches[1]
+        if ($Matches[2].Trim() -ne $left[$k]) { $lines[$i] = "$k=$($left[$k])"; $changed = $true }
+        $left.Remove($k)
+    }
+    foreach ($k in $left.Keys) { $lines.Add("$k=$($left[$k])"); $changed = $true }
+    if ($changed) { [IO.File]::WriteAllLines($Path, $lines, (New-Object System.Text.UTF8Encoding($false))) }
+    return $changed
+}
+
+# Running servers of one server folder (bedrock_server_mod.exe: the BDS exe with LeviLamina's loader,
+# which LeviLamina's install makes from bedrock_server.exe, kept as bedrock_server.exe.bak).
+function Get-BeDDServerProcess([Parameter(Mandatory)][string]$Dir) {
+    $prefix = $Dir.TrimEnd('\') + '\'
+    Get-Process -Name 'bedrock_server_mod', 'bedrock_server' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) }
+}
+
+# BeDD modules in a plugins folder: each subfolder whose manifest.json names a mod BeDD*, as
+# @{ Dir; Manifest }. LeviLamina loads a mod only from the folder named after it (BeDD-server).
+function Find-BeDDServerModule([string]$PluginsDir) {
+    foreach ($d in Get-ChildItem $PluginsDir -Directory -Filter 'BeDD*' -ErrorAction SilentlyContinue) {
+        $m = $null
+        try { $m = Get-Content (Join-Path $d.FullName 'manifest.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch { }
+        if ($m -and [string]$m.name -like 'BeDD*') { [pscustomobject]@{ Dir = $d.FullName; Manifest = $m } }
+    }
+}
+
+# A server folder and what it still lacks, without changing anything. Problems: 'missing' (no BDS),
+# 'leviLamina', 'bedd' (no BeDD module in plugins\: Start-BeDDServer.ps1 refuses to start it, as it
+# would listen on the network and raise a Windows Firewall prompt, unless -AllowFirewallPrompt).
+function Get-BeDDServer([string]$Name = 'server', [string]$ServersDir) {
+    $ServersDir = Resolve-BeDDServersDir $ServersDir
+    $dir = Join-Path $ServersDir $Name
+    $plugins = Join-Path $dir 'plugins'
+    $props = Read-BeDDServerProperties (Join-Path $dir 'server.properties')
+    $problems = @()
+    $exe = Join-Path $dir 'bedrock_server_mod.exe'
+    if (-not (Test-Path (Join-Path $dir 'bedrock_server.exe')) -and -not (Test-Path (Join-Path $dir 'bedrock_server.exe.bak'))) { $problems += 'missing' }
+    if (-not (Test-Path $exe) -or -not (Test-Path (Join-Path $plugins 'LeviLamina\LeviLamina.dll'))) { $problems += 'leviLamina' }
+    $module = Find-BeDDServerModule $plugins | Select-Object -First 1
+    $manifest = if ($module) { $module.Manifest } else { $null }
+    $config = $null
+    if ($module) { try { $config = Get-Content (Join-Path $module.Dir 'config\config.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch { } }
+    if (-not $manifest) { $problems += 'bedd' }
+    return [pscustomobject]@{
+        Name        = $Name
+        Dir         = $dir
+        Exe         = $exe
+        PluginsDir  = $plugins
+        Port        = if ($props['server-port']) { [int]$props['server-port'] } else { 0 }
+        PortV6      = if ($props['server-portv6']) { [int]$props['server-portv6'] } else { 0 }
+        # BeDD's control pipe in the server (its config), and the pipe Start-BeDDServer.ps1 forwards
+        # to the server console.
+        PipeName    = if ($config -and $config.pipeName) { [string]$config.pipeName } else { "BeDD-Server-$Name" }
+        ConsolePipe = "BeDD-BDS-$Name"
+        # The BeDD module (plugins\<its name>), its platform, whether LeviLamina loads it (folder named
+        # after the mod), and whether it binds the server to 127.0.0.1 (config loopbackOnly, default
+        # on): without that, Windows Firewall asks on the desktop.
+        ModuleDir      = if ($module) { $module.Dir } else { $null }
+        ModulePlatform = if ($manifest) { [string]$manifest.platform } else { $null }
+        ModuleLoads    = [bool]$module -and (Split-Path $module.Dir -Leaf) -eq [string]$manifest.name
+        LoopbackOnly   = [bool]$manifest -and -not ($config -and $config.loopbackOnly -eq $false)
+        LogPath     = Join-Path $dir 'logs\console.log'
+        ServersDir  = $ServersDir
+        Problems    = $problems
+    }
+}
+
+# A port pair (IPv4, IPv6 = +1) no other BeDD server uses and nothing listens on: the first free one
+# of 19140, 19142, 19144, ...
+function Find-BeDDServerPort([string]$ServersDir, [string]$Except) {
+    $taken = @{}
+    foreach ($d in Get-ChildItem $ServersDir -Directory -ErrorAction SilentlyContinue) {
+        if ($d.Name -eq $Except) { continue }
+        $p = Read-BeDDServerProperties (Join-Path $d.FullName 'server.properties')
+        foreach ($k in 'server-port', 'server-portv6') { if ($p[$k]) { $taken[[int]$p[$k]] = $true } }
+    }
+    $listening = @{}
+    try { Get-NetUDPEndpoint -ErrorAction Stop | ForEach-Object { $listening[[int]$_.LocalPort] = $true } } catch { }
+    for ($port = $script:ServerBasePort; $port -lt 65534; $port += 2) {
+        if (-not ($taken[$port] -or $taken[$port + 1] -or $listening[$port] -or $listening[$port + 1])) { return $port }
+    }
+    throw '[BeDD] no free port pair for a server'
+}
+
+# Copies the BeDD server module (<ModuleDir>: manifest.json and the DLL it names, as built into
+# bin\BeDD-server) into <plugins>\<its name> when it differs, moving the config of a BeDD module
+# installed under another name there and removing that one. Returns whether it changed anything.
+function Copy-BeDDServerModule([string]$ModuleDir, [string]$PluginsDir, [string]$ServerDir) {
+    $manifest = Join-Path $ModuleDir 'manifest.json'
+    if (-not (Test-Path $manifest)) { throw "[BeDD] no manifest.json in $ModuleDir (the BeDD server module, bin\BeDD-server)" }
+    $m = Get-Content $manifest -Raw | ConvertFrom-Json
+    if ([string]$m.name -notlike 'BeDD*') { throw "[BeDD] $manifest is not a BeDD module ('$($m.name)')" }
+    if ($m.platform -and $m.platform -ne 'server') { throw "[BeDD] $ModuleDir is the BeDD module for '$($m.platform)', not the server one (bin\BeDD-server)" }
+    $Dest = Join-Path $PluginsDir $m.name
+    $others = @(Find-BeDDServerModule $PluginsDir | Where-Object { -not [string]::Equals($_.Dir, $Dest, [StringComparison]::OrdinalIgnoreCase) })
+    $entry = $m.entry
+    if (-not $entry) { $entry = 'BeDD.dll' }
+    $files = @($manifest, (Join-Path $ModuleDir $entry))
+    $pdb = Join-Path $ModuleDir ([IO.Path]::ChangeExtension($entry, '.pdb'))
+    if (Test-Path $pdb) { $files += $pdb }
+    $stale = foreach ($f in $files) {
+        if (-not (Test-Path $f)) { throw "[BeDD] $f is missing (the BeDD server module)" }
+        $t = Join-Path $Dest (Split-Path $f -Leaf)
+        if (-not (Test-Path $t) -or (Get-FileHash $f).Hash -ne (Get-FileHash $t).Hash) { $f }
+    }
+    if (-not $stale -and -not $others) { return $false }
+    if (Get-BeDDServerProcess $ServerDir) { throw "[BeDD] the server in $ServerDir is running: stop it (Start-BeDDServer.ps1 -Stop) to update its BeDD module" }
+    New-Item -ItemType Directory -Force $Dest | Out-Null
+    foreach ($o in $others) {
+        $cfg = Join-Path $o.Dir 'config'
+        if ((Test-Path $cfg) -and -not (Test-Path (Join-Path $Dest 'config'))) { Copy-Item -Recurse $cfg (Join-Path $Dest 'config') }
+        Remove-Item -Recurse -Force $o.Dir
+    }
+    foreach ($f in $stale) { Copy-Item -Force $f $Dest }
+    return $true
+}
+
+# Makes a Bedrock Dedicated Server with LeviLamina (and the BeDD server module, from -ModuleDir)
+# ready in <servers>\<Name> and returns it (Get-BeDDServer). Fast when nothing is missing; one setup
+# at a time on the PC. Everything is a parameter (no prompts):
+#   -Port / -PortV6     default: what the server already has, else the first free pair from 19140;
+#   -Transport          default nethernet (BDS 1.26.51 says players cannot connect over raknet);
+#   -ServerIp           default 127.0.0.1 (used with nethernet): only games on this PC join; '' =
+#                       every interface. BeDD's module binds the server to loopback anyway;
+#   -OnlineMode         default off (test clients join without Xbox authentication);
+#   -LevelName, -Gamemode, -Difficulty, -LevelSeed, -MaxPlayers, -AllowCheats, -Properties
+#                       (more server.properties keys);
+#   -ModuleDir          the BeDD server module (bin\BeDD-server); without it, and with none installed
+#                       already, Start-BeDDServer.ps1 refuses to start the server (no loopback
+#                       binding: Windows Firewall would ask);
+#   -PipeName (default BeDD-Server-<Name>), -TimeScale, -Trace, -Config (more config.json keys)
+#                       the module's config\config.json.
+function Initialize-BeDDServer(
+    [string]$Name = 'server',
+    [string]$ServersDir,
+    [int]$Port = 0,
+    [int]$PortV6 = 0,
+    [ValidateSet('raknet', 'nethernet')][string]$Transport = 'nethernet',
+    [string]$ServerIp = '127.0.0.1',
+    [bool]$OnlineMode = $false,
+    [string]$LevelName = 'Bedrock level',
+    [ValidateSet('survival', 'creative', 'adventure')][string]$Gamemode = 'creative',
+    [ValidateSet('peaceful', 'easy', 'normal', 'hard')][string]$Difficulty = 'peaceful',
+    [string]$LevelSeed,
+    [int]$MaxPlayers = 10,
+    [bool]$AllowCheats = $true,
+    [hashtable]$Properties = @{},
+    [string]$ModuleDir,
+    [string]$PipeName,
+    [double]$TimeScale = 0,
+    [switch]$Trace,
+    [hashtable]$Config = @{},
+    [int]$TimeoutMinutes = 30
+) {
+    if ($Name -notmatch '^[A-Za-z0-9._-]+$') { throw "[BeDD] server name '$Name': letters, digits, '.', '_' and '-' only (it names a folder and pipes)" }
+    $ServersDir = Resolve-BeDDServersDir $ServersDir
+
+    # The whole setup under the PC's setup lock: two servers set up at once would pick the same ports.
+    $mutex = New-Object System.Threading.Mutex($false, 'Global\BeDD.Setup')
+    $owned = $false
+    try {
+        try { $owned = $mutex.WaitOne([TimeSpan]::FromMinutes($TimeoutMinutes + 5)) } catch [System.Threading.AbandonedMutexException] { $owned = $true }
+        if (-not $owned) { throw '[BeDD] another BeDD setup did not finish' }
+
+        $server = Get-BeDDServer $Name -ServersDir $ServersDir
+        if ($server.Problems -contains 'missing' -or $server.Problems -contains 'leviLamina') {
+            if (Get-BeDDServerProcess $server.Dir) { throw "[BeDD] the server in $($server.Dir) is running: stop it first" }
+            New-Item -ItemType Directory -Force $server.Dir | Out-Null
+            # The server package (no #client): LeviLamina and, as its dependency, the BDS itself.
+            $lip = Get-BeDDLip
+            $package = "github.com/LiteLDev/LeviLamina@$script:LeviLaminaVersion"
+            Write-Setup "installing BDS $script:GameVersion and LeviLamina $script:LeviLaminaVersion into $($server.Dir) with lip (about 100 MB the first time)"
+            Push-Location $server.Dir
+            $saved = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue' # lip's stderr would stop Windows PowerShell
+                # Without the download progress lines.
+                & $lip install $package 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -notmatch ' / [\d.]+ [KMG]iB \[' } | Out-Host
+                if ($LASTEXITCODE) { throw "lip install $package failed in $($server.Dir) (exit code $LASTEXITCODE)" }
+            } finally {
+                $ErrorActionPreference = $saved
+                Pop-Location
+            }
+            $server = Get-BeDDServer $Name -ServersDir $ServersDir
+            if ($server.Problems -contains 'missing' -or $server.Problems -contains 'leviLamina') {
+                throw "[BeDD] $($server.Dir) is not ready after lip install ($($server.Problems -join ', '))"
+            }
+        }
+
+        # server.properties. The ports of a fresh BDS (19132/19133, before this wrote its server-name)
+        # are not the server's own: it gets a free pair.
+        $propsFile = Join-Path $server.Dir 'server.properties'
+        $ours = (Read-BeDDServerProperties $propsFile)['server-name'] -eq "BeDD $Name"
+        if (-not $Port) { $Port = if ($ours -and $server.Port) { $server.Port } else { Find-BeDDServerPort $ServersDir -Except $Name } }
+        if (-not $PortV6) { $PortV6 = if ($ours -and $server.PortV6 -and $server.Port -eq $Port) { $server.PortV6 } else { $Port + 1 } }
+        $values = [ordered]@{
+            'server-name'              = "BeDD $Name"
+            'server-port'              = $Port
+            'server-portv6'            = $PortV6
+            'transport'                = $Transport
+            'server-ip'                = $ServerIp
+            'online-mode'              = $OnlineMode.ToString().ToLower()
+            # Every game joins, signed in or not.
+            'allow-list'               = 'false'
+            'level-name'               = $LevelName
+            'gamemode'                 = $Gamemode
+            'difficulty'               = $Difficulty
+            'max-players'              = $MaxPlayers
+            'allow-cheats'             = $AllowCheats.ToString().ToLower()
+            # Not announced on the LAN (which would also bind 19132/19133): joined by address.
+            'enable-lan-visibility'    = 'false'
+        }
+        if ($PSBoundParameters.ContainsKey('LevelSeed')) { $values['level-seed'] = $LevelSeed }
+        foreach ($k in $Properties.Keys) {
+            $v = $Properties[$k]
+            $values[$k] = if ($v -is [bool]) { $v.ToString().ToLower() } else { [string]$v }
+        }
+        if (Get-BeDDServerProcess $server.Dir) {
+            $current = Read-BeDDServerProperties $propsFile
+            $differs = @($values.Keys | Where-Object { [string]$current[$_] -ne [string]$values[$_] })
+            if ($differs) { Write-Warning "[BeDD] server $Name is running: $($differs -join ', ') take effect at its next start" }
+        }
+        if (Set-BeDDServerProperties $propsFile $values) {
+            Write-Setup "server $Name`: server.properties written (port $Port/$PortV6)"
+        }
+
+        # The BeDD server module and its config.
+        if ($ModuleDir) {
+            if (Copy-BeDDServerModule $ModuleDir $server.PluginsDir $server.Dir) { Write-Setup "server $Name`: BeDD module installed from $ModuleDir" }
+            $server = Get-BeDDServer $Name -ServersDir $ServersDir
+        } elseif ($server.Problems -contains 'bedd') {
+            Write-Setup "server $Name`: no BeDD module (no -ModuleDir): Start-BeDDServer.ps1 will not start it without one (or -AllowFirewallPrompt)"
+        }
+        if ($server.ModuleDir) {
+            $file = Join-Path $server.ModuleDir 'config\config.json'
+            $c = [ordered]@{}
+            try {
+                $old = Get-Content $file -Raw -ErrorAction Stop | ConvertFrom-Json
+                foreach ($p in $old.PSObject.Properties) { $c[$p.Name] = $p.Value }
+            } catch { }
+            # What is not given stays as it was.
+            $c.pipeName = if ($PipeName) { $PipeName } elseif ($c.pipeName) { $c.pipeName } else { "BeDD-Server-$Name" }
+            if ($PSBoundParameters.ContainsKey('Trace') -or -not $c.Contains('trace')) { $c.trace = [bool]$Trace }
+            if ($TimeScale) { $c.timeScale = $TimeScale }
+            foreach ($k in $Config.Keys) { $c[$k] = $Config[$k] }
+            $json = $c | ConvertTo-Json -Depth 16
+            $before = if (Test-Path $file) { [string](Get-Content $file -Raw) } else { '' }
+            if ($before.Trim() -ne $json.Trim()) {
+                New-Item -ItemType Directory -Force (Split-Path $file) | Out-Null
+                [IO.File]::WriteAllText($file, $json, (New-Object System.Text.UTF8Encoding($false)))
+                Write-Setup "server $Name`: BeDD config written (pipe $($c.pipeName))"
+            }
+        }
+        return Get-BeDDServer $Name -ServersDir $ServersDir
+    } finally {
+        if ($owned) { $mutex.ReleaseMutex() }
+        $mutex.Dispose()
+    }
+}
+
 Export-ModuleMember -Function Get-LeviLauncherData, Get-BeDDVersionsDir, Find-BeDDBaseInstance, Get-BeDDInstance,
-    Initialize-BeDDInstance, New-BeDDClone, Find-LeviLauncher, Get-BeDDLip
+    Initialize-BeDDInstance, New-BeDDClone, Find-LeviLauncher, Get-BeDDLip,
+    Get-BeDDServersDir, Get-BeDDServer, Get-BeDDServerProcess, Initialize-BeDDServer

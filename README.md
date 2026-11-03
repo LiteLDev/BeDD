@@ -149,6 +149,20 @@ tripping over each other:
 - A run that joins a server online sets `$script:ExclusiveSignaling = $true` before `Start-Game`
   and gets the PC to itself while the other games close.
 
+### Client and server
+
+Besides a game on its own (in a singleplayer world, or joined to a remote server), Be.D.D. runs a Bedrock Dedicated Server with BeDD's server module next to the game, both scripted, the server's game speed leading the client's:
+
+```powershell
+Import-Module .\BeDDSetup.psm1
+Initialize-BeDDServer -Name s1 -ModuleDir ..\BeDD-server   # BDS 1.26.51 + LeviLamina via lip, ports from 19140
+$s = & .\Start-BeDDServer.ps1 -Name s1                      # no window; log in logs\console.log
+Connect-BeDD -PipeName $s.PipeName                          # BeDD-Server-s1
+& .\Start-BeDDServer.ps1 -Name s1 -Stop
+```
+
+See [Client and server modes](https://docs.levimc.org/BeDD/guide/modes).
+
 ### The manager window
 
 The first `Start-BeDDGame.ps1` of your logon session opens the **manager window**, and every

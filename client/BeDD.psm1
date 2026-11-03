@@ -54,7 +54,8 @@ function Connect-BeDD([int]$TimeoutSeconds = 180, [string]$PipeName) {
         try {
             if (-not $script:Pipe -or -not $script:Pipe.IsConnected) { Open-BeDDPipe 2000 }
             $r = Invoke-BeDD @{ op = 'ping' } -NoThrow
-            if ($r.ok -and $r.hwnd -ne 0) { return $r }
+            # A server (BDS with BeDD) has no window: its ping has no hwnd ($null -ne 0) or target "server".
+            if ($r.ok -and ($r.hwnd -ne 0 -or $r.target -eq 'server')) { return $r }
             $last = 'game window not created yet'
         } catch {
             $last = $_.Exception.Message
