@@ -126,6 +126,25 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 
 只有在 `stack` 探测不回答 `ok` 时，item_stack_request 才算 unsupported。
 
+## 服务端目标（客户端服务端共同调试模式）
+
+用 `--target_type=server` 构建的 BeDD 运行在装了 LeviLamina 的 Bedrock 专用服务器里，以同样的格式提供
+`\\.\pipe\<pipeName>`（默认 `BeDD-Server`）。游戏速度由服务端主导：它把自己的速度用 LevelEvent 包（`mEventId` 3007，
+SimTimeScale；`mPos` 0,0,0；`mData` 为浮点速度的位）广播给每个玩家，速度改变时发一次，每个玩家生成后再单独发一次；客户端上的 BeDD 跟随它。
+其他操作回答 `unknown op`。
+
+| 操作 | 字段 | 回复 |
+|---|---|---|
+| `ping` | | `protocol`、`pid`、`target:"server"`（没有 `hwnd`） |
+| `state` | | `target:"server"`、`clients`、`loopbackOnly`、`stats{loopbackRebinds, serverQueriesRefused}` |
+| `server` | | `tick`（世界当前刻）、`tps`（最近 2 秒实测的刻数）、`paused`、`port`（`server-port`）、`players[{name, xuid}]` |
+| `timescale` | 无：探测 | `scale`、`paused`、`source` default\|config\|local、`tps{client:null, server}`（实测）、`ticksPerSecond`（速度要求的：20 × scale，暂停时为 0） |
+| `timescale` | `scale` 0.05..20 和/或 `paused` true\|false；`timeoutMs`（5000） | 改变后的探测结果。在服务器线程上执行（`ServerInstance::queueForServerThread`，暂停时也会执行）：速度直接写进模拟计时器（`Minecraft::setSimTimeScale` 是乘法且上限为 10），暂停用 `setSimTimePause` |
+| `command` | `command`（开头的 `/` 可有可无）；`timeoutMs`（10000） | `success`、`successCount`、`output[]`（翻译后的各行），和服务器控制台执行的一样 |
+
+错误：`not_in_level`（服务器还没启动）、`bad_args`、`timeout`（服务器线程没有回应）。`tps.server` 是服务器实际达到的：
+速度很高时，如果一刻的耗时超过速度允许的时间，它会低于 `ticksPerSecond`。
+
 ## 管理管道
 
 `\\.\pipe\BeDD-Manager-<会话 id>`（仅当前用户），由 `BeDDManager.ps1` 提供，和控制管道一样是 JSON 行。

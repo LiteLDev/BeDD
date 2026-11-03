@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-  Build BeDD into bin\BeDD, on a PC that may not have the build tools yet.
+  Build BeDD into bin\BeDD (or the server mod into bin\BeDD-server), on a PC that may not have the
+  build tools yet.
 
 .DESCRIPTION
   Finds xmake, LLVM (clang-cl) and the Visual Studio C++ build tools, installs whatever is missing
@@ -10,9 +11,14 @@
 
 .EXAMPLE
   pwsh -NoProfile -File tools/build.ps1
+
+.EXAMPLE
+  pwsh -NoProfile -File tools/build.ps1 -TargetType server
+  The mod for a Bedrock Dedicated Server (the client+server mode), into bin\BeDD-server.
 #>
 param(
-    [ValidateSet('release', 'debug')][string]$Mode = 'release'
+    [ValidateSet('release', 'debug')][string]$Mode = 'release',
+    [ValidateSet('client', 'server')][string]$TargetType = 'client'
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path "$PSScriptRoot/..").Path
@@ -66,16 +72,22 @@ $null = git -C $Root describe --tags 2>&1
 if ($LASTEXITCODE) { Write-Build 'no git tag here (shallow clone?): fetching tags for the version'; git -C $Root fetch --tags --quiet }
 $ErrorActionPreference = 'Stop'
 
+# xmake-requires.lock pins the packages of both targets, but xmake rewrites it with the configured
+# target's pins only: it is put back as it was once the build is done.
+$lockFile = Join-Path $Root 'xmake-requires.lock'
+$lock = if (Test-Path $lockFile) { [IO.File]::ReadAllBytes($lockFile) }
+
 # -P: xmake would otherwise build an enclosing project instead (a worktree inside another checkout).
 Push-Location $Root
 try {
     & $xmake repo -u -P $Root
     if ($LASTEXITCODE) { throw "xmake repo -u failed (exit code $LASTEXITCODE)" }
-    & $xmake f -P $Root -a x64 -m $Mode -p windows --target_type=client -y
+    & $xmake f -P $Root -a x64 -m $Mode -p windows --target_type=$TargetType -y
     if ($LASTEXITCODE) { throw "xmake f failed (exit code $LASTEXITCODE)" }
     & $xmake -P $Root -y
     if ($LASTEXITCODE) { throw "xmake failed (exit code $LASTEXITCODE)" }
 } finally {
+    if ($lock) { [IO.File]::WriteAllBytes($lockFile, $lock) }
     Pop-Location
 }
-Write-Build "done: $(Join-Path $Root 'bin\BeDD')"
+Write-Build "done: $(Join-Path $Root $(if ($TargetType -eq 'server') { 'bin\BeDD-server' } else { 'bin\BeDD' }))"
