@@ -33,6 +33,7 @@ See [Development](#development) below. The code is small:
 | `src/GameState.cpp`, `src/Look.cpp` | `world` snapshot and absolute `look` (`gameHooks`) |
 | `src/GameActions.cpp` | `slot`, `action` and tick-based `button` ops (`gameHooks`) |
 | `src/Stack.cpp` | `stack` op (`allowStack`): item stack requests sent by the local client |
+| `src/TimeScale.cpp` | `timescale` op and `timeScale`: game speed of the client and its local server, tick rates, a BeDD server's scale (level event 3007) |
 | `src/TapSink.h` | the frame type and sink chain every tap publisher shares (keep it byte-identical) |
 | `src/Tap.cpp`, `src/Tap.h` | tap pipe: framing, markers, writer thread, the `tap` op |
 | `src/NetTap.cpp` | tap capture on a remote server link, and the blob cache switch |
@@ -208,8 +209,8 @@ version (`ping`.`protocol`) stays 1: newer ops are found by calling them (below)
 
 Several clients can be connected at once (config `pipeInstances`, default 4; 1 = one at a time),
 each served by its own thread. Ops that post window input are serialized, so two clients never
-interleave a press or a typed text; `ping`, `state`, `tap`, `world`, `look`, `input`, `send` and
-`stack` run without that lock (they only read, or hand their work to the client thread). What a
+interleave a press or a typed text; `ping`, `state`, `tap`, `world`, `look`, `input`, `send`,
+`stack` and `timescale` run without that lock (they only read, or hand their work to the game threads). What a
 client holds is released when it disconnects (or its process dies), and nothing another client
 holds: its keys and mouse buttons, the `button` holds it made and the `input` override it set. Ops
 the manager window forwards over the manager link are neither serialized nor owned.
@@ -337,6 +338,41 @@ them on.
 - The server checks every request (stack ids, open screen, recipe). A screen the request needs (the
   inventory, a chest) must already be open in the game: open it with `action inventory`, `key E` or
   by using the block.
+
+#### `timescale`: game speed
+
+Not behind a config key. It changes the speed of a world this game hosts (singleplayer, or a LAN
+world it hosts): the client and its local server, together.
+
+| Form | Reply |
+|---|---|
+| `{op:"timescale"}` (probe) | `{ok, scale, paused, source, tps:{client, server}, ticksPerSecond, effective:{client, server}, local, inLevel}` |
+| `{op:"timescale", scale?, paused?, timeoutMs=2000}` | the probe's fields, once the client and the local server both run at it |
+
+- `scale` is clamped to 0.05..20 (1 = normal, 20 ticks a second). `paused:true` stops the ticks of both sides
+  (`Minecraft::setSimTimePause`) and `false` resumes them. The game's own pause menu pauses and resumes the same
+  way.
+- `source`: `default` (1, nothing set), `config` (`timeScale`, applied on entering the world), `local` (set through the
+  pipe), `server` (a server running BeDD set it).
+- `tps.client`, `tps.server`: ticks of the client and of the local server per second, measured over the last 2 s (so
+  they trail a change by up to 2 s; 0 while paused). `tps.server` is `null` on a remote server. `ticksPerSecond`: the
+  client timer's base rate (20). `effective.client` / `effective.server`: `{scale, paused, ticksPerSecond}` as each
+  side's Minecraft reported them after it last applied a change (`null` before the first).
+- Each side is changed on its own thread: the server's through `ServerInstance::queueForServerThread`, the client's
+  after the next `ClientInstance::update` (frames go on while the ticks are paused). The scale is written to the sim
+  timer (`Timer::mTimeScale`) directly: `Minecraft::setSimTimeScale` multiplies the current scale and caps it at 10,
+  so it is not idempotent. A timer catches up only a few ticks per frame, so `tps` shows what the game achieves. With
+  a local world, client and server alike: 0.05 → 1, 0.5 → 10, 2 → 40, 3 → 60, 5 → 100, 10 → 200, 20 → 400 ticks a
+  second; the same scale set again changes nothing.
+- Leaving a world puts the client back to 1; entering one applies `timeScale` (default 1), so nothing of the last
+  world carries over.
+- Errors: `not_in_level`; `remote` (the world is on a server this game does not host: its speed cannot change from the
+  client); `server_led` (that server runs BeDD and has sent its scale: change it there); `timeout` (a side did not
+  apply it in time: it still does once its thread runs, and `effective` shows it); `refused`; `bad_args`.
+- Server-led: a server running BeDD sends each player a level_event packet (`event_id` 3007 SimTimeScale, position
+  0,0,0, `data` = the scale's float bits as int32) when its scale changes and when the player joins. The client applies
+  it (hooked `ClientNetworkHandler::handle(LevelEventPacket)`, after the game's own handling, and only where the game
+  did not already reach that scale).
 
 #### Who sends what (bedboo transport `bedd`)
 

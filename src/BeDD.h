@@ -71,8 +71,8 @@ struct Options {
     std::vector<int> sendAllow{9, 77};
     /// Allow the `stack` op: the local client sends item stack requests a caller serialized (Stack.cpp).
     bool allowStack = false;
-    /// Game speed (Minecraft::setSimTimeScale), 0.05..20. A server applies it once it has started
-    /// and broadcasts it to its players (LevelEvent 3007).
+    /// Game speed, 0.05..20; 1 = normal. A client applies it on entering a world it hosts
+    /// (TimeScale.cpp); a server once it has started, and broadcasts it to its players (LevelEvent 3007).
     float timeScale = 1.0f;
 };
 
@@ -351,6 +351,17 @@ void installStack();
 void uninstallStack();
 /// The `stack` op: the whole reply (`ok`, `code` on errors).
 [[nodiscard]] nlohmann::json stackOp(nlohmann::json const& req);
+} // namespace bedd
+
+// ---------------------------------------------------------------------------------------------
+// Time scale (TimeScale.cpp): the `timescale` op and config timeScale, client and local server.
+// ---------------------------------------------------------------------------------------------
+namespace bedd {
+/// Tick listeners (rates, config timeScale on entry, reset on exit) and the SimTimeScale level event hook.
+void installTimeScale();
+void uninstallTimeScale();
+/// The `timescale` op: the whole reply (`ok`, `code` on errors).
+[[nodiscard]] nlohmann::json timeScaleOp(nlohmann::json const& req);
 } // namespace bedd
 
 // ---------------------------------------------------------------------------------------------

@@ -382,6 +382,8 @@ json handle(json const& j) {
         r = sendOp(j);
     } else if (op == "stack") {
         r = stackOp(j);
+    } else if (op == "timescale") {
+        r = timeScaleOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
@@ -474,7 +476,7 @@ std::mutex gInputMutex;
 int maxInstances() { return std::clamp(options().pipeInstances, 1, PIPE_UNLIMITED_INSTANCES - 1); }
 
 // Ops that run without gInputMutex: they post no window input. `tap` and `world` only read;
-// `look`, `input`, `send` and `stack` hand their work to the client thread (and may wait for it,
+// `look`, `input`, `send`, `stack` and `timescale` hand their work to the client thread (and may wait for it,
 // up to their timeoutMs), so serializing them would only stall the other clients.
 bool concurrentOp(std::string const& line) {
 #ifdef LL_PLAT_S
@@ -485,7 +487,7 @@ bool concurrentOp(std::string const& line) {
     if (!req.is_object()) return true;
     std::string op = req.value("op", "");
     return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
-        || op == "stack";
+        || op == "stack" || op == "timescale";
 }
 
 std::string handleClientLine(std::string const& line) {

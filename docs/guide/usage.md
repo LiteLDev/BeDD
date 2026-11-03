@@ -37,6 +37,7 @@ cursor, presses real keys or changes the foreground window.
 | `Set-BeDDButton attack -Action down -ReleaseOnBlockChange` | hold attack/use/pick for game ticks or until the targeted block breaks, without blocking the pipe (`gameHooks`) |
 | `Send-BeDDPacket -Base64 ...` | the player sends a chat or command packet a script serialized (`allowSend`) |
 | `Send-BeDDStack -Buffer ...` / `-View` | the player sends an item stack request a script serialized; `-View` shows the inventory as the client sees it (`allowStack`) |
+| `Get-BeDDTimeScale` / `Set-BeDDTimeScale 3` | the game speed of a world this game hosts, client and local server together, with the ticks per second measured; `-Paused` stops the ticks, `-Paused:$false` resumes them |
 
 The commands marked `gameHooks`, `allowSend` or `allowStack` need that [config key](/guide/configuration) turned on;
 they exist for [bedboo](https://github.com/LiteLDev/bedboo)'s transport `bedd`. `Invoke-BeDD @{ op = '...' }` sends

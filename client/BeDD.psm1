@@ -271,8 +271,25 @@ function Send-BeDDStack($Buffer, [switch]$View, [int]$TimeoutMs = 2000) {
     Invoke-BeDD $r -NoThrow:(-not $View -and $null -eq $Buffer)
 }
 
+# Game speed of the client and the local server it hosts (`timescale` op; config timeScale applies
+# one on entering a world). Returns {scale, paused, source, tps{client, server}, ticksPerSecond}: the
+# tick rates are measured, so a scale the game cannot keep up with shows as fewer ticks.
+function Get-BeDDTimeScale { Invoke-BeDD @{ op = 'timescale' } }
+
+# Sets the game speed (-Scale 0.05..20, 1 = normal) and/or pauses it (-Paused, -Paused:$false
+# resumes); returns once the client and the local server both run at it. On a remote server it fails
+# (code remote), and on a server running BeDD the server leads (code server_led).
+function Set-BeDDTimeScale([double]$Scale, [switch]$Paused, [int]$TimeoutMs = 2000) {
+    $r = @{ op = 'timescale'; timeoutMs = $TimeoutMs }
+    if ($PSBoundParameters.ContainsKey('Scale')) { $r.scale = $Scale }
+    if ($PSBoundParameters.ContainsKey('Paused')) { $r.paused = [bool]$Paused }
+    if ($r.Count -eq 2) { throw 'Set-BeDDTimeScale: give -Scale and/or -Paused' }
+    Invoke-BeDD $r
+}
+
 Export-ModuleMember -Function Connect-BeDD, Set-BeDDPipe, Disconnect-BeDD, Test-BeDD, Invoke-BeDD,
     Set-BeDDCrashLogger, Get-BeDDState, Set-BeDDWindow, Send-BeDDKey, Send-BeDDText,
     Send-BeDDMouse, Send-BeDDRaw, Clear-BeDDInput, Get-BeDDBitmap, Save-BeDDScreenshot,
     Get-BeDDWorld, Set-BeDDLook,
-    Set-BeDDInput, Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton, Send-BeDDPacket, Send-BeDDStack
+    Set-BeDDInput, Set-BeDDSlot, Invoke-BeDDAction, Set-BeDDButton, Send-BeDDPacket, Send-BeDDStack,
+    Get-BeDDTimeScale, Set-BeDDTimeScale

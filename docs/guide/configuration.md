@@ -24,6 +24,7 @@ program, and its console window would flash on the desktop at every game start.
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
 | `timeScale` | server target: game speed (0.05..20, default `1`) applied once the server has started and sent to its players, whose BeDD follows it |
 | `pipeInstances` | default `4`: scripts that may use the game's pipe at once (each one's held keys, buttons and `input` override are released when it disconnects); `1` = one at a time |
+| `timeScale` | default `1`: the game speed (0.05..20) of every world this game hosts, set when it enters one (`Set-BeDDTimeScale` changes it later; on a remote server it does nothing) |
 
 ## Keys for bedboo
 

@@ -18,9 +18,12 @@
 #>
 param(
     [switch]$Trace,
+    # Game speed of every world the game enters (config timeScale, 1 = normal).
+    [double]$TimeScale = 1,
     [int]$MaxMinutes = 60
 )
 $ErrorActionPreference = 'Stop'
+$SetTimeScale = $PSBoundParameters.ContainsKey('TimeScale') # Start-DevGame has bound parameters of its own
 
 $Root         = (Resolve-Path "$PSScriptRoot/..").Path
 # The game instance (set up first if this PC lacks something) and LeviLauncher.
@@ -97,8 +100,9 @@ try {
         Copy-Item -Recurse $bin $ModDest
         New-Item -ItemType Directory -Force (Join-Path $ModDest 'config') | Out-Null
         $managerScript = Join-Path $bin 'BeDDManager.ps1'
-        @{ clientWidth = 1600; clientHeight = 900; trace = [bool]$Trace; managerScript = $managerScript } |
-            ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ModDest 'config\config.json')
+        $config = @{ clientWidth = 1600; clientHeight = 900; trace = [bool]$Trace; managerScript = $managerScript }
+        if ($SetTimeScale) { $config.timeScale = $TimeScale }
+        $config | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ModDest 'config\config.json')
         Write-Dev "deployed $bin -> $ModDest"
         if (-not (& $managerScript -Ensure)) { throw 'the manager window did not start (it needs PowerShell 7, pwsh)' }
         # The window that has the foreground now gets it back when the game window appears.
