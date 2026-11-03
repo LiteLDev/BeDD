@@ -37,6 +37,13 @@ jobs:
 
       - run: xmake -v -y
 
+      # xmake rewrote the lock with the client's pins only: the server builds from the committed one.
+      - run: git checkout -- xmake-requires.lock
+
+      - run: xmake f -a x64 -m release -p windows -v --target_type=server -y
+
+      - run: xmake -v -y
+
       - name: Check PowerShell scripts parse
         shell: pwsh
         run: |
@@ -62,3 +69,9 @@ jobs:
           name: ${{ github.event.repository.name }}-${{ github.sha }}-client-windows-x64
           path: |
             bin/BeDD/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ github.event.repository.name }}-${{ github.sha }}-server-windows-x64
+          path: |
+            bin/BeDD-server/

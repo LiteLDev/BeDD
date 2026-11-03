@@ -18,10 +18,11 @@ program, and its console window would flash on the desktop at every game start.
 |---|---|
 | `clientWidth`, `clientHeight` | game window size (0 = leave it), so clicks land in the same place every run |
 | `pipeName` | one per game instance when several run at once |
-| `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new instance, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). Dedicated servers your harness starts still ask once per server folder; **Cancel** is fine |
+| `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new instance, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). Dedicated servers your harness starts still ask once per server folder (**Cancel** is fine), unless they run BeDD's server target: there it is on by default too and keeps the server on loopback (its IPv4/IPv6 ports, LAN discovery and NetherNet), so no prompt; `state` reports it. Its port is then reachable at `127.0.0.1` only |
 | `managerScript` | path of `BeDDManager.ps1` (`Install-BeDDMod` writes it): the game starts the [manager window](/guide/several-games#the-manager-window) with it when none runs |
 | `mute` | default `true`: the game makes no sound |
 | `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
+| `timeScale` | server target: game speed (0.05..20, default `1`) applied once the server has started and sent to its players, whose BeDD follows it |
 | `pipeInstances` | default `4`: scripts that may use the game's pipe at once (each one's held keys, buttons and `input` override are released when it disconnects); `1` = one at a time |
 
 ## Keys for bedboo

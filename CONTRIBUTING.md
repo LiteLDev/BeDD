@@ -23,7 +23,8 @@ See [Development](#development) below. The code is small:
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
 | `src/Audio.cpp` | FMOD hooks: the game's master channel group is muted (`mute`) |
-| `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`: no firewall prompt, no queries to servers off the PC) |
+| `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`: no firewall prompt, no queries to servers off the PC); in the server target too |
+| `src/ServerTimeScale.cpp` | server target only: the `server`, `timescale` and `command` ops, config `timeScale`, LevelEvent 3007 to the players |
 | `src/Pipe.cpp` | control pipe and protocol |
 | `src/Manager.cpp` | link to the session's manager window |
 | `src/Trace.cpp` | trace-mode input logging |
@@ -79,6 +80,19 @@ xmake -y        # -> bin\BeDD\ (DLL, manifest and everything in client\)
 ```
 
 The mod packer reads the version from `git describe`, so the repository needs at least one commit.
+
+**Server target** (the client+server mode): `tools/build.ps1 -TargetType server`, or
+`--target_type=server` above, builds the mod a Bedrock Dedicated Server with LeviLamina runs, into
+`bin\BeDD-server\` (DLL and manifest, platform `server`). It holds the control pipe, the loopback-only
+network and the server ops (`src/ServerTimeScale.cpp`) and nothing of the client (`xmake.lua` lists
+its files; the rest of `src/` needs the client's LeviLamina headers). Copy the folder into the
+server's `plugins\` (LeviLamina's mods folder on a server, `plugins\BeDD-server\`); it reads
+`plugins\BeDD-server\config\config.json` and serves `\\.\pipe\BeDD-Server`.
+
+`xmake-requires.lock` pins the packages of both targets, but xmake rewrites it with the configured
+target's pins only. `tools/build.ps1` puts it back after building; by hand, `git checkout
+xmake-requires.lock` before you configure the other target (CI does the same). To move a pin,
+configure each target, keep both targets' entries, and commit the union.
 
 `tools\dev.ps1 [-Trace]` is a playground: it takes the shared e2e lock
 (`%APPDATA%\levilauncher.exe\bei-e2e.lock`), deploys the mod into the instance BeDD finds (set up
@@ -463,6 +477,27 @@ their seq and order and carry flag `replay`.
   `seen` (clientbound frames), `compacted` (replaced by a later frame with the same key), `pruned`
   (entities whose add frame `remove_entity` deleted), `transient` (not kept), `overCap` (not kept
   past `tapJournalMiB`), `resets` and `replays`.
+
+#### Server target (client+server mode)
+
+BeDD built with `--target_type=server` runs inside a Bedrock Dedicated Server with LeviLamina and
+serves `\\.\pipe\<pipeName>` (default `BeDD-Server`) with the same framing. The server leads the
+game speed: it broadcasts its scale to every player as a LevelEvent packet (`mEventId` 3007,
+SimTimeScale; `mPos` 0,0,0; `mData` the bits of the float scale), whenever it changes and to each
+player once it has spawned; BeDD on a client follows it. Other ops answer `unknown op`.
+
+| op | fields | reply |
+|---|---|---|
+| `ping` | | `protocol`, `pid`, `target:"server"` (no `hwnd`) |
+| `state` | | `target:"server"`, `clients`, `loopbackOnly`, `stats{loopbackRebinds, serverQueriesRefused}` |
+| `server` | | `tick` (the level's current tick), `tps` (ticks measured over the last 2 s), `paused`, `port` (`server-port`), `players[{name, xuid}]` |
+| `timescale` | none: probe | `scale`, `paused`, `source` default\|config\|local, `tps{client:null, server}` (measured), `ticksPerSecond` (what the scale asks for: 20 × scale, 0 while paused) |
+| `timescale` | `scale` 0.05..20 and/or `paused` true\|false; `timeoutMs` (5000) | as the probe, after the change. Runs on the server thread (`ServerInstance::queueForServerThread`, which also runs while paused): the scale goes straight into the simulation timer (`Minecraft::setSimTimeScale` multiplies and caps at 10), the pause through `setSimTimePause` |
+| `command` | `command` (a leading `/` is optional); `timeoutMs` (10000) | `success`, `successCount`, `output[]` (the translated lines), run as the server console would |
+
+Errors: `not_in_level` (the server has not started), `bad_args`, `timeout` (the server thread did
+not answer). `tps.server` is what the server achieves: at a high scale it may stay below
+`ticksPerSecond` when a tick takes longer than the scale allows.
 
 ### Manager pipe
 

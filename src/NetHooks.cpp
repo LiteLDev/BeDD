@@ -15,6 +15,11 @@
 //
 // Installed in load(), before the game sets up its network, and active for the whole process
 // (also after the game was handed back to the user: new sockets would raise the prompt then).
+//
+// In a Bedrock Dedicated Server (the server target) the same hooks keep the server on the PC: its
+// RakNet ports (IPv4 and IPv6), LAN discovery and NetherNet. There a UDP bind (or a TCP bind with a
+// fixed port) to any address off loopback goes to loopback, not only one to the wildcard: NetherNet
+// (WebRTC) binds each network interface's own address, which would raise the prompt as well.
 #include "BeDD.h"
 
 #include <winsock2.h>
@@ -48,23 +53,64 @@ struct NetHook {
 
 std::atomic<uint64_t> gRebound{}, gServerQueriesRefused{};
 
+#ifdef LL_PLAT_S
+constexpr bool kAnyAddress = true; // also binds to an interface's own address (see above)
+#else
+constexpr bool kAnyAddress = false;
+#endif
+
+bool rebindV4(in_addr const& a) {
+    return a.s_addr == htonl(INADDR_ANY) || (kAnyAddress && (ntohl(a.s_addr) >> 24) != 127);
+}
+
+bool v4MappedLoopback(in6_addr const& a) { return IN6_IS_ADDR_V4MAPPED(&a) && a.u.Byte[12] == 127; }
+
+bool rebindV6(in6_addr const& a) {
+    return IN6_IS_ADDR_UNSPECIFIED(&a) || (kAnyAddress && !IN6_IS_ADDR_LOOPBACK(&a) && !v4MappedLoopback(a));
+}
+
+// The loopback address for an IPv6 socket. A dual-stack one (IPV6_V6ONLY off: BDS serves IPv4 and
+// IPv6 on server-port that way) takes IPv4's, ::ffff:127.0.0.1, on the server: on ::1 it would
+// lose the IPv4 clients, and those are the ones that join 127.0.0.1.
+in6_addr loopbackV6(SOCKET s) {
+    if (kAnyAddress) {
+        DWORD v6only = 1;
+        int   len    = sizeof(v6only);
+        if (getsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&v6only), &len) == 0 && !v6only) {
+            in6_addr mapped{};
+            mapped.u.Byte[10] = 0xff;
+            mapped.u.Byte[11] = 0xff;
+            mapped.u.Byte[12] = 127;
+            mapped.u.Byte[15] = 1;
+            return mapped;
+        }
+    }
+    return in6addr_loopback;
+}
+
 int WSAAPI d_bind(SOCKET s, sockaddr const* name, int namelen) {
     if (!name) return o_bind(s, name, namelen);
     int type = 0, typeLen = sizeof(type);
     getsockopt(s, SOL_SOCKET, SO_TYPE, reinterpret_cast<char*>(&type), &typeLen);
     if (name->sa_family == AF_INET && namelen >= static_cast<int>(sizeof(sockaddr_in))) {
         sockaddr_in a = *reinterpret_cast<sockaddr_in const*>(name);
-        if (a.sin_addr.s_addr == htonl(INADDR_ANY) && (type == SOCK_DGRAM || a.sin_port != 0)) {
+        if (rebindV4(a.sin_addr) && (type == SOCK_DGRAM || a.sin_port != 0)) {
             a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
             gRebound.fetch_add(1, std::memory_order_relaxed);
             return o_bind(s, reinterpret_cast<sockaddr const*>(&a), sizeof(a));
         }
     } else if (name->sa_family == AF_INET6 && namelen >= static_cast<int>(sizeof(sockaddr_in6))) {
         sockaddr_in6 a = *reinterpret_cast<sockaddr_in6 const*>(name);
-        if (IN6_IS_ADDR_UNSPECIFIED(&a.sin6_addr) && (type == SOCK_DGRAM || a.sin6_port != 0)) {
-            a.sin6_addr = in6addr_loopback;
+        if (rebindV6(a.sin6_addr) && (type == SOCK_DGRAM || a.sin6_port != 0)) {
+            a.sin6_addr = loopbackV6(s);
             gRebound.fetch_add(1, std::memory_order_relaxed);
-            return o_bind(s, reinterpret_cast<sockaddr const*>(&a), sizeof(a));
+            int r = o_bind(s, reinterpret_cast<sockaddr const*>(&a), sizeof(a));
+            // 127.0.0.1 at that port may be an IPv4 socket's already: then ::1.
+            if (r != 0 && WSAGetLastError() == WSAEADDRINUSE && !IN6_IS_ADDR_LOOPBACK(&a.sin6_addr)) {
+                a.sin6_addr = in6addr_loopback;
+                r           = o_bind(s, reinterpret_cast<sockaddr const*>(&a), sizeof(a));
+            }
+            return r;
         }
     }
     return o_bind(s, name, namelen);
@@ -89,6 +135,16 @@ std::array gHooks{
 };
 
 } // namespace
+
+#ifdef LL_PLAT_S // the client build has it in ApiHooks.cpp (keep the two the same)
+HookPause::HookPause() {
+    if (!ll::memory::shouldHookSuspendThreads()) return;
+    HANDLE heap   = GetProcessHeap();
+    bool   locked = HeapLock(heap) != FALSE;
+    mPauser.emplace();
+    if (locked) HeapUnlock(heap);
+}
+#endif
 
 void installNetHooks() {
     // Resolved before the pause: GetProcAddress takes loader locks a paused thread may hold.

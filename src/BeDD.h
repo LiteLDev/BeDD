@@ -40,7 +40,11 @@ struct Options {
     /// Log message and API-hook statistics every few seconds.
     bool trace = false;
     /// Control pipe name (\\.\pipe\<name>); one per game instance when several run in parallel.
+#ifdef LL_PLAT_S
+    std::string pipeName = "BeDD-Server";
+#else
     std::string pipeName = "BeDD";
+#endif
     /// Keep the game on the PC: wildcard bind()s become loopback ones (no firewall prompts) and
     /// servers off the PC are not queried (no bogus "LAN worlds").
     bool loopbackOnly = true;
@@ -67,6 +71,9 @@ struct Options {
     std::vector<int> sendAllow{9, 77};
     /// Allow the `stack` op: the local client sends item stack requests a caller serialized (Stack.cpp).
     bool allowStack = false;
+    /// Game speed (Minecraft::setSimTimeScale), 0.05..20. A server applies it once it has started
+    /// and broadcasts it to its players (LevelEvent 3007).
+    float timeScale = 1.0f;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -344,4 +351,19 @@ void installStack();
 void uninstallStack();
 /// The `stack` op: the whole reply (`ok`, `code` on errors).
 [[nodiscard]] nlohmann::json stackOp(nlohmann::json const& req);
+} // namespace bedd
+
+// ---------------------------------------------------------------------------------------------
+// Server target (ServerTimeScale.cpp, target_type=server): BeDD inside a Bedrock Dedicated Server.
+// ---------------------------------------------------------------------------------------------
+#include <nlohmann/json_fwd.hpp>
+
+namespace bedd {
+/// Tick counter, config timeScale at ServerStartedEvent, the scale re-sent to each joining player.
+void startServerTimeScale();
+void stopServerTimeScale();
+/// The server's `server`, `timescale` and `command` ops: the whole reply (`ok`, `code` on errors).
+[[nodiscard]] nlohmann::json serverInfoOp(nlohmann::json const& req);
+[[nodiscard]] nlohmann::json serverTimeScaleOp(nlohmann::json const& req);
+[[nodiscard]] nlohmann::json serverCommandOp(nlohmann::json const& req);
 } // namespace bedd

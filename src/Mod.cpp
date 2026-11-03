@@ -65,7 +65,10 @@ void readOptions(std::filesystem::path const& file) {
             else log().warn("sendAllow: {} is not a packet id (0..1023); ignored", id.dump());
     }
     gOptions.allowStack   = j.value("allowStack", gOptions.allowStack);
+    gOptions.timeScale    = j.value("timeScale", gOptions.timeScale);
 }
+
+#ifndef LL_PLAT_S
 
 bool Mod::load() {
     // Flush every message so the harness sees them immediately.
@@ -130,6 +133,42 @@ bool Mod::disable() {
     uninstallMoveInputHooks();
     return true;
 }
+
+#else // LL_PLAT_S
+
+// In a Bedrock Dedicated Server there is no window, input, audio or manager window to take over:
+// the loopback-only network, the control pipe and the server units only (xmake.lua builds no
+// other source file).
+bool Mod::load() {
+    getSelf().getLogger().setFlushLevel(ll::io::LogLevel::Trace);
+    readOptions(getSelf().getConfigDir() / "config.json");
+    // Before the server opens its ports (load() runs before it starts): no firewall prompts.
+    if (gOptions.loopbackOnly) installNetHooks();
+    log().info(
+        "BeDD loaded (server): trace={} pipe={} loopbackOnly={} timeScale={}",
+        gOptions.trace,
+        gOptions.pipeName,
+        gOptions.loopbackOnly,
+        gOptions.timeScale
+    );
+    return true;
+}
+
+bool Mod::enable() {
+    startServerTimeScale(); // before the pipe: the tick counter runs before the first `server` op
+    startPipeServer();
+    log().info("BeDD enabled (server)");
+    return true;
+}
+
+bool Mod::disable() {
+    stopPipeServer(); // first: an op waiting on the server thread times out, then its client thread is joined
+    stopServerTimeScale();
+    uninstallNetHooks();
+    return true;
+}
+
+#endif // LL_PLAT_S
 
 } // namespace
 

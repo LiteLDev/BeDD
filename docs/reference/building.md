@@ -18,6 +18,19 @@ xmake -y        # -> bin\BeDD\ (DLL, manifest and everything in client\)
 
 The mod packer reads the version from `git describe`, so the repository needs at least one commit.
 
+**Server target** (the client+server mode): `tools/build.ps1 -TargetType server`, or
+`--target_type=server` above, builds the mod a Bedrock Dedicated Server with LeviLamina runs, into
+`bin\BeDD-server\` (DLL and manifest, platform `server`). It holds the control pipe, the loopback-only
+network and the server ops (`src/ServerTimeScale.cpp`) and nothing of the client (`xmake.lua` lists
+its files; the rest of `src/` needs the client's LeviLamina headers). Copy the folder into the
+server's `plugins\` (LeviLamina's mods folder on a server, `plugins\BeDD-server\`); it reads
+`plugins\BeDD-server\config\config.json` and serves `\\.\pipe\BeDD-Server`.
+
+`xmake-requires.lock` pins the packages of both targets, but xmake rewrites it with the configured
+target's pins only. `tools/build.ps1` puts it back after building; by hand, `git checkout
+xmake-requires.lock` before you configure the other target (CI does the same). To move a pin,
+configure each target, keep both targets' entries, and commit the union.
+
 `tools\dev.ps1 [-Trace]` is a playground: it takes the shared e2e lock
 (`%APPDATA%\levilauncher.exe\bei-e2e.lock`), deploys the mod into the instance BeDD finds (set up
 first on a new PC, see [Setting up a new PC](/guide/new-pc)), starts the manager window unless it runs,
@@ -53,7 +66,8 @@ terminal on the right, into the MP4, WebP and poster files.
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
 | `src/Audio.cpp` | FMOD hooks: the game's master channel group is muted (`mute`) |
-| `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`: no firewall prompt, no queries to servers off the PC) |
+| `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`: no firewall prompt, no queries to servers off the PC); in the server target too |
+| `src/ServerTimeScale.cpp` | server target only: the `server`, `timescale` and `command` ops, config `timeScale`, LevelEvent 3007 to the players |
 | `src/Pipe.cpp` | control pipe and protocol |
 | `src/Manager.cpp` | link to the session's manager window |
 | `src/Trace.cpp` | trace-mode input logging |
