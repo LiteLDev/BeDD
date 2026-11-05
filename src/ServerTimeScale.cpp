@@ -13,8 +13,9 @@
 // `timescale` probe report that measured rate (the timer may not catch up at a high scale), next to
 // the rate the scale asks for.
 //
-// Work for the server thread goes through ServerInstance::queueForServerThread: LeviLamina's
-// ServerThreadExecutor runs nothing while the simulation is paused, so a resume could not get through.
+// Work for the server thread runs after the server's next Minecraft::update (hooked), which goes on
+// while the simulation is paused: LeviLamina's ServerThreadExecutor runs nothing then, so a resume
+// could not get through it (and since 1.26.60 the game exports no ServerInstance::queueForServerThread).
 #include "BeDD.h"
 
 #include <bit>
@@ -38,6 +39,8 @@
 #include "ll/api/event/world/ServerLevelTickEvent.h"
 #include "ll/api/service/Bedrock.h"
 #include "ll/api/service/GamingStatus.h"
+#include "ll/api/memory/Hook.h"
+#include "ll/api/thread/ServerThreadExecutor.h"
 
 #include "mc/deps/core/math/Vec3.h"
 #include "mc/deps/core/string/HashedString.h"
@@ -82,6 +85,32 @@ ll::event::ListenerPtr gTickListener;
 ll::event::ListenerPtr gStartedListener;
 ll::event::ListenerPtr gJoinListener;
 ll::event::ListenerPtr gLeaveListener;
+
+// Work for the server thread (queueServer), run by the Minecraft::update hook.
+std::mutex                         gJobsMutex;
+std::vector<std::function<void()>> gJobs; // guarded by gJobsMutex
+std::atomic<bool>                  gJobsDue{false};
+bool                               gUpdateHooked = false; // guarded by gJobsMutex
+
+void queueServer(std::function<void()> fn) {
+    std::unique_lock lock(gJobsMutex);
+    if (!gUpdateHooked) {
+        lock.unlock();
+        ll::thread::ServerThreadExecutor::getDefault().execute(std::move(fn)); // not while paused
+        return;
+    }
+    gJobs.push_back(std::move(fn));
+    gJobsDue = true;
+}
+
+void runJobs() {
+    std::vector<std::function<void()>> jobs;
+    {
+        std::lock_guard lock(gJobsMutex);
+        jobs.swap(gJobs);
+    }
+    for (auto& job : jobs) job();
+}
 std::atomic<int>       gSource{static_cast<int>(Source::Default)};
 std::atomic<uint64_t>  gTick{};          // the level's current tick, as of its last tick
 std::atomic<bool>      gConfigApplied{}; // config timeScale was looked at (once)
@@ -185,7 +214,7 @@ std::optional<json> onServerThread(F fn, std::chrono::milliseconds timeout) {
     auto result  = promise->get_future();
     auto server  = ll::service::getServerInstance();
     if (!server) return json(fail("not_in_level", "the server has no ServerInstance"));
-    server->queueForServerThread([promise, fn = std::move(fn)]() mutable {
+    queueServer([promise, fn = std::move(fn)]() mutable {
         try {
             promise->set_value(fn());
         } catch (...) {
@@ -264,13 +293,26 @@ void applyConfig() {
 
 } // namespace
 
+// Outside the anonymous namespace: the macro's static members would be unused there.
+LL_TYPE_INSTANCE_HOOK(ServerUpdateHook, ll::memory::HookPriority::Normal, Minecraft, &Minecraft::update, bool) {
+    bool r = origin();
+    if (gJobsDue.exchange(false)) runJobs();
+    return r;
+}
+
 void startServerTimeScale() {
+    bool hooked = ServerUpdateHook::hook() == 0;
+    {
+        std::lock_guard lock(gJobsMutex);
+        gUpdateHooked = hooked;
+    }
+    if (!hooked) log().error("timescale: Minecraft::update could not be hooked: a paused server cannot be resumed");
     auto& bus        = ll::event::EventBus::getInstance();
     gTickListener    = bus.emplaceListener<ll::event::ServerLevelTickEvent>(onTick);
     gStartedListener = bus.emplaceListener<ll::event::ServerStartedEvent>([](ll::event::ServerStartedEvent&) { applyConfig(); });
     // LeviLamina enables mods once the server has started, after ServerStartedEvent (and before it
     // reports GamingStatus::Running): the first server thread task applies it then.
-    if (auto server = ll::service::getServerInstance()) server->queueForServerThread(applyConfig);
+    if (ll::service::getServerInstance()) queueServer(applyConfig);
     // After spawn (LeviLamina fires it when the player is initialized): the client is ready to follow.
     gJoinListener = bus.emplaceListener<ll::event::PlayerJoinEvent>([](ll::event::PlayerJoinEvent& ev) {
         Player& p = ev.self();
@@ -298,6 +340,14 @@ void stopServerTimeScale() {
         if (*l) bus.removeListener(*l);
         l->reset();
     }
+    bool hooked;
+    {
+        std::lock_guard lock(gJobsMutex);
+        hooked        = gUpdateHooked;
+        gUpdateHooked = false;
+        gJobs.clear(); // their promises break: a waiting op answers at once
+    }
+    if (hooked) ServerUpdateHook::unhook();
 }
 
 json serverInfoOp(json const&) {

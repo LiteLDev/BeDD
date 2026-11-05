@@ -40,7 +40,7 @@ namespace {
 
 namespace tap = bedd::tap;
 
-// Packet ids (bedrock protocol 1.26.51).
+// Packet ids (bedrock protocol; the same in 1.26.51 and 1.26.60).
 enum : uint32_t {
     kText                        = 9,
     kSetTime                     = 10,

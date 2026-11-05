@@ -51,7 +51,7 @@ start of a run and remove it afterwards ([see below](#plug-it-into-a-harness)); 
 unzip it into the instance's `mods\` folder. Be.D.D. is not a lip package and is not listed on
 LeviMC Mods.
 
-Needs Minecraft Bedrock Edition **1.26.51** (GDK) with LeviLamina **26.51.x** (client), in a game
+Needs Minecraft Bedrock Edition **1.26.60** (GDK) with LeviLamina **26.60.x** (client), in a game
 instance installed with LeviLauncher. Tests start that instance with `Start-BeDDGame.ps1`
 rather than through the launcher ([see below](#several-games-at-once)). Only the test PC's game
 needs it; servers and players do not.
@@ -65,7 +65,7 @@ lacks, each step only once:
 | Missing | What happens |
 |---|---|
 | LeviLauncher | the installed one is used; otherwise the latest release is downloaded to `%LOCALAPPDATA%\BeDD\tools` |
-| the game | LeviLauncher opens and the script waits while you sign in with a Microsoft account that owns Minecraft and install 1.26.51 (a script cannot do this step; with `CI` set it fails with these instructions instead) |
+| the game | LeviLauncher opens and the script waits while you sign in with a Microsoft account that owns Minecraft and install 1.26.60 (a script cannot do this step; with `CI` set it fails with these instructions instead) |
 | LeviLamina | installed into the instance with [lip](https://github.com/LiteLDev/lip), which is downloaded with the .NET runtime it needs (per user, no admin) |
 | LeviLauncher's loader in the game exe | the instance is started once through LeviLauncher, which adds it, and the game is closed again. Without the loader the game would use your normal Minecraft data instead of the instance's |
 | a clone (`-Slot 2` and up) | made from the base instance, and refreshed when the base instance has changed since |
@@ -75,7 +75,7 @@ $i = & .\Initialize-BeDD.ps1 -Slot 2    # Name, Dir, ModsDir, PipeName of versio
 ```
 
 BeDD finds LeviLauncher's data in `%APPDATA%\levilauncher.exe`, follows its "data folder" setting
-(`base_root`), and picks the instance of 1.26.51 there (one with LeviLamina first). To point it
+(`base_root`), and picks the instance of 1.26.60 there (one with LeviLamina first). To point it
 elsewhere, set `BEDD_INSTANCE` (instance name), `BEDD_VERSIONS_DIR`, `BEDD_LAUNCHER_DATA`,
 `BEDD_LEVILAUNCHER` (LeviLauncher.exe) or `BEDD_LIP` (lip.exe).
 
@@ -130,9 +130,9 @@ Key names: letters, digits, `ESC`, `ENTER`, `BACK`, `TAB`, `SPACE`, `SHIFT`, `CT
 ### Several games at once
 
 ```powershell
-pwsh -NoProfile -File clone-instance.ps1 -Slot 2                  # versions\1.26.51.01-hi2, ~90 MB, seconds
-& .\Start-BeDDGame.ps1 -Instance 1.26.51.01-hi2                # starts it without bringing it forward
-Connect-BeDD -PipeName BeDD-1.26.51.01-hi2   # the pipeName in that instance's config
+pwsh -NoProfile -File clone-instance.ps1 -Slot 2                  # versions\1.26.60.05-hi2, ~90 MB, seconds
+& .\Start-BeDDGame.ps1 -Instance 1.26.60.05-hi2                # starts it without bringing it forward
+Connect-BeDD -PipeName BeDD-1.26.60.05-hi2   # the pipeName in that instance's config
 ```
 
 `Start-BeDDGame.ps1 -Slot 2` (or `-Instance <base>-hi2`) makes the clone itself when it is missing. `clone-instance.ps1` takes slots 1 to 32; for a higher slot use `New-BeDDClone -Source <base> -Slot 41` from `BeDDSetup.psm1`.
@@ -156,7 +156,7 @@ Besides a game on its own (in a singleplayer world, or joined to a remote server
 
 ```powershell
 Import-Module .\BeDDSetup.psm1
-Initialize-BeDDServer -Name s1 -ModuleDir ..\BeDD-server   # BDS 1.26.51 + LeviLamina via lip, ports from 19140
+Initialize-BeDDServer -Name s1 -ModuleDir ..\BeDD-server   # BDS 1.26.60 + LeviLamina via lip, ports from 19140
 $s = & .\Start-BeDDServer.ps1 -Name s1                      # no window; log in logs\console.log
 Connect-BeDD -PipeName $s.PipeName                          # BeDD-Server-s1
 & .\Start-BeDDServer.ps1 -Name s1 -Stop

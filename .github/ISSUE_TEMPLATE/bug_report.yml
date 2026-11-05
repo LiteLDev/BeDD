@@ -30,7 +30,7 @@ body:
     id: levilamina
     attributes:
       label: LeviLamina and Minecraft versions
-      placeholder: LeviLamina 26.51.7, Minecraft 1.26.51.01
+      placeholder: LeviLamina 26.60.2, Minecraft 1.26.60.05
     validations:
       required: true
   - type: textarea

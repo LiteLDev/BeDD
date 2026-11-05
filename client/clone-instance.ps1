@@ -10,7 +10,7 @@
   harness deploys what it needs). An existing clone is brought up to date with its source (game
   files the source got since, e.g. from a LeviLamina update); -Force rebuilds it from scratch.
 
-  Without -Source it clones the Minecraft 1.26.51 instance BeDD finds (BeDDSetup.psm1), and sets
+  Without -Source it clones the Minecraft 1.26.60 instance BeDD finds (BeDDSetup.psm1), and sets
   the source up first if this PC lacks something (LeviLamina, LeviLauncher's loader, the game
   itself). Start-BeDDGame.ps1 makes a missing clone on its own, so harnesses need not call this.
 

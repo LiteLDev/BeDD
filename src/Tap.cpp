@@ -21,9 +21,9 @@
 #include <thread>
 #include <vector>
 
+#include "ll/api/Versions.h"
 #include "ll/api/mod/NativeMod.h"
 
-#include "mc/common/SharedConstants.h"
 
 #pragma comment(lib, "advapi32.lib")
 
@@ -207,8 +207,8 @@ void serveReader(HANDLE pipe) {
         {"m",        "HELLO"                                  },
         {"tap",      1                                        },
         {"mod",      modVersion()                             },
-        {"game",     "1.26.51.01"                             },
-        {"protocol", SharedConstants::NetworkProtocolVersion()},
+        {"game",     "1.26.60.05"                             },
+        {"protocol", ll::getNetworkProtocolVersion()          },
         {"pid",      GetCurrentProcessId()                    },
         {"link",     tap::netTapLink()                        },
         {"journal",  journal                                  },

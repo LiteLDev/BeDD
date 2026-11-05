@@ -4,7 +4,7 @@
 // bedboo builds item_stack_request packets with bedrock-protocol and predicts their result in its
 // own inventory model. In bedd mode the real client owns the connection, so the request goes out
 // through the client: the packet is rebuilt on the client thread (MinecraftPackets::createPacket +
-// readNoHeader) and sent through the local player (LocalPlayer::sendNetworkPacket).
+// Packet::read) and sent through the local player (LocalPlayer::sendNetworkPacket).
 //
 // Request ids. The server answers by request id, and the client numbers its own requests -1, -3,
 // -5, ... (TypedClientNetId<ItemStackRequestIdTag>). Each request gets a fresh odd id from a range
@@ -189,7 +189,7 @@ json sendNow(Level& level, Job const& job) {
     auto ns = ll::service::getNetworkSystem(true);
     if (!ns) return fail("not_in_level", "no network system");
     cereal::ReflectionCtx const& ctx  = *ns->mReflectionCtx;
-    Bedrock::Result<void>        read = base->readNoHeader(stream, ctx, SubClientId::PrimaryClient);
+    Bedrock::Result<void>        read = base->read(stream, ctx);
     if (!read) return fail("bad_args", "item_stack_request did not read: " + read.error().code().message());
     if (stream.mHasOverflowed) return fail("bad_args", "item_stack_request is truncated");
     // Bytes left over mean the caller's layout differs from the game's: the parse is not trusted.
@@ -293,7 +293,7 @@ void resync(Level& level) {
     auto                    ns     = ll::service::getNetworkSystem(true);
     if (!packet || !ns) return;
     ReadOnlyBinaryStream stream(std::string_view(kInventoryMismatch, sizeof(kInventoryMismatch)), false);
-    if (!packet->readNoHeader(stream, *ns->mReflectionCtx, SubClientId::PrimaryClient) || stream.mHasOverflowed
+    if (!packet->read(stream, *ns->mReflectionCtx) || stream.mHasOverflowed
         || stream.mReadPointer != sizeof(kInventoryMismatch)) {
         log().error("stack: the inventory resync packet did not read");
         return;

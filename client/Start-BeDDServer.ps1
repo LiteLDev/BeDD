@@ -14,7 +14,7 @@
   passes lines written to the pipe \\.\pipe\BeDD-BDS-<Name> to the server console (-Command, -Stop).
 
   Waits until the server is up ("Server started" in the log) and, when the server has the BeDD
-  module (plugins\BeDD), until its control pipe exists. Returns an object with Process, PipeName
+  module (mods\BeDD-server), until its control pipe exists. Returns an object with Process, PipeName
   ($null without the module), Port, PortV6, Dir and LogPath. A server already running is returned
   as it is.
 

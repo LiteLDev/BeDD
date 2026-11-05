@@ -101,14 +101,14 @@ maximum); a `timeoutMs` the caller passes is used as given. Likewise "the client
     also reach an open screen, and a rebound key breaks them.
 - **`slot`, `action`, `button`**: the pipe thread queues them and replies once the next client
   tick applied them (`timeoutMs`, default 1000): `{"ok":true,"tick":n,...}`, or `code`
-  `not_in_level`, `busy` (a screen is open; `action pause` and `button up` still work), `timeout`,
+  `not_in_level`, `busy` (a screen is open; `button up` still works), `timeout`,
   `bad_args`, `refused`. A paused singleplayer world does not tick: after `action pause` there,
   resume with the `key` op (ESC).
-  - `slot`: `ClientInputCallbacks::handleSlotSelectButtonPress`, and when that leaves the slot
-    alone (it does for a keyboard player in 1.26.51) the hotbar key `1`..`9` of the default key map.
-    The client sends `mob_equipment` itself. Replies `slot` and `via` callback\|keys.
-  - `action`: the matching `ClientInputCallbacks::handle*ButtonPress` (inventory with
-    `CraftingType::Inventory`).
+  - `slot`: the hotbar key `1`..`9` of the default key map, replied once the player holds the
+    slot. The client sends `mob_equipment` itself. Replies `slot` and `via` keys\|none (already held).
+  - `action`: the key of the default key map, released on the next tick: drop Q, dropAll Ctrl+Q,
+    inventory E, pause Escape; perspective calls `ClientInputCallbacks::handleTogglePerspectiveButtonPress`
+    (since 1.26.60 the game exports none of the other `handle*ButtonPress`). A rebound key breaks them.
   - `button`: left/right/middle on the virtual GameInput mouse, released
     by the tick listener after `holdTicks` (click: default 2) or, with `releaseOn:"blockChange"`,
     once the block the client's hit result pointed at when it went down changes, turns to air or is
@@ -116,7 +116,7 @@ maximum); a `timeoutMs` the caller passes is used as given. Likewise "the client
     the pipe. Replies `held`, and `block{x,y,z}`.
 - **`send`**: `buf` is the base64 of one serverbound packet (varint header + body, as
   bedrock-protocol serializes it). It is rebuilt on the client thread
-  (`MinecraftPackets::createPacket` + `readNoHeader` with the client NetworkSystem's
+  (`MinecraftPackets::createPacket` + `Packet::read` with the client NetworkSystem's
   `ReflectionCtx`) and sent through the local player (`sendNetworkPacket`), on a remote server and
   in singleplayer alike; the reply `{packetId, name}` comes once it is sent. Bytes the game does not
   read are `bad_args` and nothing is sent; an id not in `sendAllow` is `refused`. `state` reports
@@ -147,7 +147,7 @@ them on.
 - `buf` is the base64 of one whole item_stack_request packet (id 147), varint header plus body, as
   bedrock-protocol serializes it. Any other packet id, and bytes the game does not read, are `bad_args`.
 - On the next client tick the packet is rebuilt with `MinecraftPackets::createPacket` and
-  `readNoHeader`, and the local player sends it.
+  `Packet::read`, and the local player sends it.
 - Request ids: each request gets a new client id, and the reply comes back once the packet is sent. Ids
   are odd, negative and counted down from `-0x40000001`, far below the client's own `-1, -3, ...`.
   Every slot stack id that names a caller id is renamed too. That covers the request's own id (a

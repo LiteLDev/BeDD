@@ -14,7 +14,7 @@ Be.D.D. 不是 lip 包，也不在 LeviMC 模组里上架。
 
 ## 系统要求
 
-Minecraft 基岩版 **1.26.51**（GDK 版）和 LeviLamina **26.51.x**（客户端），装在用 LeviLauncher 安装的游戏实例里。
+Minecraft 基岩版 **1.26.60**（GDK 版）和 LeviLamina **26.60.x**（客户端），装在用 LeviLauncher 安装的游戏实例里。
 测试时用 `Start-BeDDGame.ps1` 启动这个实例，不走启动器（[多开](/zh/guide/several-games)）。只有测试机上的游戏需要装，
 服务器和玩家都不用。
 

@@ -2,7 +2,7 @@
 //
 // bedboo serializes text and command_request with bedrock-protocol; the bytes are the game's own
 // wire format (varint header + body). The packet is rebuilt on the client thread
-// (MinecraftPackets::createPacket + readNoHeader) and sent through the local player
+// (MinecraftPackets::createPacket + Packet::read) and sent through the local player
 // (LocalPlayer::sendNetworkPacket), so it takes the client's own path to the server: the remote
 // connection, or the loopback sender in singleplayer and in a LAN world the client hosts.
 //
@@ -146,7 +146,7 @@ json sendNow(Level& level, Job const& job) {
     Bedrock::Result<void> read;
     if (auto ns = ll::service::getNetworkSystem(true)) {
         cereal::ReflectionCtx const& ctx = *ns->mReflectionCtx;
-        read = packet->readNoHeader(stream, ctx, SubClientId::PrimaryClient);
+        read = packet->read(stream, ctx);
     } else {
         read = packet->read(stream);
     }

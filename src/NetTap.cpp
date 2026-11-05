@@ -5,11 +5,14 @@
 // remote server (RakNet/NetherNet) from a local one (singleplayer, or a LAN world this client
 // hosts, which LoopbackPacketSender serves without serializing).
 //
-// * NetworkSystem::$onNewOutgoingConnection: the link comes up (LINK_UP marker; gLinkType).
-//   $onConnectionClosed / $onAllConnectionsClosed (the server's side) and closeConnection /
-//   disconnect (the client leaving): it goes down (LINK_DOWN, once).
-// * NetworkConnection::receivePacket (after it, HasData): one decompressed, decrypted game packet
-//   of the remote link, varint header + body: a CLIENTBOUND frame.
+// * The client NetworkSystem's open connection (syncLink, from NetworkSystem::send before the
+//   client's first packet goes out, and from runEvents every tick): a new one brings the link up
+//   (LINK_UP marker; gLinkType), none takes it down. $onConnectionClosed (the server's side) and
+//   closeConnection (the client leaving) take it down at once (LINK_DOWN, once). Since 1.26.60
+//   onNewOutgoingConnection, onAllConnectionsClosed and disconnect have no symbol.
+// * BatchedNetworkPeer::_receivePacket (after it, HasData) of the remote link's batched peer (the
+//   connection's mBatchedPeer; NetworkConnection::receivePacket, which reads it, is inlined since
+//   26.60): one decompressed, decrypted game packet, varint header + body: a CLIENTBOUND frame.
 // * NetworkSystem::_sendInternal: a packet the client sends on that link, already serialized
 //   (header + body): a SERVERBOUND_ECHO frame. login, the handshakes and request_network_settings
 //   are left out.
@@ -31,6 +34,7 @@
 #include "ll/api/memory/Hook.h"
 #include "ll/api/service/Bedrock.h"
 
+#include "mc/network/BatchedNetworkPeer.h"
 #include "mc/network/NetworkConnection.h"
 #include "mc/network/NetworkIdentifier.h"
 #include "mc/network/NetworkPeer.h"
@@ -46,6 +50,7 @@ using json = nlohmann::json;
 
 std::atomic<NetworkSystem*>      gClientSystem{nullptr}; // the client's NetworkSystem, once it connected
 std::atomic<NetworkConnection*>  gServerConn{nullptr};   // its connection to the server (compared, never read)
+std::atomic<BatchedNetworkPeer*> gServerPeer{nullptr};   // that connection's batched peer (compared, never read)
 std::mutex                       gLinkMutex;
 std::optional<NetworkIdentifier> gServerId; // id of gServerConn
 std::string                      gAddress;  // "ip:port" of a remote server
@@ -113,7 +118,10 @@ void linkUp(NetworkSystem* system, NetworkIdentifier const& id) {
     }
     gClientSystem = system;
     gTraced       = 0; // trace the first packets of every link
-    gServerConn   = conn;
+    auto batched  = conn->mBatchedPeer.lock();
+    if (type == Link::Remote && !batched) log().warn("tap: the server connection has no batched peer; no CLIENTBOUND frames");
+    gServerPeer = batched.get();
+    gServerConn = conn;
     log().info(
         "tap: link up ({}{}{})",
         linkTypeName(static_cast<int>(type)),
@@ -126,6 +134,7 @@ void linkUp(NetworkSystem* system, NetworkIdentifier const& id) {
 // Once per link: the game may report its end more than once (closeConnection, then the callbacks).
 void linkDown(std::string reason) {
     if (!gServerConn.exchange(nullptr)) return;
+    gServerPeer = nullptr;
     {
         std::lock_guard lock(gLinkMutex);
         gServerId.reset();
@@ -148,21 +157,26 @@ bool isServerId(NetworkIdentifier const& id) {
     return gServerId && *gServerId == id;
 }
 
-} // namespace
-
-LL_TYPE_INSTANCE_HOOK(
-    TapOutgoingConnectionHook,
-    ll::memory::HookPriority::Normal,
-    NetworkSystem,
-    &NetworkSystem::$onNewOutgoingConnection,
-    bool,
-    NetworkIdentifier const&       id,
-    std::shared_ptr<NetworkPeer>&& peer
-) {
-    bool ok = origin(id, std::move(peer));
-    if (ok && isClientSystem(this)) linkUp(this, id);
-    return ok;
+// The client's NetworkSystem has one open connection, to the server: a new one brings the link
+// up, none takes it down.
+void syncLink(NetworkSystem* system) {
+    NetworkConnection*               conn = nullptr;
+    std::optional<NetworkIdentifier> id;
+    {
+        std::lock_guard lock(system->mConnectionsMutex.get());
+        for (auto const& c : system->mConnections.get()) {
+            if (!c || c->mDisconnected || c->mShouldCloseConnection) continue;
+            conn = c.get();
+            id.emplace(c->mId.get());
+            break;
+        }
+    }
+    if (conn == gServerConn.load(std::memory_order_acquire)) return;
+    if (conn) linkUp(system, *id);
+    else linkDown("connection closed");
 }
+
+} // namespace
 
 LL_TYPE_INSTANCE_HOOK(
     TapConnectionClosedHook,
@@ -181,19 +195,6 @@ LL_TYPE_INSTANCE_HOOK(
     origin(id, discoReason, messageFromServer, messageBodyOverride, skipDisconnectMessage, sessionSummary);
 }
 
-LL_TYPE_INSTANCE_HOOK(
-    TapAllConnectionsClosedHook,
-    ll::memory::HookPriority::Normal,
-    NetworkSystem,
-    &NetworkSystem::$onAllConnectionsClosed,
-    void,
-    Connection::DisconnectFailReason discoReason,
-    bool                             skipDisconnectMessage
-) {
-    if (this == gClientSystem.load()) linkDown(reasonText(discoReason, {}));
-    origin(discoReason, skipDisconnectMessage);
-}
-
 // The client leaving the server itself (the callbacks above report the server's side).
 LL_TYPE_INSTANCE_HOOK(
     TapCloseConnectionHook,
@@ -209,29 +210,30 @@ LL_TYPE_INSTANCE_HOOK(
     origin(id, discoReason, messageFromServer);
 }
 
-// Leaving the world from the pause screen (Save & Quit) drops every connection this way.
+// Leaving the world from the pause screen (Save & Quit) drops every connection: the next tick finds none.
 LL_TYPE_INSTANCE_HOOK(
-    TapDisconnectHook,
+    TapRunEventsHook,
     ll::memory::HookPriority::Normal,
     NetworkSystem,
-    &NetworkSystem::disconnect,
-    void
+    &NetworkSystem::runEvents,
+    void,
+    bool networkIsCritical
 ) {
-    if (this == gClientSystem.load()) linkDown("disconnect");
-    origin();
+    origin(networkIsCritical);
+    if (isClientSystem(this)) syncLink(this);
 }
 
 LL_TYPE_INSTANCE_HOOK(
     TapReceivePacketHook,
     ll::memory::HookPriority::Normal,
-    NetworkConnection,
-    &NetworkConnection::receivePacket,
+    BatchedNetworkPeer,
+    &BatchedNetworkPeer::$_receivePacket,
     NetworkPeer::DataStatus,
     std::string&                                                  receiveBuffer,
     std::shared_ptr<std::chrono::steady_clock::time_point> const& timepointPtr
 ) {
     auto status = origin(receiveBuffer, timepointPtr);
-    if (status == NetworkPeer::DataStatus::HasData && this == gServerConn.load(std::memory_order_acquire)
+    if (status == NetworkPeer::DataStatus::HasData && this == gServerPeer.load(std::memory_order_acquire)
         && gLinkType.load(std::memory_order_relaxed) == static_cast<int>(Link::Remote)) {
         capture(Kind::Clientbound, receiveBuffer);
     }
@@ -263,7 +265,8 @@ LL_TYPE_INSTANCE_HOOK(
     origin(id, packet, data);
 }
 
-// The client tells the server whether it has a blob cache (client_cache_status, 129): it never has
+// Every packet the client sends: the link comes up before the first one goes out (syncLink). The
+// client tells the server whether it has a blob cache (client_cache_status, 129): it never has
 // one while the tap is on, so every sub-chunk arrives with its data (see the file comment).
 LL_TYPE_INSTANCE_HOOK(
     TapCacheStatusHook,
@@ -275,7 +278,9 @@ LL_TYPE_INSTANCE_HOOK(
     Packet const&            packet,
     SubClientId              recipientSubId
 ) {
-    if (static_cast<int>(packet.getId()) == 129 && isClientSystem(this)) {
+    if (!isClientSystem(this)) return origin(id, packet, recipientSubId);
+    syncLink(this);
+    if (static_cast<int>(packet.getId()) == 129) {
         auto& status = const_cast<ClientCacheStatusPacket&>(static_cast<ClientCacheStatusPacket const&>(packet));
         if (status.mEnabled) {
             status.mEnabled = false;
@@ -295,14 +300,12 @@ struct TapHook {
 };
 
 TapHook gHooks[]{
-    {"NetworkSystem::onNewOutgoingConnection", &TapOutgoingConnectionHook::hook,   &TapOutgoingConnectionHook::unhook  },
+    {"NetworkSystem::runEvents",               &TapRunEventsHook::hook,            &TapRunEventsHook::unhook           },
     {"NetworkSystem::onConnectionClosed",      &TapConnectionClosedHook::hook,     &TapConnectionClosedHook::unhook    },
-    {"NetworkSystem::onAllConnectionsClosed",  &TapAllConnectionsClosedHook::hook, &TapAllConnectionsClosedHook::unhook},
     {"NetworkSystem::closeConnection",         &TapCloseConnectionHook::hook,      &TapCloseConnectionHook::unhook     },
-    {"NetworkSystem::disconnect",              &TapDisconnectHook::hook,           &TapDisconnectHook::unhook          },
-    {"NetworkConnection::receivePacket",       &TapReceivePacketHook::hook,        &TapReceivePacketHook::unhook       },
+    {"BatchedNetworkPeer::_receivePacket",     &TapReceivePacketHook::hook,        &TapReceivePacketHook::unhook       },
     {"NetworkSystem::_sendInternal",           &TapSendInternalHook::hook,         &TapSendInternalHook::unhook        },
-    {"NetworkSystem::send (client_cache_status)", &TapCacheStatusHook::hook,       &TapCacheStatusHook::unhook         },
+    {"NetworkSystem::send",                    &TapCacheStatusHook::hook,       &TapCacheStatusHook::unhook         },
 };
 
 } // namespace
@@ -333,6 +336,7 @@ void uninstallNetTap() {
         }
     }
     gServerConn   = nullptr;
+    gServerPeer   = nullptr;
     gClientSystem = nullptr;
     std::lock_guard lock(gLinkMutex);
     gServerId.reset();

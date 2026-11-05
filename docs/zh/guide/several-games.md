@@ -7,9 +7,9 @@
 <video controls muted playsinline preload="none" poster="/BeDD/showcase/desktop-poster.webp" src="/BeDD/showcase/desktop.mp4" width="1280" height="720" style="width:100%;height:auto"></video>
 
 ```powershell
-pwsh -NoProfile -File clone-instance.ps1 -Slot 2       # versions\1.26.51.01-hi2，约 90 MB，几秒钟
-& .\Start-BeDDGame.ps1 -Instance 1.26.51.01-hi2        # 启动时不把窗口提到前面
-Connect-BeDD -PipeName BeDD-1.26.51.01-hi2             # 该实例配置里的 pipeName
+pwsh -NoProfile -File clone-instance.ps1 -Slot 2       # versions\1.26.60.05-hi2，约 90 MB，几秒钟
+& .\Start-BeDDGame.ps1 -Instance 1.26.60.05-hi2        # 启动时不把窗口提到前面
+Connect-BeDD -PipeName BeDD-1.26.60.05-hi2             # 该实例配置里的 pipeName
 ```
 
 克隆不存在时，`Start-BeDDGame.ps1 -Slot 2`（或 `-Instance <基础实例>-hi2`）会自己先克隆出来。不给 `-Instance` 时，

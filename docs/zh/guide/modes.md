@@ -25,9 +25,9 @@ Connect-BeDD -PipeName $s.PipeName                           # 服务端的控�
 
 ### 准备服务器
 
-`Initialize-BeDDServer` 用 lip 把 LeviLamina 的服务端包装进一个空文件夹；这个包会连带装上 Minecraft 1.26.51 的官方
+`Initialize-BeDDServer` 用 lip 把 LeviLamina 的服务端包装进一个空文件夹；这个包会连带装上 Minecraft 1.26.60 的官方
 BDS（从 minecraft.net 下载，约 100 MB）。和准备游戏一样，已经做好的步骤会跳过，一台电脑上同一时间只跑一个准备流程，
-而且从不提问，所以测试框架和 CI 可以每次运行前都调用它。服务器的模组放在 `plugins\` 下，所以模块装到 `plugins\BeDD-server`（LeviLamina 只从以模组名命名的文件夹加载模组）。
+而且从不提问，所以测试框架和 CI 可以每次运行前都调用它。服务器的模组放在 `mods\` 下，所以模块装到 `mods\BeDD-server`（LeviLamina 只从以模组名命名的文件夹加载模组）。
 
 | 参数 | |
 |---|---|
@@ -38,7 +38,7 @@ BDS（从 minecraft.net 下载，约 100 MB）。和准备游戏一样，已经�
 | `-OnlineMode` | 默认 `$false`：游戏加入时不做 Xbox 验证 |
 | `-LevelName`、`-Gamemode`、`-Difficulty`、`-LevelSeed`、`-MaxPlayers`、`-AllowCheats` | `server.properties`（默认 `Bedrock level`、`creative`、`peaceful`、随机、10、`$true`） |
 | `-Properties @{ 'view-distance' = 16 }` | 其他任意 `server.properties` 键 |
-| `-ModuleDir` | BeDD 服务端模块（`bin\BeDD-server`），有变化时复制到 `plugins\BeDD-server`。没有它，`Start-BeDDServer.ps1` 不会启动服务器（[不弹防火墙提示](#不弹防火墙提示)） |
+| `-ModuleDir` | BeDD 服务端模块（`bin\BeDD-server`），有变化时复制到 `mods\BeDD-server`。没有它，`Start-BeDDServer.ps1` 不会启动服务器（[不弹防火墙提示](#不弹防火墙提示)） |
 | `-PipeName` | 服务端里 BeDD 的控制管道，默认 `BeDD-Server-<Name>` |
 | `-TimeScale` | 配置 `timeScale`：服务器启动时的游戏速度 |
 | `-Trace`、`-Config @{ … }` | 配置 `trace`，以及模块 `config\config.json` 的其他任意键 |
@@ -67,7 +67,7 @@ BDS 会监听所有网络接口，而程序第一次这样做时，Windows 防�
 所以 Windows 不会询问，也只有本机的游戏能加入。`Initialize-BeDDServer` 还会设置 `server-ip=127.0.0.1` 并关掉局域网可见性，
 否则它会另外绑定 Bedrock 的默认端口。
 
-因此 `Start-BeDDServer.ps1` 拒绝启动 `plugins\BeDD-server` 里没有 BeDD 服务端模块、装的是别的模块，或 `config.json` 里
+因此 `Start-BeDDServer.ps1` 拒绝启动 `mods\BeDD-server` 里没有 BeDD 服务端模块、装的是别的模块，或 `config.json` 里
 `"loopbackOnly": false` 的服务器，并说明原因。万一 LeviLamina 仍没能加载模块，它会在服务器打开网络之前把服务器停掉。
 `-AllowFirewallPrompt` 照样启动它，用于要让别的电脑上的游戏加入的服务器（配合 `-ServerIp ''`）：这时在 Windows 询问时允许即可。
 

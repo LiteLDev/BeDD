@@ -39,7 +39,7 @@ Be.D.D. 是一套测试工具，不是给玩家装的模组：测试框架在每
 （`BeDD.dll`）和脚本。测试框架会在每次运行开始时把模块放进游戏实例的 `mods\` 目录、结束后删掉
 （[见下文](#接入测试框架)）；想手动试一下，就解压到该实例的 `mods\` 目录。Be.D.D. 不是 lip 包，也不在 LeviMC 模组里上架。
 
-需要 Minecraft 基岩版 **1.26.51**（GDK 版）和 LeviLamina **26.51.x**（客户端），装在用 LeviLauncher 安装的游戏实例里。
+需要 Minecraft 基岩版 **1.26.60**（GDK 版）和 LeviLamina **26.60.x**（客户端），装在用 LeviLauncher 安装的游戏实例里。
 测试时用 `Start-BeDDGame.ps1` 启动这个实例，不走启动器（[见下文](#多开)）。只有测试机上的游戏需要装，服务器和玩家都不用。
 
 ### 新电脑上
@@ -50,7 +50,7 @@ Be.D.D. 是一套测试工具，不是给玩家装的模组：测试框架在每
 | 缺什么 | 怎么处理 |
 |---|---|
 | LeviLauncher | 用已安装的；没有就把最新版下载到 `%LOCALAPPDATA%\BeDD\tools` |
-| 游戏本身 | 打开 LeviLauncher，脚本等你用拥有 Minecraft 的微软账号登录并装好 1.26.51（这一步脚本做不了；设了 `CI` 环境变量时直接报错并给出这些说明） |
+| 游戏本身 | 打开 LeviLauncher，脚本等你用拥有 Minecraft 的微软账号登录并装好 1.26.60（这一步脚本做不了；设了 `CI` 环境变量时直接报错并给出这些说明） |
 | LeviLamina | 用 [lip](https://github.com/LiteLDev/lip) 装进实例；lip 和它需要的 .NET 运行时会自动下载（按用户安装，不需要管理员） |
 | 游戏 exe 里 LeviLauncher 的加载器 | 通过 LeviLauncher 启动一次该实例让它加上，然后关掉游戏。没有加载器的话，游戏会用你平时的 Minecraft 数据，而不是实例自己的 |
 | 克隆（`-Slot 2` 及以上） | 从基础实例克隆；基础实例之后有变化时会同步更新 |
@@ -60,7 +60,7 @@ $i = & .\Initialize-BeDD.ps1 -Slot 2    # versions\<基础实例>-hi2 的 Name�
 ```
 
 BeDD 从 `%APPDATA%\levilauncher.exe` 找 LeviLauncher 的数据，遵循它的"数据目录"设置（`base_root`），
-并在其中挑 1.26.51 的实例（优先装了 LeviLamina 的）。要指向别处，设置 `BEDD_INSTANCE`（实例名）、`BEDD_VERSIONS_DIR`、
+并在其中挑 1.26.60 的实例（优先装了 LeviLamina 的）。要指向别处，设置 `BEDD_INSTANCE`（实例名）、`BEDD_VERSIONS_DIR`、
 `BEDD_LAUNCHER_DATA`、`BEDD_LEVILAUNCHER`（LeviLauncher.exe）或 `BEDD_LIP`（lip.exe）。
 
 测试框架也可以用同样的方式自己下载 BeDD，不必要求某个目录下事先有一份检出：
@@ -113,9 +113,9 @@ Save-BeDDScreenshot C:\temp\shot.png       # 窗口被挡住也能截
 ### 多开
 
 ```powershell
-pwsh -NoProfile -File clone-instance.ps1 -Slot 2                  # versions\1.26.51.01-hi2，约 90 MB，几秒钟
-& .\Start-BeDDGame.ps1 -Instance 1.26.51.01-hi2                # 启动时不把窗口提到前面
-Connect-BeDD -PipeName BeDD-1.26.51.01-hi2   # 该实例配置里的 pipeName
+pwsh -NoProfile -File clone-instance.ps1 -Slot 2                  # versions\1.26.60.05-hi2，约 90 MB，几秒钟
+& .\Start-BeDDGame.ps1 -Instance 1.26.60.05-hi2                # 启动时不把窗口提到前面
+Connect-BeDD -PipeName BeDD-1.26.60.05-hi2   # 该实例配置里的 pipeName
 ```
 
 克隆不存在时，`Start-BeDDGame.ps1 -Slot 2`（或 `-Instance <基础实例>-hi2`）会自己先克隆出来。`clone-instance.ps1` 只接受 1 到 32 号槽位；更大的槽位用 `BeDDSetup.psm1` 的 `New-BeDDClone -Source <基础实例> -Slot 41`。
@@ -135,7 +135,7 @@ Connect-BeDD -PipeName BeDD-1.26.51.01-hi2   # 该实例配置里的 pipeName
 
 ```powershell
 Import-Module .\BeDDSetup.psm1
-Initialize-BeDDServer -Name s1 -ModuleDir ..\BeDD-server   # 用 lip 装 BDS 1.26.51 + LeviLamina，端口从 19140 起
+Initialize-BeDDServer -Name s1 -ModuleDir ..\BeDD-server   # 用 lip 装 BDS 1.26.60 + LeviLamina，端口从 19140 起
 $s = & .\Start-BeDDServer.ps1 -Name s1                      # 没有窗口；日志在 logs\console.log
 Connect-BeDD -PipeName $s.PipeName                          # BeDD-Server-s1
 & .\Start-BeDDServer.ps1 -Name s1 -Stop

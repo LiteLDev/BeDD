@@ -2,11 +2,12 @@
 // button actions (drop, inventory, perspective, pause) and held mouse buttons counted in game ticks.
 //
 // The pipe thread never touches the game: it queues a command and waits (timeoutMs, default 1000,
-// stretched at a slower game speed) until the next ClientLevelTickEvent, on the client thread, has applied it. Slot and actions call
-// the ClientInputCallbacks::handle* statics the game's own key bindings call, so the client sends
-// mob_equipment, drops and opens screens itself. handleSlotSelectButtonPress leaves the slot alone
-// for a keyboard player (1.26.51), so `slot` then presses the hotbar key '1'..'9' instead (the
-// default key map) and replies once the player holds the slot. Buttons drive the virtual GameInput mouse
+// stretched at a slower game speed) until the next ClientLevelTickEvent, on the client thread, has applied it. Slot and actions
+// press the keys of the default key map as window messages, released on the next tick, so the
+// client sends mob_equipment, drops and opens screens itself: `slot` the hotbar key '1'..'9'
+// (replied once the player holds the slot), drop Q, dropAll Ctrl+Q, inventory E, pause Escape.
+// perspective calls ClientInputCallbacks::handleTogglePerspectiveButtonPress (since 1.26.60 the
+// game exports none of the other handle* statics). Buttons drive the virtual GameInput mouse
 // (GameInputHooks.cpp) like the `raw` op, but the tick listener releases them: after `holdTicks`
 // ticks, or (`releaseOn:'blockChange'`) once the block the client's hit result pointed at when the
 // button went down is gone or no longer targeted. So a hold never blocks the pipe.
@@ -78,8 +79,8 @@ struct Command {
 std::mutex                            gMutex; // everything below
 std::condition_variable               gApplied;
 std::deque<std::shared_ptr<Command>>  gQueue;
-std::vector<std::shared_ptr<Command>> gWaiting;    // slot commands waiting for the hotbar key
-int                                   gKeyUp = -1; // hotbar key to release on the next tick
+std::vector<std::shared_ptr<Command>> gWaiting; // slot commands waiting for the hotbar key
+std::vector<int>                      gKeysUp;  // keys to release on the next tick, in this order
 int64_t                               gKeyDownTick = 0;
 std::array<Held, kButtons.size()>     gHeld{};
 int64_t                               gTick = 0;
@@ -118,12 +119,25 @@ size_t buttonIndex(std::string const& name) {
     return kButtons.size();
 }
 
-// The hotbar key of the default key map ('1'..'9'), as a window message like the `key` op's.
+// A key of the default key map, as a window message like the `key` op's.
 void postKey(int vk, bool down) {
     UINT   sc = MapVirtualKeyW(static_cast<UINT>(vk), MAPVK_VK_TO_VSC);
     LPARAM lp = 1 | (static_cast<LPARAM>(sc & 0xFF) << 16);
     if (!down) lp |= (1LL << 30) | (1LL << 31);
     post(Event{.msg = static_cast<UINT>(down ? WM_KEYDOWN : WM_KEYUP), .wp = static_cast<WPARAM>(vk), .lp = lp, .vk = vk, .vkDown = down});
+}
+
+void releaseKeys() {
+    for (int vk : gKeysUp) postKey(vk, false);
+    gKeysUp.clear();
+}
+
+// Presses `keys` in order now; the tick listener releases them in reverse on the next tick.
+void pressKeys(std::initializer_list<int> keys) {
+    releaseKeys();
+    for (int vk : keys) postKey(vk, true);
+    gKeysUp.assign(std::rbegin(keys), std::rend(keys));
+    gKeyDownTick = gTick;
 }
 
 bool inLevel() { return gTick > 0 && !clientTickStale(); }
@@ -148,28 +162,24 @@ json apply(Command& c, ClientInstance& client, LocalPlayer& player) {
     if (c.op == "slot") {
         if (!inWorld) return fail("busy", "a screen is open (" + client.getTopScreenName() + ")");
         int slot = c.req["slot"].get<int>();
-        ClientInputCallbacks::handleSlotSelectButtonPress(client, slot);
-        gSlot = player.getSelectedItemSlot();
+        gSlot    = player.getSelectedItemSlot();
         if (gSlot != slot) {
-            // The callback does nothing for a keyboard player (1.26.51): press the hotbar key instead.
-            if (gKeyUp > 0) postKey(gKeyUp, false);
-            gKeyUp       = '1' + slot;
-            gKeyDownTick = gTick;
-            postKey(gKeyUp, true);
+            pressKeys({'1' + slot});
             c.waitSlot  = slot;
             c.waitUntil = gTick + 10;
             return nullptr;
         }
         r["slot"] = gSlot;
-        r["via"]  = "callback";
+        r["via"]  = "none"; // already held
     } else if (c.op == "action") {
         std::string name = c.req["name"].get<std::string>();
-        if (name != "pause" && !inWorld) return fail("busy", "a screen is open (" + client.getTopScreenName() + ")");
-        if (name == "drop") ClientInputCallbacks::handleDropButtonPress(client);
-        else if (name == "dropAll") ClientInputCallbacks::handleDropAllButtonPress(client);
-        else if (name == "inventory") ClientInputCallbacks::handleInventoryButtonPress(client, CraftingType::Inventory);
+        // (Escape would close a screen instead of pausing, so pause waits for the world too)
+        if (!inWorld) return fail("busy", "a screen is open (" + client.getTopScreenName() + ")");
+        if (name == "drop") pressKeys({'Q'});
+        else if (name == "dropAll") pressKeys({VK_CONTROL, 'Q'});
+        else if (name == "inventory") pressKeys({'E'});
         else if (name == "perspective") ClientInputCallbacks::handleTogglePerspectiveButtonPress(client);
-        else if (name == "pause") ClientInputCallbacks::handlePauseButtonPress(client);
+        else if (name == "pause") pressKeys({VK_ESCAPE});
         r["name"] = name;
     } else { // button
         size_t      b      = buttonIndex(c.req["button"].get<std::string>());
@@ -209,10 +219,7 @@ void onTick() {
     auto         client = ll::service::getClientInstance();
     LocalPlayer* player = client ? client->getLocalPlayer() : nullptr;
     if (player) gSlot = player->getSelectedItemSlot();
-    if (gKeyUp > 0 && gTick > gKeyDownTick) {
-        postKey(gKeyUp, false);
-        gKeyUp = -1;
-    }
+    if (!gKeysUp.empty() && gTick > gKeyDownTick) releaseKeys();
 
     bool notify = false;
     std::erase_if(gWaiting, [&](std::shared_ptr<Command> const& c) {
@@ -303,8 +310,7 @@ void releaseGameButtonsOf(uint64_t client) {
 void releaseGameButtons() {
     std::lock_guard lock(gMutex);
     for (size_t b = 0; b < kButtons.size(); ++b) releaseHeld(b);
-    if (gKeyUp > 0) postKey(gKeyUp, false);
-    gKeyUp = -1;
+    releaseKeys();
 }
 
 nlohmann::json gameActionOp(std::string const& op, nlohmann::json const& req) {

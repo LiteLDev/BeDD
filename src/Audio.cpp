@@ -2,7 +2,9 @@
 // suspends its own audio, and every headless game would otherwise play its menu music and sounds
 // on the user's speakers. Each FMOD system the game initialises gets the NOSOUND output: it mixes in
 // real time as before, but opens no audio device, so the game has no session in the Windows volume
-// mixer either. The master channel group of each system also stays muted (a system initialised
+// mixer either. The game picks an output itself (System::setOutput, also after init, which switches
+// the output of a running system): every such call gets NOSOUND too, so no later switch (an audio
+// device change, say) opens a device again. The master channel group of each system also stays muted (a system initialised
 // before the hooks keeps its device); the game's own setMute() calls on it are remembered.
 #include "BeDD.h"
 
@@ -35,8 +37,9 @@ constexpr char kSetOutput[] = "?setOutput@System@FMOD@@QEAA?AW4FMOD_RESULT@@W4FM
 InitFn      o_init      = nullptr;
 PlaySoundFn o_playSound = nullptr;
 SetMuteFn   o_setMute   = nullptr;
+SetOutputFn o_setOutput = nullptr;
 MasterFn    gGetMaster  = nullptr;
-SetOutputFn gSetOutput  = nullptr;
+SetOutputFn gSetOutput  = nullptr; // the export (through d_setOutput once hooked)
 
 bool gInstalled = false;
 
@@ -69,8 +72,16 @@ void track(void* system) {
     o_setMute(master, muteNow());
 }
 
+int d_setOutput(void* system, int output) {
+    if (output != kOutputNoSound && muteNow()) {
+        log().info("FMOD system {}: the game asked for output {}; NOSOUND instead", system, output);
+        output = kOutputNoSound;
+    }
+    return o_setOutput(system, output);
+}
+
 int d_init(void* system, int maxChannels, unsigned flags, void* extra) {
-    // setOutput must come before init; the game's own choice of output is overridden.
+    // Before init: the game's own choice of output (made before the hooks, or never) is overridden.
     if (gSetOutput && muteNow()) {
         int out = gSetOutput(system, kOutputNoSound);
         if (out == 0) log().info("FMOD system {}: NOSOUND output (no audio device)", system);
@@ -105,8 +116,9 @@ struct FmodHook {
     void**      original;
     void*       target = nullptr;
 };
-std::array<FmodHook, 3> gHooks{
+std::array<FmodHook, 4> gHooks{
     FmodHook{kSetMute,   reinterpret_cast<void*>(&d_setMute),   reinterpret_cast<void**>(&o_setMute)  },
+    FmodHook{kSetOutput, reinterpret_cast<void*>(&d_setOutput), reinterpret_cast<void**>(&o_setOutput)},
     FmodHook{kInit,      reinterpret_cast<void*>(&d_init),      reinterpret_cast<void**>(&o_init)     },
     FmodHook{kPlaySound, reinterpret_cast<void*>(&d_playSound), reinterpret_cast<void**>(&o_playSound)},
 };

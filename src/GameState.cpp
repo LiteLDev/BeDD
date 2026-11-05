@@ -106,8 +106,8 @@ void takePose() {
 } // namespace
 
 // Outside the anonymous namespace: the macro's static members would be unused there.
-LL_TYPE_INSTANCE_HOOK(ClientUpdateHook, ll::memory::HookPriority::Normal, ClientInstance, &ClientInstance::$update, bool, bool isInitFinished) {
-    bool r = origin(isInitFinished);
+LL_TYPE_INSTANCE_HOOK(ClientUpdateHook, ll::memory::HookPriority::Normal, ClientInstance, &ClientInstance::$update, bool, bool isInitFinished, bool allowGameUpdate) {
+    bool r = origin(isInitFinished, allowGameUpdate);
     if (isInitFinished) takeScreen(*this);
     return r;
 }

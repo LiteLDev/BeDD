@@ -1,9 +1,10 @@
 // `timescale` op and config `timeScale`: how fast the game runs. Singleplayer is a client and its
 // in-process local server, each with its own Minecraft and sim timer (Timer: mTicksPerSecond,
 // mTimeScale), so both are set together (the timer's scale, and Minecraft::setSimTimePause for
-// pausing): the local server's on the server thread
-// (ServerInstance::queueForServerThread), the client's on the client thread (a ClientInstance::update
-// hook: frames go on while the sim is paused, ticks and LeviLamina's thread executors do not), and
+// pausing): the local server's on the server thread (a hook on its Minecraft::update; since 1.26.60
+// the game exports no ServerInstance::queueForServerThread), the client's on the client thread (a
+// ClientInstance::update hook: frames go on while the sim is paused, ticks and LeviLamina's thread
+// executors do not), and
 // the op replies once both are applied. The timers catch up at most a few ticks per frame
 // (Timer::advanceTime), so a high scale can fall short: the reply reports the tick rates measured
 // over the last two seconds (ClientLevelTickEvent, ServerLevelTickEvent), not the requested ones.
@@ -38,6 +39,7 @@
 #include "ll/api/memory/Hook.h"
 #include "ll/api/service/Bedrock.h"
 #include "ll/api/thread/ClientThreadExecutor.h"
+#include "ll/api/thread/ServerThreadExecutor.h"
 
 #include "mc/client/game/ClientInstance.h"
 #include "mc/client/network/ClientNetworkHandler.h"
@@ -124,12 +126,17 @@ ll::event::ListenerPtr gExit;
 std::atomic<bool>      gLocal{false}; // the world joined last is this client's own (ClientStartJoinLevelEvent)
 std::atomic<bool>      gPacketHooked{false};
 std::atomic<bool>      gUpdateHooked{false};
+std::atomic<bool>      gServerUpdateHooked{false};
 
 // Work for the client thread, run after the next ClientInstance::update.
 std::mutex                         gJobsMutex;
 std::vector<std::function<void()>> gClientJobs; // guarded by gJobsMutex
 std::atomic<bool>                  gClientJobsDue{false};
 bool                               gClientJobsRun = false; // the update hook runs them (guarded by gJobsMutex)
+// The same for the local server's thread, run after its next Minecraft::update.
+std::vector<std::function<void()>> gServerJobs; // guarded by gJobsMutex
+std::atomic<bool>                  gServerJobsDue{false};
+bool                               gServerJobsRun = false; // guarded by gJobsMutex
 
 json fail(std::string_view code, std::string error) {
     return {
@@ -152,10 +159,25 @@ void runOnClient(std::function<void()> fn) {
 
 // False when there is no local server to run it.
 bool runOnServer(std::function<void()> fn) {
-    auto si = ll::service::getServerInstance();
-    if (!si) return false;
-    si->queueForServerThread(std::move(fn));
+    if (!ll::service::getServerInstance()) return false;
+    std::unique_lock lock(gJobsMutex);
+    if (!gServerJobsRun) {
+        lock.unlock();
+        ll::thread::ServerThreadExecutor::getDefault().execute(std::move(fn)); // not while paused
+        return true;
+    }
+    gServerJobs.push_back(std::move(fn));
+    gServerJobsDue = true;
     return true;
+}
+
+void runJobs(std::vector<std::function<void()>>& queue) {
+    std::vector<std::function<void()>> jobs;
+    {
+        std::lock_guard lock(gJobsMutex);
+        jobs.swap(queue);
+    }
+    for (auto& job : jobs) job();
 }
 
 // The sim timer's scale is written directly. Minecraft::setSimTimeScale multiplies the current
@@ -337,15 +359,21 @@ LL_TYPE_INSTANCE_HOOK(
     onServerScale(scale, before);
 }
 
-LL_TYPE_INSTANCE_HOOK(TimeScaleClientUpdateHook, ll::memory::HookPriority::Normal, ClientInstance, &ClientInstance::$update, bool, bool isInitFinished) {
-    bool r = origin(isInitFinished);
-    if (gClientJobsDue.exchange(false)) {
-        std::vector<std::function<void()>> jobs;
-        {
-            std::lock_guard lock(gJobsMutex);
-            jobs.swap(gClientJobs);
+LL_TYPE_INSTANCE_HOOK(TimeScaleClientUpdateHook, ll::memory::HookPriority::Normal, ClientInstance, &ClientInstance::$update, bool, bool isInitFinished, bool allowGameUpdate) {
+    bool r = origin(isInitFinished, allowGameUpdate);
+    if (gClientJobsDue.exchange(false)) runJobs(gClientJobs);
+    return r;
+}
+
+// Every Minecraft updates on its own thread, paused or not; only the local server's runs its jobs.
+LL_TYPE_INSTANCE_HOOK(TimeScaleServerUpdateHook, ll::memory::HookPriority::Normal, Minecraft, &Minecraft::update, bool) {
+    bool r = origin();
+    if (gServerJobsDue.load(std::memory_order_acquire)) {
+        auto si = ll::service::getServerInstance();
+        if (si) {
+            std::unique_ptr<Minecraft> const& server = si->mMinecraft;
+            if (server.get() == this && gServerJobsDue.exchange(false)) runJobs(gServerJobs);
         }
-        for (auto& job : jobs) job();
     }
     return r;
 }
@@ -364,13 +392,16 @@ void installTimeScale() {
         HookPause pause;
         gPacketHooked = TimeScaleLevelEventHook::hook(false) == 0;
         gUpdateHooked = TimeScaleClientUpdateHook::hook(false) == 0;
+        gServerUpdateHooked = TimeScaleServerUpdateHook::hook(false) == 0;
     }
     {
         std::lock_guard lock(gJobsMutex);
         gClientJobsRun = gUpdateHooked;
+        gServerJobsRun = gServerUpdateHooked;
     }
     if (!gPacketHooked) log().error("timescale: ClientNetworkHandler::handle(LevelEventPacket) could not be hooked: a server's scale is not followed");
     if (!gUpdateHooked) log().error("timescale: ClientInstance::update could not be hooked: a paused game cannot be resumed");
+    if (!gServerUpdateHooked) log().error("timescale: Minecraft::update could not be hooked: a paused local server cannot be resumed");
     if (!gClientTick || !gServerTick) log().error("timescale: a level tick listener could not be added; tick rates read 0");
 }
 
@@ -380,17 +411,21 @@ void uninstallTimeScale() {
         if (*l) bus.removeListener(*l);
         *l = nullptr;
     }
-    if (gPacketHooked || gUpdateHooked) {
+    if (gPacketHooked || gUpdateHooked || gServerUpdateHooked) {
         HookPause pause;
         if (gPacketHooked) TimeScaleLevelEventHook::unhook(false);
         if (gUpdateHooked) TimeScaleClientUpdateHook::unhook(false);
-        gPacketHooked = false;
-        gUpdateHooked = false;
+        if (gServerUpdateHooked) TimeScaleServerUpdateHook::unhook(false);
+        gPacketHooked       = false;
+        gUpdateHooked       = false;
+        gServerUpdateHooked = false;
     }
     // Jobs never run now: their promises break, and a waiting set answers at once.
     std::lock_guard lock(gJobsMutex);
     gClientJobsRun = false;
     gClientJobs.clear();
+    gServerJobsRun = false;
+    gServerJobs.clear();
 }
 
 json timeScaleOp(json const& req) {

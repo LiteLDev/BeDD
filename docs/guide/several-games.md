@@ -9,9 +9,9 @@ see [Client and server modes](/guide/modes).
 <video controls muted playsinline preload="none" poster="/BeDD/showcase/desktop-poster.webp" src="/BeDD/showcase/desktop.mp4" width="1280" height="720" style="width:100%;height:auto"></video>
 
 ```powershell
-pwsh -NoProfile -File clone-instance.ps1 -Slot 2       # versions\1.26.51.01-hi2, ~90 MB, seconds
-& .\Start-BeDDGame.ps1 -Instance 1.26.51.01-hi2        # starts it without bringing it forward
-Connect-BeDD -PipeName BeDD-1.26.51.01-hi2             # the pipeName in that instance's config
+pwsh -NoProfile -File clone-instance.ps1 -Slot 2       # versions\1.26.60.05-hi2, ~90 MB, seconds
+& .\Start-BeDDGame.ps1 -Instance 1.26.60.05-hi2        # starts it without bringing it forward
+Connect-BeDD -PipeName BeDD-1.26.60.05-hi2             # the pipeName in that instance's config
 ```
 
 `Start-BeDDGame.ps1 -Slot 2` (or `-Instance <base>-hi2`) makes the clone itself when it is missing. Without

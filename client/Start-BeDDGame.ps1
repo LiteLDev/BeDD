@@ -15,7 +15,7 @@
 
   The instance is made ready first when this PC lacks something (BeDDSetup.psm1): a clone
   (<base>-hi<N>, or -Slot N) is created from its base instance, LeviLamina is installed with lip,
-  LeviLauncher adds its loader, and with no Minecraft 1.26.51 instance at all LeviLauncher is
+  LeviLauncher adds its loader, and with no Minecraft 1.26.60 instance at all LeviLauncher is
   opened (downloaded if needed) for you to install the game. Without -Instance it starts the base
   instance BeDD finds (or its clone for -Slot 2 and up).
 
@@ -25,7 +25,7 @@
   into allowHosts when it is off the PC). Without -Mode the config is left as it is.
 
 .EXAMPLE
-  & bin\BeDD\Start-BeDDGame.ps1 -Instance 1.26.51.01-hi2
+  & bin\BeDD\Start-BeDDGame.ps1 -Instance 1.26.60.05-hi2
   & bin\BeDD\Start-BeDDGame.ps1 -Slot 2
   & bin\BeDD\Start-BeDDGame.ps1 -Slot 2 -Mode Remote -ServerHost 192.168.1.20
 #>

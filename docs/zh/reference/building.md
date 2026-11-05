@@ -21,8 +21,7 @@ xmake -y        # -> bin\BeDD\（DLL、manifest 以及 client\ 里的所有文�
 **服务端目标**（客户端服务端共同调试模式）：`tools/build.ps1 -TargetType server`，或上面换成 `--target_type=server`，
 构建装了 LeviLamina 的 Bedrock 专用服务器（BDS）运行的模组，输出到 `bin\BeDD-server\`（DLL 和 manifest，平台 `server`）。
 它只有控制管道、只用本机网络和服务端操作（`src/ServerTimeScale.cpp`），不含客户端的任何部分（文件由 `xmake.lua` 列出；
-`src/` 的其余部分需要客户端版 LeviLamina 的头文件）。把这个目录复制到服务器的 `plugins\`（服务器上 LeviLamina 的模组目录，
-即 `plugins\BeDD-server\`）；它读取 `plugins\BeDD-server\config\config.json`，提供 `\\.\pipe\BeDD-Server`。
+`src/` 的其余部分需要客户端版 LeviLamina 的头文件）。把这个目录复制到服务器的 `mods\`（即 `mods\BeDD-server\`）；它读取 `mods\BeDD-server\config\config.json`，提供 `\\.\pipe\BeDD-Server`。
 
 `xmake-requires.lock` 锁定两个目标的包，但 xmake 会把它改写成只含当前配置目标的锁定项。`tools/build.ps1` 构建完会把它恢复；
 手动构建时，配置另一个目标前先 `git checkout xmake-requires.lock`（CI 也这样做）。要更新锁定版本，分别配置两个目标，

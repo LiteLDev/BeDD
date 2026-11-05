@@ -28,9 +28,9 @@ Connect-BeDD -PipeName $s.PipeName                           # the server's cont
 ### Setting up a server
 
 `Initialize-BeDDServer` installs LeviLamina's server package with lip into an empty folder; that package brings the
-official BDS of Minecraft 1.26.51 with it (downloaded from minecraft.net, about 100 MB). Like the game setup, it
+official BDS of Minecraft 1.26.60 with it (downloaded from minecraft.net, about 100 MB). Like the game setup, it
 skips whatever is already done, runs one setup at a time on the PC and never asks anything, so harnesses and CI can
-call it before every run. A server's mods live in `plugins\`, so the module goes to `plugins\BeDD-server` (LeviLamina loads a mod only from the folder named after it).
+call it before every run. A server's mods live in `mods\`, so the module goes to `mods\BeDD-server` (LeviLamina loads a mod only from the folder named after it).
 
 | Parameter | |
 |---|---|
@@ -41,7 +41,7 @@ call it before every run. A server's mods live in `plugins\`, so the module goes
 | `-OnlineMode` | default `$false`: games join without Xbox authentication |
 | `-LevelName`, `-Gamemode`, `-Difficulty`, `-LevelSeed`, `-MaxPlayers`, `-AllowCheats` | `server.properties` (defaults `Bedrock level`, `creative`, `peaceful`, random, 10, `$true`) |
 | `-Properties @{ 'view-distance' = 16 }` | any other `server.properties` key |
-| `-ModuleDir` | the BeDD server module (`bin\BeDD-server`), copied to `plugins\BeDD-server` when it changed. `Start-BeDDServer.ps1` starts no server without it ([no firewall prompts](#no-firewall-prompts)) |
+| `-ModuleDir` | the BeDD server module (`bin\BeDD-server`), copied to `mods\BeDD-server` when it changed. `Start-BeDDServer.ps1` starts no server without it ([no firewall prompts](#no-firewall-prompts)) |
 | `-PipeName` | BeDD's control pipe in the server, default `BeDD-Server-<Name>` |
 | `-TimeScale` | config `timeScale`: the game speed the server starts with |
 | `-Trace`, `-Config @{ … }` | config `trace`, and any other key of the module's `config\config.json` |
@@ -72,7 +72,7 @@ socket of the server to the loopback address instead (config `loopbackOnly`, def
 never asks, and only games on this PC can join. `Initialize-BeDDServer` also sets `server-ip=127.0.0.1` and turns LAN
 visibility off, which would otherwise bind Bedrock's default ports as well.
 
-So `Start-BeDDServer.ps1` refuses to start a server that has no BeDD server module in `plugins\BeDD-server`, has
+So `Start-BeDDServer.ps1` refuses to start a server that has no BeDD server module in `mods\BeDD-server`, has
 another module there, or has `"loopbackOnly": false` in its `config.json`, and says which. Should LeviLamina still
 fail to load the module, it stops the server before the server opens its network. `-AllowFirewallPrompt` starts it
 anyway, for a server that games on other PCs should join (with `-ServerIp ''`): then allow it when Windows asks.

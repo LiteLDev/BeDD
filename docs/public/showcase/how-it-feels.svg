@@ -112,7 +112,7 @@
 
   <!-- game 1: camera turns -->
   <rect x="866" y="60" width="368" height="174" rx="8" fill="#0f1626" stroke="#33476f" stroke-width="2"/>
-  <text class="tt" x="880" y="80"><tspan fill="#67d4ff">●</tspan>  <tspan class="tb">game 1</tspan>   1.26.51.01-hi1</text>
+  <text class="tt" x="880" y="80"><tspan fill="#67d4ff">●</tspan>  <tspan class="tb">game 1</tspan>   1.26.60.05-hi1</text>
   <g clip-path="url(#v1)">
     <rect class="sky" x="880" y="88" width="340" height="132"/>
     <g class="pan">
@@ -127,7 +127,7 @@
 
   <!-- game 2: chat command -->
   <rect x="866" y="265" width="368" height="174" rx="8" fill="#0f1626" stroke="#33476f" stroke-width="2"/>
-  <text class="tt" x="880" y="285"><tspan fill="#ffd75e">●</tspan>  <tspan class="tb">game 2</tspan>   1.26.51.01-hi2</text>
+  <text class="tt" x="880" y="285"><tspan fill="#ffd75e">●</tspan>  <tspan class="tb">game 2</tspan>   1.26.60.05-hi2</text>
   <g clip-path="url(#v2)">
     <rect class="sky" x="880" y="293" width="340" height="132"/>
     <rect class="grass" x="880" y="375" width="340" height="14"/><rect class="dirt" x="880" y="389" width="340" height="36"/>
@@ -143,7 +143,7 @@
 
   <!-- game 3: inventory opens -->
   <rect x="866" y="470" width="368" height="174" rx="8" fill="#0f1626" stroke="#33476f" stroke-width="2"/>
-  <text class="tt" x="880" y="490"><tspan fill="#7ee787">●</tspan>  <tspan class="tb">game 3</tspan>   1.26.51.01-hi3</text>
+  <text class="tt" x="880" y="490"><tspan fill="#7ee787">●</tspan>  <tspan class="tb">game 3</tspan>   1.26.60.05-hi3</text>
   <g clip-path="url(#v3)">
     <rect class="sky" x="880" y="498" width="340" height="132"/>
     <rect class="grass" x="880" y="582" width="340" height="14"/><rect class="dirt" x="880" y="596" width="340" height="34"/>

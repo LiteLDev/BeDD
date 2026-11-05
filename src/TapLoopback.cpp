@@ -16,14 +16,21 @@
 // NetworkSystem's ReflectionCtx. Frames carry the flags Reserialized and Local.
 //
 // Only while the client's link is Local (tap::gLinkType). The tap core sets it; NetworkSystem
-// $onNewOutgoingConnection / $onConnectionClosed hooks here set it the same way (from the client's
-// connection type), so the loopback tap also works on its own. A sender method may call another
+// connection the client's sender sends on, and $onConnectionClosed, set it here the same way (from
+// the client's connection type), so the loopback tap also works on its own. A sender method may call another
 // one: a thread_local guard publishes a packet once, at the outermost hook that published it.
+//
+// $sendTo and $sendBroadcast(except) have no symbol since 1.26.60: their addresses are read from
+// LoopbackPacketSender's vtable, found in the game's read-only data by the slots the game still
+// exports around them (send, ?, sendToServer, sendToClient x2, sendToClients, sendBroadcast x2).
+// When that layout does not match, those two hooks stay off and the failure is logged.
 //
 // Without a tap pipe (tap::gEmit null) frames are only counted (state.stats.tapLoopback). Trace
 // mode also writes the first frames, framed as on the tap pipe, to <mod>/data/tap-loopback.bin.
 #include "BeDD.h"
 #include "TapSink.h"
+
+#include <windows.h>
 
 #include <cstdio>
 #include <cstring>
@@ -67,7 +74,7 @@ std::atomic<uint64_t> gClientbound{}, gEcho{}, gBytes{}, gUnpublished{}, gGuest{
 // The local player got start_game since the link came up: broadcasts reach it from then on.
 std::atomic<bool> gJoined{false};
 
-// The client's server link (onNewOutgoingConnection), to match onConnectionClosed.
+// The client's server link (noteClientLink), to match onConnectionClosed.
 std::mutex                       gLinkMutex;
 std::optional<NetworkIdentifier> gServerId;
 
@@ -75,6 +82,41 @@ std::optional<NetworkIdentifier> gServerId;
 std::mutex   gTraceMutex;
 size_t       gTraceLogged = 0, gTraceDumped = 0, gTraceDumpBytes = 0;
 std::FILE*   gTraceFile = nullptr;
+
+// Addresses of the sender virtuals without a symbol (findSenderVirtuals); 0 = not found.
+uintptr_t gSendToAddr = 0, gBroadcastExceptAddr = 0;
+
+// LoopbackPacketSender's vtable (PacketSender's slot order; MSVC puts overloads together, last
+// declared first): finds the slots of sendTo and sendBroadcast(except) from the exported ones.
+void findSenderVirtuals() {
+    using S              = LoopbackPacketSender;
+    auto      addr       = [](auto f) { return reinterpret_cast<uintptr_t>(ll::memory::toFuncPtr(f)); };
+    uintptr_t send       = addr(&S::$send);
+    uintptr_t toServer   = addr(&S::$sendToServer);
+    uintptr_t toClientId = addr(static_cast<void (S::*)(NetworkIdentifier const&, Packet const&, SubClientId)>(&S::$sendToClient));
+    uintptr_t toUser     = addr(static_cast<void (S::*)(UserEntityIdentifierComponent const*, Packet const&)>(&S::$sendToClient));
+    uintptr_t toClients  = addr(&S::$sendToClients);
+    uintptr_t broadcast  = addr(static_cast<void (S::*)(Packet const&)>(&S::$sendBroadcast));
+    if (!send || !toServer || !toClientId || !toUser || !toClients || !broadcast) return;
+
+    auto* base = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
+    auto* nt   = reinterpret_cast<IMAGE_NT_HEADERS*>(base + reinterpret_cast<IMAGE_DOS_HEADER*>(base)->e_lfanew);
+    auto* sec  = IMAGE_FIRST_SECTION(nt);
+    for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++sec) {
+        if (std::memcmp(sec->Name, ".rdata", 6) != 0) continue;
+        auto*  slots = reinterpret_cast<uintptr_t const*>(base + sec->VirtualAddress);
+        size_t n     = sec->Misc.VirtualSize / sizeof(uintptr_t);
+        for (size_t k = 2; k + 8 < n; ++k) {
+            uintptr_t const* v = slots + k - 2; // v[2] = send
+            if (v[2] != send || v[4] != toServer || v[7] != toClients) continue;
+            if (!((v[5] == toClientId && v[6] == toUser) || (v[5] == toUser && v[6] == toClientId))) continue;
+            if (v[8] != broadcast && v[9] != broadcast) continue;
+            gSendToAddr          = v[3];
+            gBroadcastExceptAddr = v[8] == broadcast ? v[9] : v[8];
+            return;
+        }
+    }
+}
 
 // The packet this thread's outermost sender hook published, while the original method runs.
 thread_local Packet const* tPublished = nullptr;
@@ -115,6 +157,31 @@ bool localLink() {
     int type = tap::gLinkType.load(std::memory_order_acquire);
     if (type == static_cast<int>(Link::Local)) return true;
     return type == static_cast<int>(Link::None) && clientHasLocalConnection();
+}
+
+/// The client's sender sends: its NetworkSystem's (only) connection is the server link. Sets the
+/// link type when that connection is new (NetworkSystem::onNewOutgoingConnection, which did this,
+/// has no symbol since 1.26.60).
+void noteClientLink(NetworkSystem& client) {
+    std::optional<NetworkIdentifier> id;
+    bool                             local = false;
+    {
+        std::lock_guard lock(client.mConnectionsMutex.get());
+        for (auto const& c : client.mConnections.get()) {
+            if (!c) continue;
+            id.emplace(c->mId.get());
+            local = c->mType == NetworkConnection::Type::Local;
+            break;
+        }
+    }
+    if (!id) return;
+    {
+        std::lock_guard lock(gLinkMutex);
+        if (gServerId && *gServerId == *id) return;
+        gServerId = id;
+    }
+    setLink(local ? Link::Local : Link::Remote);
+    log().info("tap loopback: the client's link is {}", local ? "local" : "remote");
 }
 
 /// On the server: id is the local player's connection (not a LAN guest's).
@@ -240,6 +307,7 @@ void clientbound(LoopbackPacketSender& s, Packet const& packet, SubClientId targ
 // request_network_settings (193).
 bool echoes(LoopbackPacketSender& s, Packet const& packet) {
     if (!fresh(packet) || isServerSide(s)) return false;
+    noteClientLink(networkOf(s));
     auto id = static_cast<uint32_t>(packet.getId()) & 0x3ff;
     if (id == 1) gJoined = false; // login: a new world is being joined, whoever tracks the link
     if (!localLink()) return false;
@@ -255,30 +323,6 @@ void echo(LoopbackPacketSender& s, Packet const& packet) {
 // ---------------------------------------------------------------------------------------------
 // Client link type
 // ---------------------------------------------------------------------------------------------
-LL_TYPE_INSTANCE_HOOK(
-    TapLoopbackOutgoingHook,
-    ll::memory::HookPriority::Normal,
-    NetworkSystem,
-    &NetworkSystem::$onNewOutgoingConnection,
-    bool,
-    NetworkIdentifier const&       id,
-    std::shared_ptr<NetworkPeer>&& peer
-) {
-    NetworkPeer* raw = peer.get();
-    bool         ok  = origin(id, std::move(peer));
-    if (ok && isClientSystem(this)) {
-        auto* conn  = getConnectionFromId(id);
-        bool  local = (conn && conn->mType == NetworkConnection::Type::Local) || (raw && raw->isLocal());
-        {
-            std::lock_guard lock(gLinkMutex);
-            gServerId.emplace(id);
-        }
-        setLink(local ? Link::Local : Link::Remote);
-        log().info("tap loopback: the client's link is {}", local ? "local" : "remote");
-    }
-    return ok;
-}
-
 LL_TYPE_INSTANCE_HOOK(
     TapLoopbackClosedHook,
     ll::memory::HookPriority::Normal,
@@ -369,7 +413,7 @@ LL_TYPE_INSTANCE_HOOK(
     TapLoopbackBroadcastExceptHook,
     ll::memory::HookPriority::Normal,
     LoopbackPacketSender,
-    static_cast<void (LoopbackPacketSender::*)(NetworkIdentifier const&, SubClientId, Packet const&)>(&LoopbackPacketSender::$sendBroadcast),
+    gBroadcastExceptAddr,
     void,
     NetworkIdentifier const& exceptId,
     SubClientId              exceptSubid,
@@ -386,7 +430,7 @@ LL_TYPE_INSTANCE_HOOK(
     TapLoopbackSendToHook,
     ll::memory::HookPriority::Normal,
     LoopbackPacketSender,
-    &LoopbackPacketSender::$sendTo,
+    gSendToAddr,
     void,
     NetworkIdentifier const& id,
     SubClientId              subid,
@@ -438,19 +482,19 @@ struct LoopbackHook {
     char const* name;
     int (*hook)(bool);
     bool (*unhook)(bool);
-    bool installed = false;
+    uintptr_t const* virtualAddr = nullptr; // a vtable address (findSenderVirtuals): not hooked while 0
+    bool             installed   = false;
 };
 
 std::vector<LoopbackHook>& loopbackHooks() {
     static std::vector<LoopbackHook> hooks{
-        {"NetworkSystem::onNewOutgoingConnection",       &TapLoopbackOutgoingHook::hook,        &TapLoopbackOutgoingHook::unhook       },
         {"NetworkSystem::onConnectionClosed",            &TapLoopbackClosedHook::hook,          &TapLoopbackClosedHook::unhook         },
         {"LoopbackPacketSender::sendToClient(id)",       &TapLoopbackSendToClientHook::hook,    &TapLoopbackSendToClientHook::unhook   },
         {"LoopbackPacketSender::sendToClient(user)",     &TapLoopbackSendToUserHook::hook,      &TapLoopbackSendToUserHook::unhook     },
         {"LoopbackPacketSender::sendToClients",          &TapLoopbackSendToClientsHook::hook,   &TapLoopbackSendToClientsHook::unhook  },
         {"LoopbackPacketSender::sendBroadcast",          &TapLoopbackBroadcastHook::hook,       &TapLoopbackBroadcastHook::unhook      },
-        {"LoopbackPacketSender::sendBroadcast(except)",  &TapLoopbackBroadcastExceptHook::hook, &TapLoopbackBroadcastExceptHook::unhook},
-        {"LoopbackPacketSender::sendTo",                 &TapLoopbackSendToHook::hook,          &TapLoopbackSendToHook::unhook         },
+        {"LoopbackPacketSender::sendBroadcast(except)",  &TapLoopbackBroadcastExceptHook::hook, &TapLoopbackBroadcastExceptHook::unhook, &gBroadcastExceptAddr},
+        {"LoopbackPacketSender::sendTo",                 &TapLoopbackSendToHook::hook,          &TapLoopbackSendToHook::unhook,          &gSendToAddr},
         {"LoopbackPacketSender::sendToServer",           &TapLoopbackSendToServerHook::hook,    &TapLoopbackSendToServerHook::unhook   },
         {"LoopbackPacketSender::send",                   &TapLoopbackSendHook::hook,            &TapLoopbackSendHook::unhook           },
     };
@@ -461,12 +505,14 @@ std::vector<LoopbackHook>& loopbackHooks() {
 
 void installTapLoopback() {
     if (gInstalled.exchange(true)) return;
+    if (!gSendToAddr || !gBroadcastExceptAddr) findSenderVirtuals();
+    if (!gSendToAddr) log().error("tap loopback: LoopbackPacketSender's vtable was not found (sendTo, sendBroadcast(except))");
     std::vector<char const*> failures;
     int                      n = 0;
     {
         HookPause pause;
         for (auto& h : loopbackHooks()) {
-            h.installed = h.hook(false) == 0;
+            h.installed = h.virtualAddr && !*h.virtualAddr ? false : h.hook(false) == 0;
             if (h.installed) ++n;
             else failures.push_back(h.name);
         }

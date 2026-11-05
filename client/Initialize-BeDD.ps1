@@ -3,7 +3,7 @@
   Get this PC ready for headless games: find (or set up) the game instance BeDD runs.
 
 .DESCRIPTION
-  Finds the LeviLauncher instance of Minecraft 1.26.51 and sets up whatever this PC still lacks
+  Finds the LeviLauncher instance of Minecraft 1.26.60 and sets up whatever this PC still lacks
   (BeDDSetup.psm1): LeviLauncher itself (downloaded from its GitHub releases), the game (LeviLauncher
   opens for you to sign in and install it: the one step a script cannot do), LeviLamina (installed
   with lip, which is downloaded with its .NET runtime), LeviLauncher's loader in the game exe, and

@@ -88,8 +88,8 @@ The mod packer reads the version from `git describe`, so the repository needs at
 `bin\BeDD-server\` (DLL and manifest, platform `server`). It holds the control pipe, the loopback-only
 network and the server ops (`src/ServerTimeScale.cpp`) and nothing of the client (`xmake.lua` lists
 its files; the rest of `src/` needs the client's LeviLamina headers). Copy the folder into the
-server's `plugins\` (LeviLamina's mods folder on a server, `plugins\BeDD-server\`); it reads
-`plugins\BeDD-server\config\config.json` and serves `\\.\pipe\BeDD-Server`.
+server's `mods\` (`mods\BeDD-server\`); it reads
+`mods\BeDD-server\config\config.json` and serves `\\.\pipe\BeDD-Server`.
 
 `xmake-requires.lock` pins the packages of both targets, but xmake rewrites it with the configured
 target's pins only. `tools/build.ps1` puts it back after building; by hand, `git checkout
@@ -284,14 +284,14 @@ maximum); a `timeoutMs` the caller passes is used as given. Likewise "the client
     also reach an open screen, and a rebound key breaks them.
 - **`slot`, `action`, `button`**: the pipe thread queues them and replies once the next client
   tick applied them (`timeoutMs`, default 1000): `{"ok":true,"tick":n,...}`, or `code`
-  `not_in_level`, `busy` (a screen is open; `action pause` and `button up` still work), `timeout`,
+  `not_in_level`, `busy` (a screen is open; `button up` still works), `timeout`,
   `bad_args`, `refused`. A paused singleplayer world does not tick: after `action pause` there,
   resume with the `key` op (ESC).
-  - `slot`: `ClientInputCallbacks::handleSlotSelectButtonPress`, and when that leaves the slot
-    alone (it does for a keyboard player in 1.26.51) the hotbar key `1`..`9` of the default key map.
-    The client sends `mob_equipment` itself. Replies `slot` and `via` callback\|keys.
-  - `action`: the matching `ClientInputCallbacks::handle*ButtonPress` (inventory with
-    `CraftingType::Inventory`).
+  - `slot`: the hotbar key `1`..`9` of the default key map, replied once the player holds the
+    slot. The client sends `mob_equipment` itself. Replies `slot` and `via` keys\|none (already held).
+  - `action`: the key of the default key map, released on the next tick: drop Q, dropAll Ctrl+Q,
+    inventory E, pause Escape; perspective calls `ClientInputCallbacks::handleTogglePerspectiveButtonPress`
+    (since 1.26.60 the game exports none of the other `handle*ButtonPress`). A rebound key breaks them.
   - `button`: left/right/middle on the virtual GameInput mouse, released
     by the tick listener after `holdTicks` (click: default 2) or, with `releaseOn:"blockChange"`,
     once the block the client's hit result pointed at when it went down changes, turns to air or is
@@ -299,7 +299,7 @@ maximum); a `timeoutMs` the caller passes is used as given. Likewise "the client
     the pipe. Replies `held`, and `block{x,y,z}`.
 - **`send`**: `buf` is the base64 of one serverbound packet (varint header + body, as
   bedrock-protocol serializes it). It is rebuilt on the client thread
-  (`MinecraftPackets::createPacket` + `readNoHeader` with the client NetworkSystem's
+  (`MinecraftPackets::createPacket` + `Packet::read` with the client NetworkSystem's
   `ReflectionCtx`) and sent through the local player (`sendNetworkPacket`), on a remote server and
   in singleplayer alike; the reply `{packetId, name}` comes once it is sent. Bytes the game does not
   read are `bad_args` and nothing is sent; an id not in `sendAllow` is `refused`. `state` reports
@@ -328,7 +328,7 @@ them on.
 - `buf` is the base64 of one whole item_stack_request packet (id 147), varint header plus body, as
   bedrock-protocol serializes it. Any other packet id, and bytes the game does not read, are `bad_args`.
 - On the next client tick the packet is rebuilt with `MinecraftPackets::createPacket` and
-  `readNoHeader`, and the local player sends it.
+  `Packet::read`, and the local player sends it.
 - Request ids: each request gets a new client id, and the reply comes back once the packet is sent. Ids
   are odd, negative and counted down from `-0x40000001`, far below the client's own `-1, -3, ...`.
   Every slot stack id that names a caller id is renamed too. That covers the request's own id (a
@@ -428,7 +428,7 @@ Readers ignore other kinds. Flags: 1 replay (from the join journal), 2 reseriali
 
 | marker | fields |
 |---|---|
-| `HELLO` (always first) | `tap:1`, `mod`, `game:"1.26.51.01"`, `protocol` (2193), `pid`, `link{state, type, address}`, `journal{frames, bytes, complete}` (what this reader is replayed) |
+| `HELLO` (always first) | `tap:1`, `mod`, `game:"1.26.60.05"`, `protocol` (2225), `pid`, `link{state, type, address}`, `journal{frames, bytes, complete}` (what this reader is replayed) |
 | `LINK_UP` | `type` remote\|local, `address` |
 | `LINK_DOWN` | `reason` |
 | `REPLAY_BEGIN` | `frames` |
@@ -447,9 +447,11 @@ thread drains its queue.
 
 #### Remote servers (`NetTap.cpp`)
 
-The client's NetworkSystem follows its one outgoing connection (`$onNewOutgoingConnection`;
-`$onConnectionClosed`, `$onAllConnectionsClosed`, `closeConnection` and `disconnect` end it). On
-a remote link, `NetworkConnection::receivePacket` (after it, `HasData`) gives each decompressed,
+The client's NetworkSystem follows its one open connection: `NetworkSystem::send` (before the
+client's first packet goes out) and `runEvents` (every tick) look it up, so a new one brings the
+link up and none takes it down; `$onConnectionClosed` and `closeConnection` end it at once (since
+1.26.60 the game exports no `onNewOutgoingConnection`, `onAllConnectionsClosed` or `disconnect`). On
+a remote link, `BatchedNetworkPeer::_receivePacket` of its batched peer (after it, `HasData`) gives each decompressed,
 decrypted packet, and `NetworkSystem::_sendInternal` each serialized packet the client sends: wire
 bytes, flags 0. With config `trace`, the first 50 packets of each link are logged as
 `tap trace #n in|out id len`: they come in the order of a BDS capture (network_settings,
@@ -471,7 +473,9 @@ and each packet is re-serialized (varint header `id | senderSub << 10 | targetSu
 `reserialized` (2) and `local` (4).
 
 - **CLIENTBOUND**: the server's sender (`$sendToClient` both overloads, `$sendToClients`,
-  `$sendBroadcast` both overloads, `$sendTo`), only for a `NetworkIdentifier` whose connection on
+  `$sendBroadcast` both overloads, `$sendTo`; `$sendTo` and `$sendBroadcast(except)` have no symbol
+  since 1.26.60 and are found in `LoopbackPacketSender`'s vtable, next to the slots the game still
+  exports), only for a `NetworkIdentifier` whose connection on
   the server is of type `Local`. LAN guests are remote connections and are never published
   (counted as `guest`). Broadcasts are published once the local player got `start_game`.
 - **SERVERBOUND_ECHO**: the client's sender (`$sendToServer`, `$send`, `$sendTo`), never ids 1, 3, 4
@@ -482,8 +486,8 @@ and each packet is re-serialized (varint header `id | senderSub << 10 | targetSu
   asks relative to one origin (its own sub-chunk) and only up to each column's
   `highest_subchunk_count`; a local client sends `client_cache_status` with `enabled:false`, so
   every entry carries its payload.
-- Only while the client's link (`tap::gLinkType`) is local. `$onNewOutgoingConnection` /
-  `$onConnectionClosed` on the client `NetworkSystem` set it from the connection type, as the tap
+- Only while the client's link (`tap::gLinkType`) is local. The client sender's first packet on a
+  new connection and `$onConnectionClosed` on the client `NetworkSystem` set it from the connection type, as the tap
   core does, so the loopback tap works without it. While no link is known yet (the in-process
   server already sends before the client's connect call returns), a `Local` connection of the
   client counts; that check never writes `gLinkType`. The remote capture only publishes on a

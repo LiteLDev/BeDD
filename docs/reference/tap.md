@@ -31,7 +31,7 @@ Readers ignore other kinds. Flags: 1 replay (from the join journal), 2 reseriali
 
 | marker | fields |
 |---|---|
-| `HELLO` (always first) | `tap:1`, `mod`, `game:"1.26.51.01"`, `protocol` (2193), `pid`, `link{state, type, address}`, `journal{frames, bytes, complete}` (what this reader is replayed) |
+| `HELLO` (always first) | `tap:1`, `mod`, `game:"1.26.60.05"`, `protocol` (2225), `pid`, `link{state, type, address}`, `journal{frames, bytes, complete}` (what this reader is replayed) |
 | `LINK_UP` | `type` remote\|local, `address` |
 | `LINK_DOWN` | `reason` |
 | `REPLAY_BEGIN` | `frames` |
@@ -50,9 +50,11 @@ thread drains its queue.
 
 ## Remote servers (`NetTap.cpp`)
 
-The client's NetworkSystem follows its one outgoing connection (`$onNewOutgoingConnection`;
-`$onConnectionClosed`, `$onAllConnectionsClosed`, `closeConnection` and `disconnect` end it). On
-a remote link, `NetworkConnection::receivePacket` (after it, `HasData`) gives each decompressed,
+The client's NetworkSystem follows its one open connection: `NetworkSystem::send` (before the
+client's first packet goes out) and `runEvents` (every tick) look it up, so a new one brings the
+link up and none takes it down; `$onConnectionClosed` and `closeConnection` end it at once (since
+1.26.60 the game exports no `onNewOutgoingConnection`, `onAllConnectionsClosed` or `disconnect`). On
+a remote link, `BatchedNetworkPeer::_receivePacket` of its batched peer (after it, `HasData`) gives each decompressed,
 decrypted packet, and `NetworkSystem::_sendInternal` each serialized packet the client sends: wire
 bytes, flags 0. With config `trace`, the first 50 packets of each link are logged as
 `tap trace #n in|out id len`: they come in the order of a BDS capture (network_settings,
@@ -74,7 +76,9 @@ and each packet is re-serialized (varint header `id | senderSub << 10 | targetSu
 `reserialized` (2) and `local` (4).
 
 - **CLIENTBOUND**: the server's sender (`$sendToClient` both overloads, `$sendToClients`,
-  `$sendBroadcast` both overloads, `$sendTo`), only for a `NetworkIdentifier` whose connection on
+  `$sendBroadcast` both overloads, `$sendTo`; `$sendTo` and `$sendBroadcast(except)` have no symbol
+  since 1.26.60 and are found in `LoopbackPacketSender`'s vtable, next to the slots the game still
+  exports), only for a `NetworkIdentifier` whose connection on
   the server is of type `Local`. LAN guests are remote connections and are never published
   (counted as `guest`). Broadcasts are published once the local player got `start_game`.
 - **SERVERBOUND_ECHO**: the client's sender (`$sendToServer`, `$send`, `$sendTo`), never ids 1, 3, 4
@@ -85,8 +89,8 @@ and each packet is re-serialized (varint header `id | senderSub << 10 | targetSu
   asks relative to one origin (its own sub-chunk) and only up to each column's
   `highest_subchunk_count`; a local client sends `client_cache_status` with `enabled:false`, so
   every entry carries its payload.
-- Only while the client's link (`tap::gLinkType`) is local. `$onNewOutgoingConnection` /
-  `$onConnectionClosed` on the client `NetworkSystem` set it from the connection type, as the tap
+- Only while the client's link (`tap::gLinkType`) is local. The client sender's first packet on a
+  new connection and `$onConnectionClosed` on the client `NetworkSystem` set it from the connection type, as the tap
   core does, so the loopback tap works without it. While no link is known yet (the in-process
   server already sends before the client's connect call returns), a `Local` connection of the
   client counts; that check never writes `gLinkType`. The remote capture only publishes on a

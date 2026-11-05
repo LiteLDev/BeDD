@@ -40,7 +40,7 @@ Be.D.D. 是一套测试工具，不是给玩家装的模组。一个发行版（
 ## 系统要求
 
 - Windows x64；管理窗口需要 PowerShell 7（`pwsh`）。
-- Minecraft 基岩版 **1.26.51**（GDK 版）和 LeviLamina **26.51.x**（客户端），装在用
+- Minecraft 基岩版 **1.26.60**（GDK 版）和 LeviLamina **26.60.x**（客户端），装在用
   [LeviLauncher](https://docs.levimc.org/LeviLauncher/) 安装的游戏实例里。测试时用 `Start-BeDDGame.ps1`
   启动这个实例，不走启动器。
 

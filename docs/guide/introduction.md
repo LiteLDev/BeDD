@@ -45,7 +45,7 @@ LeviMC Mods: you download it from the [releases](https://github.com/LiteLDev/BeD
 ## Requirements
 
 - Windows x64 and PowerShell 7 (`pwsh`) for the manager window.
-- Minecraft Bedrock Edition **1.26.51** (GDK) with LeviLamina **26.51.x** (client), in a game instance installed
+- Minecraft Bedrock Edition **1.26.60** (GDK) with LeviLamina **26.60.x** (client), in a game instance installed
   with [LeviLauncher](https://docs.levimc.org/LeviLauncher/). Tests start that instance with
   `Start-BeDDGame.ps1` rather than through the launcher.
 

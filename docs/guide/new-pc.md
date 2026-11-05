@@ -6,7 +6,7 @@ and `clone-instance.ps1`) finds the instance and sets up whatever the PC lacks, 
 | Missing | What happens |
 |---|---|
 | LeviLauncher | the installed one is used; otherwise the latest release is downloaded to `%LOCALAPPDATA%\BeDD\tools` |
-| the game | LeviLauncher opens and the script waits while you sign in with a Microsoft account that owns Minecraft and install 1.26.51 (a script cannot do this step; with `CI` set it fails with these instructions instead) |
+| the game | LeviLauncher opens and the script waits while you sign in with a Microsoft account that owns Minecraft and install 1.26.60 (a script cannot do this step; with `CI` set it fails with these instructions instead) |
 | LeviLamina | installed into the instance with [lip](https://docs.levimc.org/lip/), which is downloaded with the .NET runtime it needs (per user, no admin) |
 | LeviLauncher's loader in the game exe | the instance is started once through LeviLauncher, which adds it, and the game is closed again. Without the loader the game would use your normal Minecraft data instead of the instance's |
 | a clone (`-Slot 2` and up) | made from the base instance, and refreshed when the base instance has changed since |
@@ -18,7 +18,7 @@ $i = & .\Initialize-BeDD.ps1 -Slot 2    # Name, Dir, ModsDir, PipeName of versio
 ## Which instance
 
 Be.D.D. finds LeviLauncher's data in `%APPDATA%\levilauncher.exe`, follows its "data folder" setting
-(`base_root`), and picks the instance of 1.26.51 there (one with LeviLamina first).
+(`base_root`), and picks the instance of 1.26.60 there (one with LeviLamina first).
 
 To point it elsewhere, set these environment variables:
 

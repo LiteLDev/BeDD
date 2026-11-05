@@ -156,14 +156,12 @@ void step(std::shared_ptr<Attempt> const& a) {
     }
 }
 
-// The client flagged a disconnection (reason: Connection::DisconnectFailReason, -1 = not known).
-void disconnected(int reason) {
+// The client flagged a disconnection.
+void disconnected() {
     std::lock_guard lock(gMutex);
-    if (options().trace) log().info("join: the client flagged a disconnection (reason {})", reason);
+    if (options().trace) log().info("join: the client flagged a disconnection");
     if (!gAttempt || !gAttempt->started || gInLevel) return;
-    json r = fail("join_failed", "the client could not connect (it shows why)");
-    if (reason >= 0) r["reason"] = reason;
-    finish(gAttempt, std::move(r));
+    finish(gAttempt, fail("join_failed", "the client could not connect (it shows why)"));
 }
 
 // On the client thread, every frame: step the attempt in progress every kPoll.
@@ -211,25 +209,13 @@ json connectionLocked() {
 } // namespace
 
 // Outside the anonymous namespace: the macro's static members would be unused there.
-LL_TYPE_INSTANCE_HOOK(JoinUpdateHook, ll::memory::HookPriority::Normal, ClientInstance, &ClientInstance::$update, bool, bool isInitFinished) {
-    bool r = origin(isInitFinished);
+LL_TYPE_INSTANCE_HOOK(JoinUpdateHook, ll::memory::HookPriority::Normal, ClientInstance, &ClientInstance::$update, bool, bool isInitFinished, bool allowGameUpdate) {
+    bool r = origin(isInitFinished, allowGameUpdate);
     if (isInitFinished) frame();
     return r;
 }
 
 // The client gives up a connection (and shows why): the attempt in progress failed.
-LL_TYPE_INSTANCE_HOOK(
-    JoinDisconnectHook,
-    ll::memory::HookPriority::Normal,
-    ClientInstance,
-    &ClientInstance::$flagDisconnectionAndNotify,
-    void,
-    ::Connection::DisconnectFailReason reason
-) {
-    disconnected(static_cast<int>(reason));
-    origin(reason);
-}
-
 LL_TYPE_INSTANCE_HOOK(
     JoinDisconnectParamsHook,
     ll::memory::HookPriority::Normal,
@@ -238,7 +224,7 @@ LL_TYPE_INSTANCE_HOOK(
     void,
     ::DisconnectionScreenParams const& params
 ) {
-    disconnected(-1);
+    disconnected();
     origin(params);
 }
 
@@ -281,7 +267,7 @@ void installJoin() {
     {
         HookPause pause;
         gUpdateHooked     = JoinUpdateHook::hook(false) == 0;
-        gDisconnectHooked = JoinDisconnectHook::hook(false) == 0 && JoinDisconnectParamsHook::hook(false) == 0;
+        gDisconnectHooked = JoinDisconnectParamsHook::hook(false) == 0;
     }
     if (!gUpdateHooked) log().error("join: ClientInstance::update could not be hooked: the `join` op is unavailable");
     if (!gDisconnectHooked) log().warn("join: the disconnection hooks failed: a failed join ends at its timeout");
@@ -302,7 +288,6 @@ void uninstallJoin() {
     HookPause pause;
     // unhook() of a hook that is not in is a no-op.
     JoinUpdateHook::unhook(false);
-    JoinDisconnectHook::unhook(false);
     JoinDisconnectParamsHook::unhook(false);
     gUpdateHooked = gDisconnectHooked = false;
 }

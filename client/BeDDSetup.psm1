@@ -22,8 +22,8 @@
 # BEDD_LAUNCHER_DATA (LeviLauncher's data folder), BEDD_LEVILAUNCHER (LeviLauncher.exe), BEDD_LIP (lip.exe).
 
 # The game and LeviLamina this build of BeDD is made for (xmake.lua's levilamina package).
-$script:GameVersion       = '1.26.51'
-$script:LeviLaminaVersion = '26.51.7'
+$script:GameVersion       = '1.26.60'
+$script:LeviLaminaVersion = '26.60.2'
 # Downloaded tools (LeviLauncher, lip, the .NET runtime for lip).
 $script:ToolsDir = Join-Path $env:LOCALAPPDATA 'BeDD\tools'
 
@@ -417,7 +417,7 @@ function Set-BeDDMode(
 #
 # lip installs LeviLamina's server package into an empty folder, and that package brings the
 # official BDS of $GameVersion with it (github.com/LiteLDev/bds, downloaded from minecraft.net by
-# bdsdown). Mods of a server live in plugins\, not mods\. Override: BEDD_SERVERS_DIR.
+# bdsdown). Mods of a server live in mods\ (plugins\ before LeviLamina 26.60). Override: BEDD_SERVERS_DIR.
 
 # The first port Initialize-BeDDServer hands out (IPv4; IPv6 is the next one). 19132, Bedrock's
 # default, is left to the games and servers you start by hand.
@@ -473,7 +473,7 @@ function Get-BeDDServerProcess([Parameter(Mandatory)][string]$Dir) {
         Where-Object { $_.Path -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) }
 }
 
-# BeDD modules in a plugins folder: each subfolder whose manifest.json names a mod BeDD*, as
+# BeDD modules in a server's mods folder: each subfolder whose manifest.json names a mod BeDD*, as
 # @{ Dir; Manifest }. LeviLamina loads a mod only from the folder named after it (BeDD-server).
 function Find-BeDDServerModule([string]$PluginsDir) {
     foreach ($d in Get-ChildItem $PluginsDir -Directory -Filter 'BeDD*' -ErrorAction SilentlyContinue) {
@@ -484,12 +484,12 @@ function Find-BeDDServerModule([string]$PluginsDir) {
 }
 
 # A server folder and what it still lacks, without changing anything. Problems: 'missing' (no BDS),
-# 'leviLamina', 'bedd' (no BeDD module in plugins\: Start-BeDDServer.ps1 refuses to start it, as it
+# 'leviLamina', 'bedd' (no BeDD module in mods\: Start-BeDDServer.ps1 refuses to start it, as it
 # would listen on the network and raise a Windows Firewall prompt, unless -AllowFirewallPrompt).
 function Get-BeDDServer([string]$Name = 'server', [string]$ServersDir) {
     $ServersDir = Resolve-BeDDServersDir $ServersDir
     $dir = Join-Path $ServersDir $Name
-    $plugins = Join-Path $dir 'plugins'
+    $plugins = Join-Path $dir 'mods'
     $props = Read-BeDDServerProperties (Join-Path $dir 'server.properties')
     $problems = @()
     $exe = Join-Path $dir 'bedrock_server_mod.exe'
@@ -504,14 +504,14 @@ function Get-BeDDServer([string]$Name = 'server', [string]$ServersDir) {
         Name        = $Name
         Dir         = $dir
         Exe         = $exe
-        PluginsDir  = $plugins
+        PluginsDir  = $plugins # the server's mods folder (the name is from when it was plugins\)
         Port        = if ($props['server-port']) { [int]$props['server-port'] } else { 0 }
         PortV6      = if ($props['server-portv6']) { [int]$props['server-portv6'] } else { 0 }
         # BeDD's control pipe in the server (its config), and the pipe Start-BeDDServer.ps1 forwards
         # to the server console.
         PipeName    = if ($config -and $config.pipeName) { [string]$config.pipeName } else { "BeDD-Server-$Name" }
         ConsolePipe = "BeDD-BDS-$Name"
-        # The BeDD module (plugins\<its name>), its platform, whether LeviLamina loads it (folder named
+        # The BeDD module (mods\<its name>), its platform, whether LeviLamina loads it (folder named
         # after the mod), and whether it binds the server to 127.0.0.1 (config loopbackOnly, default
         # on): without that, Windows Firewall asks on the desktop.
         ModuleDir      = if ($module) { $module.Dir } else { $null }
@@ -542,7 +542,7 @@ function Find-BeDDServerPort([string]$ServersDir, [string]$Except) {
 }
 
 # Copies the BeDD server module (<ModuleDir>: manifest.json and the DLL it names, as built into
-# bin\BeDD-server) into <plugins>\<its name> when it differs, moving the config of a BeDD module
+# bin\BeDD-server) into <mods>\<its name> when it differs, moving the config of a BeDD module
 # installed under another name there and removing that one. Returns whether it changed anything.
 function Copy-BeDDServerModule([string]$ModuleDir, [string]$PluginsDir, [string]$ServerDir) {
     $manifest = Join-Path $ModuleDir 'manifest.json'

@@ -75,16 +75,17 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
   - `via:"keys"`（某个钩子没装上）：默认键位的虚拟键（W/A/S/D、SPACE、LSHIFT、LCTRL）按住到截止时间。它们像 `key` 一样经过窗口，
     所以也会到达打开的界面，改过的键位会让它失效。
 - **`slot`、`action`、`button`**：管道线程把它们排队，下一个客户端刻执行后回复（`timeoutMs`，默认 1000）：`{"ok":true,"tick":n,...}`，
-  或 `code` `not_in_level`、`busy`（有界面打开；`action pause` 和 `button up` 仍可用）、`timeout`、`bad_args`、`refused`。
+  或 `code` `not_in_level`、`busy`（有界面打开；`button up` 仍可用）、`timeout`、`bad_args`、`refused`。
   暂停的单人世界不走刻：在那里 `action pause` 之后，用 `key` 操作（ESC）恢复。
-  - `slot`：`ClientInputCallbacks::handleSlotSelectButtonPress`；它不改格子时（1.26.51 里键盘玩家就是这样）改用默认键位的快捷栏键 `1`..`9`。
-    客户端自己发送 `mob_equipment`。回复 `slot` 和 `via` callback\|keys。
-  - `action`：对应的 `ClientInputCallbacks::handle*ButtonPress`（背包用 `CraftingType::Inventory`）。
+  - `slot`：默认键位的快捷栏键 `1`..`9`，玩家拿上这一格后回复。
+    客户端自己发送 `mob_equipment`。回复 `slot` 和 `via` keys\|none（本来就拿着）。
+  - `action`：默认键位的按键，下一刻松开：drop Q、dropAll Ctrl+Q、inventory E、pause Escape；perspective 调用
+    `ClientInputCallbacks::handleTogglePerspectiveButtonPress`（从 1.26.60 起游戏不再导出其他 `handle*ButtonPress`）。改过的键位会让它们失效。
   - `button`：虚拟 GameInput 鼠标上的左/中/右键，由刻监听器在 `holdTicks` 后松开（click 默认 2），或者带
     `releaseOn:"blockChange"` 时，在按下时客户端命中结果指向的方块改变、变成空气或不再被指向时松开（没有指向方块时为 `refused`）。
     `up` 立即生效。从不阻塞管道。回复 `held` 和 `block{x,y,z}`。
 - **`send`**：`buf` 是一个服务端方向数据包的 base64（varint 头 + 包体，与 bedrock-protocol 的序列化一致）。它在客户端线程上重建
-  （`MinecraftPackets::createPacket` + `readNoHeader`，用客户端 NetworkSystem 的 `ReflectionCtx`），并通过本地玩家发送（`sendNetworkPacket`），
+  （`MinecraftPackets::createPacket` + `Packet::read`，用客户端 NetworkSystem 的 `ReflectionCtx`），并通过本地玩家发送（`sendNetworkPacket`），
   远程服务器和单人世界都一样；发出后回复 `{packetId, name}`。游戏读不完的字节为 `bad_args`，什么都不发；不在 `sendAllow` 里的 id 为 `refused`。
   `state` 报告 `stats.send{sent, refused, failed, lastError}`。
 - **`stack`**：见下文。
@@ -106,7 +107,7 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 | `{op:"stack", view:true}` | `{ok, inventory:[...], ui:[...], open?:{containerId, type, items:[...]}}`：客户端显示的内容，每项 `{slot, item, count, stackId}` |
 
 - `buf` 是一个完整 item_stack_request 包（id 147）的 base64，varint 头加包体，与 bedrock-protocol 的序列化一致。其他包 id 以及游戏读不完的字节都是 `bad_args`。
-- 下一个客户端刻用 `MinecraftPackets::createPacket` 和 `readNoHeader` 重建这个包，由本地玩家发送。
+- 下一个客户端刻用 `MinecraftPackets::createPacket` 和 `Packet::read` 重建这个包，由本地玩家发送。
 - 请求 id：每个请求获得一个新的客户端 id，包发出后回复。id 是奇数、负数，从 `-0x40000001` 往下数，远低于客户端自己的 `-1, -3, ...`。
   每个指向调用方 id 的格子堆 id 也会改名，包括请求自己的 id（`consume`，或合成产物）以及同一个包或更早包里更早的请求（记住最近 256 个 id）。
   `map` 的键是调用方 id 的字符串形式。

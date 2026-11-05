@@ -23,8 +23,8 @@ The mod packer reads the version from `git describe`, so the repository needs at
 `bin\BeDD-server\` (DLL and manifest, platform `server`). It holds the control pipe, the loopback-only
 network and the server ops (`src/ServerTimeScale.cpp`) and nothing of the client (`xmake.lua` lists
 its files; the rest of `src/` needs the client's LeviLamina headers). Copy the folder into the
-server's `plugins\` (LeviLamina's mods folder on a server, `plugins\BeDD-server\`); it reads
-`plugins\BeDD-server\config\config.json` and serves `\\.\pipe\BeDD-Server`.
+server's `mods\` (`mods\BeDD-server\`); it reads
+`mods\BeDD-server\config\config.json` and serves `\\.\pipe\BeDD-Server`.
 
 `xmake-requires.lock` pins the packages of both targets, but xmake rewrites it with the configured
 target's pins only. `tools/build.ps1` puts it back after building; by hand, `git checkout

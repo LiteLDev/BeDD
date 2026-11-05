@@ -27,7 +27,7 @@ u32 len (bytes after this field) | u8 kind | u8 flags | u16 0 | u64 seq | u64 tU
 
 | 标记 | 字段 |
 |---|---|
-| `HELLO`（总是第一个） | `tap:1`、`mod`、`game:"1.26.51.01"`、`protocol`（2193）、`pid`、`link{state, type, address}`、`journal{frames, bytes, complete}`（这个读取方被回放的内容） |
+| `HELLO`（总是第一个） | `tap:1`、`mod`、`game:"1.26.60.05"`、`protocol`（2225）、`pid`、`link{state, type, address}`、`journal{frames, bytes, complete}`（这个读取方被回放的内容） |
 | `LINK_UP` | `type` remote\|local、`address` |
 | `LINK_DOWN` | `reason` |
 | `REPLAY_BEGIN` | `frames` |
@@ -42,8 +42,9 @@ u32 len (bytes after this field) | u8 kind | u8 flags | u16 0 | u64 seq | u64 tU
 
 ## 远程服务器（`NetTap.cpp`）
 
-客户端的 NetworkSystem 跟踪它唯一的出站连接（`$onNewOutgoingConnection`；`$onConnectionClosed`、`$onAllConnectionsClosed`、`closeConnection`
-和 `disconnect` 结束它）。在远程连接上，`NetworkConnection::receivePacket`（在它之后，`HasData`）给出每个已解压、已解密的包，
+客户端的 NetworkSystem 跟踪它唯一打开的连接：`NetworkSystem::send`（客户端第一个包发出前）和 `runEvents`（每刻）查找它，新连接让链路建立，
+没有连接则链路结束；`$onConnectionClosed` 和 `closeConnection` 立即结束它（从 1.26.60 起游戏不再导出 `onNewOutgoingConnection`、
+`onAllConnectionsClosed` 和 `disconnect`）。在远程连接上，它的批处理 peer 的 `BatchedNetworkPeer::_receivePacket`（在它之后，`HasData`）给出每个已解压、已解密的包，
 `NetworkSystem::_sendInternal` 给出客户端发出的每个已序列化包：线上字节，flags 为 0。打开配置 `trace` 时，每个连接的前 50 个包会记为
 `tap trace #n in|out id len`：它们的顺序与 BDS 抓包一致（network_settings、server_to_client_handshake、play_status、resource_packs_info、……、start_game、……）。
 
@@ -57,13 +58,14 @@ u32 len (bytes after this field) | u8 kind | u8 flags | u16 0 | u64 seq | u64 tU
 与进程内的服务器通信，远程抓取不发布任何东西；改为挂钩 `LoopbackPacketSender`，每个包重新序列化（varint 头 `id | senderSub << 10 | targetSub << 12`，
 然后用发送方 `NetworkSystem` 的 `ReflectionCtx` 调 `Packet::write`）。帧带 `reserialized`（2）和 `local`（4）标志。
 
-- **CLIENTBOUND**：服务器的发送器（`$sendToClient` 两个重载、`$sendToClients`、`$sendBroadcast` 两个重载、`$sendTo`），只针对在服务器上连接类型为
+- **CLIENTBOUND**：服务器的发送器（`$sendToClient` 两个重载、`$sendToClients`、`$sendBroadcast` 两个重载、`$sendTo`；`$sendTo` 和 `$sendBroadcast(except)` 从 1.26.60 起没有符号，
+  在 `LoopbackPacketSender` 的虚表里按游戏仍导出的相邻槽位找到），只针对在服务器上连接类型为
   `Local` 的 `NetworkIdentifier`。局域网访客是远程连接，从不发布（计为 `guest`）。广播在本地玩家收到 `start_game` 之后才发布。
 - **SERVERBOUND_ECHO**：客户端的发送器（`$sendToServer`、`$send`、`$sendTo`），从不包括 id 1、3、4 或 193。
 - 区块：集成服务器通过同一个发送器回应每个 `subchunk_request`，所以客户端交换的每个 `subchunk` 和 `subchunk_request` 都在 tap 上
   （游戏内验证过：`subchunk` 帧数与 `ServerNetworkHandler::handle(SubChunkRequestPacket)` 调用次数相同）。客户端以一个原点（它自己的子区块）
   为基准请求，每列最多到 `highest_subchunk_count`；本地客户端发送的 `client_cache_status` 为 `enabled:false`，所以每项都带数据。
-- 只在客户端的连接（`tap::gLinkType`）为本地时。客户端 `NetworkSystem` 上的 `$onNewOutgoingConnection` / `$onConnectionClosed` 按连接类型设置它，
+- 只在客户端的连接（`tap::gLinkType`）为本地时。客户端发送器在新连接上的第一个包和客户端 `NetworkSystem` 上的 `$onConnectionClosed` 按连接类型设置它，
   和 tap 核心一样，所以回环 tap 不依赖 tap 核心也能工作。还不知道连接时（进程内服务器在客户端的连接调用返回前就开始发送），客户端的 `Local`
   连接也算；这个检查从不写 `gLinkType`。远程抓取只在 `Remote` 连接上发布（本地连接也会走 `_sendInternal`），所以没有包会被发布两次。
   一个发送方法调用另一个时，包只发布一次。
