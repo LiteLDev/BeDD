@@ -57,7 +57,6 @@ struct Options {
     /// BeDDManager.ps1, started (-Ensure) when no manager window runs; Install-BeDDMod writes it.
     std::string managerScript;
     /// Mute the game (FMOD master channel group): headless games stay silent.
-    bool mute = true;
     /// Hook the client's own game systems for the world, look, input, slot, action and button ops.
     /// Off: those ops answer code:"disabled" and nothing is hooked.
     bool gameHooks = false;
@@ -203,7 +202,7 @@ void gameInputMouse(int64_t dx, int64_t dy, int wheelNotches, int buttonMask, bo
 [[nodiscard]] uint32_t    gameInputButtons();
 [[nodiscard]] std::string gameInputStats();
 
-// Audio.cpp: the game is muted (FMOD, config mute).
+// Audio.cpp: the game is silent (FMOD).
 void installAudioHooks();
 void uninstallAudioHooks();
 [[nodiscard]] std::string audioStats();

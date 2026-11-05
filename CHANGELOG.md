@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A BeDD game is always silent**: config `mute` is ignored (`false` only logs a warning). A headless game is heard by nobody on purpose, and harnesses that wrote `"mute": false` played every game's sounds on the user's speakers.
 - A muted game could open an audio device again when it switched FMOD's output after initialising it (an audio device change, say): every `System::setOutput` of a muted game now gets NOSOUND.
 - Nothing worked on a PC that differs from the author's: the scripts expected LeviLauncher at `Desktop\LeviLauncher.exe`, its instances in `%APPDATA%\levilauncher.exe\versions` (LeviLauncher's data folder setting was ignored), an instance named `1.26.51.01`, and ffmpeg in one user's winget folder. An instance never started from LeviLauncher also silently ran without its data isolation, since only LeviLauncher adds its loader to the game exe.
 - An existing clone kept stale game files after its base instance was updated (`clone-instance.ps1` now refreshes them).

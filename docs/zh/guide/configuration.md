@@ -20,7 +20,7 @@
 | `mode` | 世界在哪里运行：`ClientOnly`（默认：本地世界）、`ClientServer`（本机上装了 BeDD 的专用服务器；`loopbackOnly` 不变）、`Remote`（没装 BeDD 的服务器，可以在本机以外）。见[调试模式](/zh/guide/configuration#调试模式)。`state` 和 `join` 会报告它 |
 | `allowHosts` | `loopbackOnly` 仍然允许游戏访问的主机名或地址（Remote 模式的服务器；`Start-BeDDGame.ps1 -Mode Remote -ServerHost` 会写）。会查询这些主机，游戏的出站 UDP 套接字能连到它们且不弹防火墙提示，发往本机以外其他主机的数据报会被拒绝（`state` 的 `stats.sendsRefused`）。本机上的主机不用写 |
 | `managerScript` | `BeDDManager.ps1` 的路径（`Install-BeDDMod` 会写）：没有管理窗口时游戏用它启动[管理窗口](/zh/guide/several-games#管理窗口) |
-| `mute` | 默认 `true`：游戏不出声 |
+| `mute` | 已忽略：BeDD 游戏总是静音（FMOD 不打开音频设备）；设为 `false` 只会在日志里警告 |
 | `trace` | 把到达游戏的每个输入写进 `logs\latest.log`，报 bug 时用 |
 | `pipeInstances` | 默认 `4`：可同时使用游戏管道的脚本数（某个脚本断开时，它按住的键、鼠标按钮和 `input` 移动覆盖都会松开）；`1` 表示一次一个 |
 | `timeScale` | 默认 `1`：本游戏主持的每个世界的游戏速度（0.05..20），进入世界时设置（之后可用 `Set-BeDDTimeScale` 修改）。在装了 BeDD 的服务器上由服务器的速度主导，客户端跟随；在没装 BeDD 的服务器上不起作用。在 BeDD 服务端目标里：服务器启动后生效并发给玩家 |

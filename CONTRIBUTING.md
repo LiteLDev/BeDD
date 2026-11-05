@@ -22,7 +22,7 @@ See [Development](#development) below. The code is small:
 | `src/Window.cpp` | window discovery, subclassing, synthetic event dispatch, focus shield, window kept off screen |
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
-| `src/Audio.cpp` | FMOD hooks: the game's master channel group is muted (`mute`) |
+| `src/Audio.cpp` | FMOD hooks: the game is always silent (NOSOUND output, master channel group muted) |
 | `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`: no firewall prompt, no queries to servers off the PC; `allowHosts`: the one server Remote mode reaches); in the server target too |
 | `src/ServerTimeScale.cpp` | server target only: the `server`, `timescale` and `command` ops, config `timeScale`, LevelEvent 3007 to the players |
 | `src/Join.cpp` | `join` op: the client joins a server by address (the game's own external-server join, on the client thread); where the client plays, for `state` |

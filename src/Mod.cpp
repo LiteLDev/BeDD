@@ -61,7 +61,8 @@ void readOptions(std::filesystem::path const& file) {
         gOptions.mode = "ClientOnly";
     }
     gOptions.managerScript = j.value("managerScript", gOptions.managerScript);
-    gOptions.mute         = j.value("mute", gOptions.mute);
+    // A BeDD game is headless: nobody can hear it on purpose, so it is always silent.
+    if (j.value("mute", true) == false) log().warn("mute: false is ignored: a BeDD game is always silent");
     gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
     gOptions.tap          = j.value("tap", gOptions.tap);
     gOptions.pipeInstances = j.value("pipeInstances", gOptions.pipeInstances);
@@ -93,15 +94,14 @@ bool Mod::load() {
     startManagerLink();
     installApiHooks();
     // Before the game sets up its audio: not a sound, not even while it loads.
-    if (gOptions.mute) installAudioHooks();
+    installAudioHooks();
     log().info(
-        "BeDD loaded: client={}x{} trace={} pipe={} manager={} mute={}",
+        "BeDD loaded: client={}x{} trace={} pipe={} manager={}",
         gOptions.clientWidth,
         gOptions.clientHeight,
         gOptions.trace,
         gOptions.pipeName,
-        gOptions.managerScript,
-        gOptions.mute
+        gOptions.managerScript
     );
     return true;
 }

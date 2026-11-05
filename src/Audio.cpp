@@ -1,13 +1,15 @@
-// FMOD hooks: the game is silent (config mute). The game hears no focus loss, so it never
-// suspends its own audio, and every headless game would otherwise play its menu music and sounds
-// on the user's speakers. Each FMOD system the game initialises gets the NOSOUND output: it mixes in
-// real time as before, but opens no audio device, so the game has no session in the Windows volume
-// mixer either. The game picks an output itself (System::setOutput, also after init, which switches
-// the output of a running system): every such call gets NOSOUND too, so no later switch (an audio
-// device change, say) opens a device again. The master channel group of each system also stays muted (a system initialised
-// before the hooks keeps its device); the game's own setMute() calls on it are remembered.
+// FMOD hooks: the game is always silent (a config "mute": false is ignored: a headless game is
+// heard by nobody on purpose). The game hears no focus loss, so it never suspends its own audio,
+// and every headless game would otherwise play its menu music and sounds on the user's speakers.
+// Each FMOD system the game initialises gets the NOSOUND output: it mixes in real time as before,
+// but opens no audio device, so the game has no session in the Windows volume mixer either. The
+// game picks an output itself (System::setOutput, also after init, which switches the output of a
+// running system): every such call gets NOSOUND too, so no later switch (an audio device change,
+// say) opens a device again. The master channel group of each system also stays muted (a system
+// initialised before the hooks keeps its device), whatever the game's own setMute() calls on it say.
 #include "BeDD.h"
 
+#include <algorithm>
 #include <array>
 #include <mutex>
 #include <vector>
@@ -46,15 +48,12 @@ bool gInstalled = false;
 struct System {
     void* system;
     void* master;
-    bool  gameMute; // what the game itself last asked for
 };
 // Never held while calling FMOD: FMOD takes its own lock, and its threads may call back in.
 std::mutex          gMutex;
 std::vector<System> gSystems; // guarded by gMutex
 
-bool muteNow() { return options().mute; }
-
-// Remember the system's master group and mute it as it should be now.
+// Remember the system's master group and mute it.
 void track(void* system) {
     {
         std::lock_guard lock(gMutex);
@@ -67,13 +66,13 @@ void track(void* system) {
         std::lock_guard lock(gMutex);
         for (auto const& s : gSystems)
             if (s.system == system) return;
-        gSystems.push_back({system, master, false});
+        gSystems.push_back({system, master});
     }
-    o_setMute(master, muteNow());
+    o_setMute(master, true);
 }
 
 int d_setOutput(void* system, int output) {
-    if (output != kOutputNoSound && muteNow()) {
+    if (output != kOutputNoSound) {
         log().info("FMOD system {}: the game asked for output {}; NOSOUND instead", system, output);
         output = kOutputNoSound;
     }
@@ -82,7 +81,7 @@ int d_setOutput(void* system, int output) {
 
 int d_init(void* system, int maxChannels, unsigned flags, void* extra) {
     // Before init: the game's own choice of output (made before the hooks, or never) is overridden.
-    if (gSetOutput && muteNow()) {
+    if (gSetOutput) {
         int out = gSetOutput(system, kOutputNoSound);
         if (out == 0) log().info("FMOD system {}: NOSOUND output (no audio device)", system);
         else log().warn("FMOD system {}: setOutput(NOSOUND) failed ({}); only muted", system, out);
@@ -97,17 +96,14 @@ int d_playSound(void* system, void* sound, void* group, bool paused, void** chan
     return o_playSound(system, sound, group, paused, channel);
 }
 
+// The game unmuting a master group (it does when it regains focus) keeps it muted.
 int d_setMute(void* control, bool mute) {
     bool master = false;
     {
         std::lock_guard lock(gMutex);
-        for (auto& s : gSystems) {
-            if (s.master != control) continue;
-            s.gameMute = mute;
-            master     = true;
-        }
+        master = std::ranges::any_of(gSystems, [&](System const& s) { return s.master == control; });
     }
-    return o_setMute(control, mute || (master && muteNow()));
+    return o_setMute(control, mute || master);
 }
 
 struct FmodHook {
@@ -179,7 +175,7 @@ void uninstallAudioHooks() {
 std::string audioStats() {
     std::lock_guard lock(gMutex);
     if (!o_setMute) return "not hooked";
-    return std::to_string(gSystems.size()) + " FMOD system(s), " + (muteNow() ? "muted" : "audible");
+    return std::to_string(gSystems.size()) + " FMOD system(s), muted";
 }
 
 } // namespace bedd
