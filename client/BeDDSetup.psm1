@@ -578,9 +578,11 @@ function Copy-BeDDServerModule([string]$ModuleDir, [string]$PluginsDir, [string]
 # ready in <servers>\<Name> and returns it (Get-BeDDServer). Fast when nothing is missing; one setup
 # at a time on the PC. Everything is a parameter (no prompts):
 #   -Port / -PortV6     default: what the server already has, else the first free pair from 19140;
-#   -Transport          default raknet: a game joins a server by address (Join-BeDDServer) over
-#                       RakNet. BDS 1.26.51 logs that players cannot connect without nethernet; they
-#                       can, and a join over nethernet to a server kept on loopback hangs;
+#   -Transport          default nethernet: since 1.26.60 the game joins a server by address
+#                       (Join-BeDDServer) over NetherNet only (a raknet server fails with
+#                       "Terracotta"). With -ServerIp 127.0.0.1 the server publishes 127.0.0.1:<Port>
+#                       as the UDP address clients send to (server-udp-ports), since BeDD's module
+#                       keeps its UDP sockets on loopback;
 #   -ServerIp           default 127.0.0.1 (used with nethernet): only games on this PC join; '' =
 #                       every interface. BeDD's module binds the server to loopback anyway;
 #   -OnlineMode         default off (test clients join without Xbox authentication);
@@ -596,7 +598,7 @@ function Initialize-BeDDServer(
     [string]$ServersDir,
     [int]$Port = 0,
     [int]$PortV6 = 0,
-    [ValidateSet('raknet', 'nethernet')][string]$Transport = 'raknet',
+    [ValidateSet('raknet', 'nethernet')][string]$Transport = 'nethernet',
     [string]$ServerIp = '127.0.0.1',
     [bool]$OnlineMode = $false,
     [string]$LevelName = 'Bedrock level',
@@ -670,6 +672,11 @@ function Initialize-BeDDServer(
             'allow-cheats'             = $AllowCheats.ToString().ToLower()
             # Not announced on the LAN (which would also bind 19132/19133): joined by address.
             'enable-lan-visibility'    = 'false'
+            # NetherNet: the UDP address clients send to once the signaling on server-port is done.
+            # The module binds the server's UDP sockets to loopback, so that is 127.0.0.1 (one port,
+            # the same number as server-port); otherwise the server publishes its interfaces'
+            # addresses, which nothing listens on.
+            'server-udp-ports'         = if ($Transport -eq 'nethernet' -and $ServerIp -eq '127.0.0.1') { "127.0.0.1:${Port}:$Port" } else { '' }
         }
         if ($PSBoundParameters.ContainsKey('LevelSeed')) { $values['level-seed'] = $LevelSeed }
         foreach ($k in $Properties.Keys) {

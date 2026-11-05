@@ -86,11 +86,32 @@ std::FILE*   gTraceFile = nullptr;
 // Addresses of the sender virtuals without a symbol (findSenderVirtuals); 0 = not found.
 uintptr_t gSendToAddr = 0, gBroadcastExceptAddr = 0;
 
+// A member pointer to an imported function is the address of a jump to it: follows jmp [rip+x]
+// and jmp rel32 to the code the vtable points at.
+uintptr_t followJumps(uintptr_t p) {
+    for (int i = 0; p && i < 8; ++i) {
+        auto const* b = reinterpret_cast<uint8_t const*>(p);
+        if (b[0] == 0x48 && b[1] == 0xFF && b[2] == 0x25) ++b, ++p;
+        if (b[0] == 0xFF && b[1] == 0x25) {
+            int32_t disp;
+            std::memcpy(&disp, b + 2, 4);
+            p = *reinterpret_cast<uintptr_t const*>(p + 6 + disp);
+        } else if (b[0] == 0xE9) {
+            int32_t rel;
+            std::memcpy(&rel, b + 1, 4);
+            p = p + 5 + rel;
+        } else {
+            break;
+        }
+    }
+    return p;
+}
+
 // LoopbackPacketSender's vtable (PacketSender's slot order; MSVC puts overloads together, last
 // declared first): finds the slots of sendTo and sendBroadcast(except) from the exported ones.
 void findSenderVirtuals() {
     using S              = LoopbackPacketSender;
-    auto      addr       = [](auto f) { return reinterpret_cast<uintptr_t>(ll::memory::toFuncPtr(f)); };
+    auto      addr       = [](auto f) { return followJumps(reinterpret_cast<uintptr_t>(ll::memory::toFuncPtr(f))); };
     uintptr_t send       = addr(&S::$send);
     uintptr_t toServer   = addr(&S::$sendToServer);
     uintptr_t toClientId = addr(static_cast<void (S::*)(NetworkIdentifier const&, Packet const&, SubClientId)>(&S::$sendToClient));

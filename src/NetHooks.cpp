@@ -24,9 +24,13 @@
 // (also after the game was handed back to the user: new sockets would raise the prompt then).
 //
 // In a Bedrock Dedicated Server (the server target) the same hooks keep the server on the PC: its
-// RakNet ports (IPv4 and IPv6), LAN discovery and NetherNet. There a UDP bind (or a TCP bind with a
-// fixed port) to any address off loopback goes to loopback, not only one to the wildcard: NetherNet
-// (WebRTC) binds each network interface's own address, which would raise the prompt as well.
+// RakNet ports (IPv4 and IPv6), LAN discovery and NetherNet. A UDP bind (or a TCP bind with a fixed
+// port) to any address off loopback goes to loopback, not only one to the wildcard: NetherNet
+// (WebRTC) binds each network interface's own address, which would raise the prompt as well. The
+// game does the same since 1.26.60, where it joins servers over NetherNet, unless allowHosts lets
+// it reach a host off the PC. A server on loopback publishes 127.0.0.1 as the address clients send
+// to (server-udp-ports, Initialize-BeDDServer); its checks to the client's interface addresses go
+// nowhere, and the client's from loopback answer as peer-reflexive candidates.
 #include "BeDD.h"
 
 #include <winsock2.h>
@@ -120,37 +124,40 @@ std::optional<sockaddr_storage> route6(SOCKET s) {
     return r;
 }
 
+// Binds to an interface's own address go to loopback too (see above): always in a server, and in
+// the game unless it may reach a host off the PC (allowHosts), which NetherNet does from them.
+bool anyAddress() {
 #ifdef LL_PLAT_S
-constexpr bool kAnyAddress = true; // also binds to an interface's own address (see above)
+    return true;
 #else
-constexpr bool kAnyAddress = false;
+    return gAllowAddrs.empty();
 #endif
+}
 
 bool rebindV4(in_addr const& a) {
-    return a.s_addr == htonl(INADDR_ANY) || (kAnyAddress && (ntohl(a.s_addr) >> 24) != 127);
+    return a.s_addr == htonl(INADDR_ANY) || (anyAddress() && (ntohl(a.s_addr) >> 24) != 127);
 }
 
 bool v4MappedLoopback(in6_addr const& a) { return IN6_IS_ADDR_V4MAPPED(&a) && a.u.Byte[12] == 127; }
 
 bool rebindV6(in6_addr const& a) {
-    return IN6_IS_ADDR_UNSPECIFIED(&a) || (kAnyAddress && !IN6_IS_ADDR_LOOPBACK(&a) && !v4MappedLoopback(a));
+    return IN6_IS_ADDR_UNSPECIFIED(&a) || (anyAddress() && !IN6_IS_ADDR_LOOPBACK(&a) && !v4MappedLoopback(a));
 }
 
-// The loopback address for an IPv6 socket. A dual-stack one (IPV6_V6ONLY off: BDS serves IPv4 and
-// IPv6 on server-port that way) takes IPv4's, ::ffff:127.0.0.1, on the server: on ::1 it would
-// lose the IPv4 clients, and those are the ones that join 127.0.0.1.
+// The loopback address for an IPv6 socket. A dual-stack one (IPV6_V6ONLY off) takes IPv4's,
+// ::ffff:127.0.0.1: on ::1 it could reach no IPv4 address. BDS serves IPv4 and IPv6 on server-port
+// that way and would lose the IPv4 clients, the ones that join 127.0.0.1; and since 1.26.60 the
+// game joins over NetherNet from such a socket, which on ::1 never reached a server at 127.0.0.1.
 in6_addr loopbackV6(SOCKET s) {
-    if (kAnyAddress) {
-        DWORD v6only = 1;
-        int   len    = sizeof(v6only);
-        if (getsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&v6only), &len) == 0 && !v6only) {
-            in6_addr mapped{};
-            mapped.u.Byte[10] = 0xff;
-            mapped.u.Byte[11] = 0xff;
-            mapped.u.Byte[12] = 127;
-            mapped.u.Byte[15] = 1;
-            return mapped;
-        }
+    DWORD v6only = 1;
+    int   len    = sizeof(v6only);
+    if (getsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&v6only), &len) == 0 && !v6only) {
+        in6_addr mapped{};
+        mapped.u.Byte[10] = 0xff;
+        mapped.u.Byte[11] = 0xff;
+        mapped.u.Byte[12] = 127;
+        mapped.u.Byte[15] = 1;
+        return mapped;
     }
     return in6addr_loopback;
 }

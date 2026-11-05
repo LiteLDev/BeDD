@@ -21,7 +21,7 @@ PowerShell 客户端（`BeDD.psm1`）只是这个协议的一个客户端；任�
 | `focus` | | 重新发送"获得焦点"消息 |
 | `window` | `clientWidth`、`clientHeight` | 从不激活窗口；窗口留在屏幕外 |
 | `flush` | | 等到所有已投递的输入都分发完 |
-| `join` | `host`、`port`（19132）、`wait`、`timeoutMs`（60000） | 客户端通过游戏自己的外部服务器加入流程（`ClientInstance::connectToThirdPartyServer`）按地址加入服务器，可以在标题界面，也可以在世界里（先退出世界）。开始连接后回复 `started:true`，带 `wait:true` 时进入世界后回复 `joined:true`；`left`：先退出了一个世界。错误码：`join_failed`（客户端放弃了，界面上显示原因）、`timeout`（`screen`：游戏可能还在连接）、`busy`（已有加入在进行）、`not_allowed`（`loopbackOnly` 不让游戏访问的本机以外主机：不在 `allowHosts` 里）、`bad_args`。不带 `host`：`mode`、`connection` none\|local\|remote、`host`、`port`、`inLevel`、`joining`（进行中的加入）、`last`（上一次的结果）。本机以外的服务器需要 Remote 模式（配置 `allowHosts`） |
+| `join` | `host`、`port`（19132）、`wait`、`timeoutMs`（60000） | 客户端通过游戏自己的外部服务器加入流程（`ClientInstance::connectToThirdPartyServer`）按地址加入服务器，可以在标题界面，也可以在世界里（先退出世界）。从 1.26.60 起它像玩家用键盘一样回答挡路的两个提示："在线游戏未分级"（继续，然后重新连接）和针对所加入服务器的"信任此服务器？"（信任并加入）。开始连接后回复 `started:true`，带 `wait:true` 时进入世界后回复 `joined:true`；`left`：先退出了一个世界。错误码：`join_failed`（客户端放弃了，界面上显示原因）、`timeout`（`screen`：游戏可能还在连接）、`busy`（已有加入在进行）、`not_allowed`（`loopbackOnly` 不让游戏访问的本机以外主机：不在 `allowHosts` 里）、`bad_args`。不带 `host`：`mode`、`connection` none\|local\|remote、`host`、`port`、`inLevel`、`joining`（进行中的加入）、`last`（上一次的结果）。本机以外的服务器需要 Remote 模式（配置 `allowHosts`） |
 
 ## 多个客户端
 

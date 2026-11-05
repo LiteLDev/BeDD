@@ -10,6 +10,12 @@
 // attempt timed out. The reply comes once the connection attempt started, or with `wait:true` once
 // it ended. One attempt at a time.
 //
+// Since 1.26.60 two prompts stand in the way, answered with the keys a player would press (their
+// controllers have no symbol to call): "Online play is not rated" (online_safety_screen, the first
+// online join of a game: Enter on Proceed, after which the game is back at its title screen and the
+// attempt connects again) and "Trust this server?" (a modal_screen during the connect, once per
+// address: Tab to "Trust and Join", Enter). The server is the one the caller asked to join.
+//
 // The level listeners also tell `state` and the probe (no `host`) where the client plays: nowhere,
 // a local world (ClientStartJoinLevelEvent::isJoiningLocalServer), or a remote host:port (the
 // client's GameConnectionInfo).
@@ -57,6 +63,9 @@ struct Attempt {
     bool              left     = false; // a world was left first
     Clock::time_point leftAt;           // when the leave was requested
     bool              started  = false; // connectToThirdPartyServer was called
+    bool              safety   = false; // the online-safety notice was accepted: connect again from the title screen
+    bool              again    = false; // ... which it did
+    int               trust    = 0;     // trust prompt: 1 = Tab pressed, 2 = Enter pressed
     bool              done     = false; // joined, failed or timed out: `result` is the reply
     json              result;
 };
@@ -98,6 +107,16 @@ void finish(std::shared_ptr<Attempt> a, json reply) {
 }
 
 // On the client thread, every kPoll until the attempt is done.
+// A key press (down and up) for the game window, as a player's.
+void pressKey(int vk) {
+    UINT sc = MapVirtualKeyW(static_cast<UINT>(vk), MAPVK_VK_TO_VSC);
+    for (bool down : {true, false}) {
+        LPARAM lp = 1 | (static_cast<LPARAM>(sc & 0xFF) << 16);
+        if (!down) lp |= (1LL << 30) | (1LL << 31);
+        post(Event{.msg = static_cast<UINT>(down ? WM_KEYDOWN : WM_KEYUP), .wp = static_cast<WPARAM>(vk), .lp = lp, .vk = vk, .vkDown = down});
+    }
+}
+
 void step(std::shared_ptr<Attempt> const& a) {
     auto        ci  = ll::service::getClientInstance();
     std::string top = ci ? ci->getTopScreenName() : std::string();
@@ -150,6 +169,18 @@ void step(std::shared_ptr<Attempt> const& a) {
         if (!gDisconnectHooked && !gInLevel && top.find("disconnect") != std::string::npos) {
             finish(a, json{{"ok", false}, {"code", "join_failed"}, {"error", "the client shows the disconnect screen"}, {"screen", top}});
             return;
+        }
+        if (top == "online_safety_screen" && !a->safety) {
+            log().info("join {}:{}: accepting the online-safety notice", a->host, a->port);
+            a->safety = true;
+            pressKey(VK_RETURN);
+        } else if (a->safety && !a->again && top.find("hbui") != std::string::npos) {
+            a->again   = true;
+            a->started = false; // the next step connects again
+        } else if (top == "modal_screen" && a->trust < 2) {
+            if (a->trust == 0) log().info("join {}:{}: trusting the server", a->host, a->port);
+            pressKey(a->trust == 0 ? VK_TAB : VK_RETURN);
+            ++a->trust;
         }
         break;
     }
