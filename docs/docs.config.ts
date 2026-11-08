@@ -8,6 +8,8 @@ interface Labels {
   guide: string;
   reference: string;
   gallery: string;
+  showcase: string;
+  help: string;
   start: string;
   introduction: string;
   installation: string;
@@ -30,6 +32,8 @@ const LABELS: Record<string, Labels> = {
     guide: 'Guide',
     reference: 'Reference',
     gallery: 'Gallery',
+    showcase: 'Showcase',
+    help: 'Help',
     start: 'Getting started',
     introduction: 'Introduction',
     installation: 'Installation',
@@ -50,6 +54,8 @@ const LABELS: Record<string, Labels> = {
     guide: '指南',
     reference: '参考',
     gallery: '展示',
+    showcase: '作品展示',
+    help: '帮助',
     start: '入门',
     introduction: '简介',
     installation: '安装',
@@ -68,45 +74,45 @@ const LABELS: Record<string, Labels> = {
   },
 };
 
+// The LeviMC navigation model (kit/README.md "Navigation model"): every top-level entry is a section, i.e. a header
+// tab and the sidebar tree of its pages; the brand links the home page. `p` is the locale's URL prefix ('/' or '/zh/');
+// zh-Hant is converted from zh by the kit.
 const nav = (p: string, t: Labels): NavEntry[] => [
-  { text: t.guide, link: `${p}guide/introduction` },
-  { text: t.reference, link: `${p}reference/protocol` },
-  { text: t.gallery, link: `${p}gallery` },
+  {
+    text: t.guide,
+    items: [
+      {
+        text: t.start,
+        items: [
+          { text: t.introduction, link: `${p}guide/introduction` },
+          { text: t.installation, link: `${p}guide/installation` },
+          { text: t.newPc, link: `${p}guide/new-pc` },
+        ],
+      },
+      {
+        text: t.scripts,
+        items: [
+          { text: t.usage, link: `${p}guide/usage` },
+          { text: t.severalGames, link: `${p}guide/several-games` },
+          { text: t.modes, link: `${p}guide/modes` },
+          { text: t.harness, link: `${p}guide/harness` },
+          { text: t.configuration, link: `${p}guide/configuration` },
+        ],
+      },
+      { text: t.showcase, items: [{ text: t.gallery, link: `${p}gallery` }] },
+      { text: t.help, items: [{ text: t.troubleshooting, link: `${p}guide/troubleshooting` }] },
+    ],
+  },
+  {
+    text: t.reference,
+    items: [
+      { text: t.protocol, link: `${p}reference/protocol` },
+      { text: t.tap, link: `${p}reference/tap` },
+      { text: t.howItWorks, link: `${p}reference/how-it-works` },
+      { text: t.building, link: `${p}reference/building` },
+    ],
+  },
 ];
-
-const sidebar = (p: string, t: Labels): Record<string, NavEntry[]> => {
-  const all: NavEntry[] = [
-    {
-      text: t.start,
-      items: [
-        { text: t.introduction, link: `${p}guide/introduction` },
-        { text: t.installation, link: `${p}guide/installation` },
-        { text: t.newPc, link: `${p}guide/new-pc` },
-      ],
-    },
-    {
-      text: t.scripts,
-      items: [
-        { text: t.usage, link: `${p}guide/usage` },
-        { text: t.severalGames, link: `${p}guide/several-games` },
-        { text: t.modes, link: `${p}guide/modes` },
-        { text: t.harness, link: `${p}guide/harness` },
-        { text: t.configuration, link: `${p}guide/configuration` },
-        { text: t.troubleshooting, link: `${p}guide/troubleshooting` },
-      ],
-    },
-    {
-      text: t.reference,
-      items: [
-        { text: t.protocol, link: `${p}reference/protocol` },
-        { text: t.tap, link: `${p}reference/tap` },
-        { text: t.howItWorks, link: `${p}reference/how-it-works` },
-        { text: t.building, link: `${p}reference/building` },
-      ],
-    },
-  ];
-  return { [`${p}guide/`]: all, [`${p}reference/`]: all };
-};
 
 export default defineDocsConfig({
   base: '/BeDD/',
@@ -135,7 +141,8 @@ export default defineDocsConfig({
   markdown: { compat: 'commonmark', containers: { vitepress: true } },
   outline: [2, 3],
   exclude: ['scripts/**', 'README.md'],
+  sidebar: 'tabs',
   nav: { root: nav('/', LABELS.root!), zh: nav('/zh/', LABELS.zh!) },
-  sidebar: { root: sidebar('/', LABELS.root!), zh: sidebar('/zh/', LABELS.zh!) },
-  social: [{ icon: 'github', link: repo, label: 'GitHub' }],
+  // the resources slot: Download (the latest release), then the repository's GitHub icon (`repo`)
+  header: { links: [{ kind: 'download', link: `${repo}/releases/latest` }] },
 });
