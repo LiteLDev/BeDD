@@ -6,3 +6,6 @@ compile_commands.json
 *.user
 /tools/out/
 /tools/showcase/out/
+/app/**/bin/
+/app/**/obj/
+/app/**/TestResults/

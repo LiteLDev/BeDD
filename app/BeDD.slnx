@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="BeDD/BeDD.csproj" />
+  <Project Path="BeDD.Tests/BeDD.Tests.csproj" />
+</Solution>

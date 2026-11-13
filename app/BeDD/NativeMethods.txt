@@ -1,0 +1,9 @@
+AttachConsole
+GetConsoleWindow
+GetStdHandle
+GetFileType
+SetStdHandle
+SetConsoleOutputCP
+SetConsoleCP
+OpenProcess
+GetExitCodeProcess
