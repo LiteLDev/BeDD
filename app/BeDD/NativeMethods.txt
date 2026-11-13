@@ -7,3 +7,17 @@ SetConsoleOutputCP
 SetConsoleCP
 OpenProcess
 GetExitCodeProcess
+CreateProcessW
+InitializeProcThreadAttributeList
+UpdateProcThreadAttribute
+DeleteProcThreadAttributeList
+STARTUPINFOEXW
+GetForegroundWindow
+OpenMutexW
+SetHandleInformation
+TerminateProcess
+WaitForSingleObject
+QueryFullProcessImageName
+CloseHandle
+DuplicateHandle
+ResumeThread
