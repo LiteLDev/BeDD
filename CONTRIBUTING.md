@@ -52,7 +52,7 @@ When you hook a game or LeviLamina symbol, check the SDK headers under
 1. Fork the repository and create a branch from `main`.
 2. Keep each pull request focused on one change. Describe what it does and how you tested it.
 3. Follow the existing style: C++20, the provided `.clang-format` and `.editorconfig`, English in code and comments.
-4. Test in game: `tools/dev.ps1 -Trace`, then drive the game through `BeDD.psm1` and check that
+4. Test in game: `bin\app\BeDD.exe dev`, then drive the game through `BeDD.exe` and check that
    the input works, the game never takes the foreground (`tools/out/desktop-watch.log`) and real input
    does not reach it.
 5. CI must pass before a pull request is merged.
@@ -67,43 +67,31 @@ other than `BeDD.psm1`. Script authors find everything they need in the [README]
 
 ### Building
 
-You need Windows x64, [xmake](https://xmake.io), Visual Studio Build Tools with MSVC 14.4x or newer, and LLVM (`clang-cl`).
-`tools/build.ps1` finds them, installs what is missing with winget, and builds:
+You need Windows x64, [xmake](https://xmake.io), Visual Studio Build Tools (2022 or 2026) with the
+C++ workload, LLVM (`clang-cl`), the .NET 10 SDK and, for the documentation site, Node.js 24 or
+newer. The one-time `winget install` lines and every detail are in
+[Building and contributing](https://docs.levimc.org/BeDD/reference/building) (`docs/reference/building.md`).
 
 ```powershell
-pwsh -NoProfile -File tools/build.ps1   # [-Mode debug]
+$env:PATH = "C:\Program Files\LLVM\bin;$env:PATH"
+xmake f -P . -y -m release -p windows --target_type=client   # --target_type=server: bin\BeDD-server
+xmake -P . -y                                                # -> bin\BeDD\
+git checkout -- xmake-requires.lock                          # xmake keeps only this target's pins
+
+$env:PATH = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer;$env:PATH"   # vswhere, for AOT
+dotnet publish app/BeDD/BeDD.csproj -c Release -o bin\app    # -> bin\app\BeDD.exe
+dotnet test app/BeDD.slnx
 ```
 
-By hand:
+`-P .` keeps xmake on this checkout (inside a git worktree it would otherwise build the enclosing
+one). The mod packer reads the version from `git describe`, so the repository needs at least one
+commit.
 
-```powershell
-xmake f -a x64 -m release -p windows --target_type=client -y
-xmake -y        # -> bin\BeDD\ (DLL, manifest and everything in client\)
-```
-
-The mod packer reads the version from `git describe`, so the repository needs at least one commit.
-
-**Server target** (the client+server mode): `tools/build.ps1 -TargetType server`, or
-`--target_type=server` above, builds the mod a Bedrock Dedicated Server with LeviLamina runs, into
-`bin\BeDD-server\` (DLL and manifest, platform `server`). It holds the control pipe, the loopback-only
-network and the server ops (`src/ServerTimeScale.cpp`) and nothing of the client (`xmake.lua` lists
-its files; the rest of `src/` needs the client's LeviLamina headers). Copy the folder into the
-server's `mods\` (`mods\BeDD-server\`); it reads
-`mods\BeDD-server\config\config.json` and serves `\\.\pipe\BeDD-Server`.
-
-`xmake-requires.lock` pins the packages of both targets, but xmake rewrites it with the configured
-target's pins only. `tools/build.ps1` puts it back after building; by hand, `git checkout
-xmake-requires.lock` before you configure the other target (CI does the same). To move a pin,
-configure each target, keep both targets' entries, and commit the union.
-
-`tools\dev.ps1 [-Trace]` is a playground: it takes the shared e2e lock
-(`%APPDATA%\levilauncher.exe\bei-e2e.lock`), deploys the mod into the instance BeDD finds (set up
-first on a new PC, see the README), starts the manager window unless it runs,
-launches the game through LeviLauncher (it shows up in the manager window) and logs every
-foreground and cursor-clip change to `tools\out\desktop-watch.log` until the game exits or
-`tools\out\dev.stop` exists (`tools\out\dev.restart` redeploys and relaunches without giving up the
-lock). It always closes the game, removes the mod and releases the lock.
-
+`bin\app\BeDD.exe dev` is the playground: it clones the base instance for slot 9 (`--slot`),
+installs `bin\BeDD` into the clone, launches the game in the background and logs every foreground
+and cursor-clip change to `tools\out\desktop-watch.log` until Ctrl+C, `tools\out\dev.stop` or the
+game's exit (`tools\out\dev.restart` reinstalls the mod and relaunches). A line ending in
+`MINECRAFT HAS THE FOREGROUND` means a game took the focus.
 ### Showcase media
 
 `docs/` is the documentation site (<https://docs.levimc.org/BeDD/>, built with levimc-kit by

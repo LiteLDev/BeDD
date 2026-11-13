@@ -100,3 +100,16 @@ GlobalFree
 SetCurrentProcessExplicitAppUserModelID
 CreateProcess
 FreeConsole
+SetWinEventHook
+UnhookWinEvent
+EVENT_SYSTEM_FOREGROUND
+WINEVENT_OUTOFCONTEXT
+WINEVENT_SKIPOWNPROCESS
+PeekMessage
+PostThreadMessage
+WM_TIMER
+WM_QUIT
+GetCurrentThreadId
+GetWindowText
+GetClipCursor
+GetSystemMetrics

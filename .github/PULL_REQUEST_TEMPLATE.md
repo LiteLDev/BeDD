@@ -5,7 +5,7 @@
 ## How was it tested?
 
 - [ ] `xmake -y` builds
-- [ ] In game with `tools/dev.ps1 -Trace` (what you sent, what the game did)
+- [ ] In game with `BeDD.exe dev` (what you sent, what the game did)
 - [ ] The game never took the foreground and real input did not reach it
 
 ## Checklist
