@@ -1,17 +1,18 @@
-// Tap pipe (config "tap"): \\.\pipe\<pipeName>-tap streams what the client receives and sends
-// to one reader (bedboo's transport 'bedd'), binary and one way. See CONTRIBUTING.md (Tap
-// protocol) for the framing and markers.
+// The tap (config "tap"): what the client receives and sends, streamed to one subscriber (bedboo's
+// transport 'bedd'). A WebSocket client sends {op:"tap", action:"subscribe"}; after the reply its
+// connection receives one binary message per tap frame (docs/reference/tap.md: the framing and
+// markers). The connection still takes requests; a second subscriber gets code:"busy".
 //
 // The capture hooks (NetTap.cpp, and any other tap publisher) call tap::emit, which lands in
 // onEmit below: it hands the frame on to the publisher installed before (the join journal chains
 // the same way) and queues a copy while a reader is attached. One writer thread drains the queue
-// into the pipe, so the game's threads never wait for the reader. A reader more than 32 MiB behind
-// gets DROPPED and is disconnected; it reconnects and gets a full replay.
+// into the connection, so the game's threads never wait for the reader. A reader more than 32 MiB
+// behind gets DROPPED and is disconnected; it reconnects and gets a full replay.
 #include "Tap.h"
 #include "BeDD.h"
+#include "Discovery.h"
 #include "TapSink.h"
-
-#include <sddl.h>
+#include "WsServer.h"
 
 #include <algorithm>
 #include <condition_variable>
@@ -22,10 +23,6 @@
 #include <vector>
 
 #include "ll/api/Versions.h"
-#include "ll/api/mod/NativeMod.h"
-
-
-#pragma comment(lib, "advapi32.lib")
 
 namespace bedd {
 
@@ -40,13 +37,10 @@ constexpr size_t   kLagCap     = 32u << 20; // queued bytes before a slow reader
 constexpr size_t   kHeaderSize = 24;        // u32 len | u8 kind | u8 flags | u16 0 | u64 seq | u64 tUs
 constexpr uint32_t kMaxLen     = (16u << 20) + 20;
 
-std::wstring      gTapPath; // \\.\pipe\<pipeName>-tap
-std::string       gTapName;
 std::jthread      gWriter;
 std::atomic<bool> gStopping{false};
 std::atomic<bool> gStarted{false};
 std::atomic<bool> gAttached{false}; // a reader is connected (frames are queued for it)
-std::atomic<bool> gWriterDone{false};
 bool              gStillChained = false; // stopTap could not hand gEmit back (another sink chained onto ours)
 
 std::atomic<tap::EmitFn> gPrev{nullptr}; // the publisher installed before us (forwarded to)
@@ -59,6 +53,12 @@ bool                    gOverflow       = false;
 uint64_t                gOverflowFrames = 0;
 
 std::atomic<uint64_t> gDropped{}, gSent{}, gReaders{};
+
+// The subscriber: handed over by the `tap` op once its reply is sent, then served by the writer.
+std::mutex                      gSubMutex;
+std::condition_variable         gSubCv;
+std::shared_ptr<ws::Connection> gPending;            // guarded by gSubMutex
+bool                            gSubscribed = false; // pending or being served, guarded by gSubMutex
 
 // What the last reader was replayed (the journal's live stats are in "state".stats.journal).
 std::mutex gJournalMutex;
@@ -118,25 +118,14 @@ Frame marker(json const& j) {
     };
 }
 
-bool writeAll(HANDLE pipe, char const* data, size_t size) {
-    while (size > 0) {
-        DWORD n = 0;
-        if (!WriteFile(pipe, data, static_cast<DWORD>(std::min<size_t>(size, 1u << 20)), &n, nullptr) || n == 0)
-            return false;
-        data += n;
-        size -= n;
-    }
-    return true;
-}
-
-bool writeFrame(HANDLE pipe, Frame const& f) {
+bool writeFrame(ws::Connection& conn, Frame const& f) {
     if (f.bytes.size() + 20 > kMaxLen) {
         // Larger than the protocol allows: the reader would miss it unnoticed, so it is dropped
         // as a lagging one (it reconnects and gets a replay).
         gDropped.fetch_add(1, std::memory_order_relaxed);
         log().warn("tap: a {} byte frame exceeds the frame limit; disconnecting the reader", f.bytes.size());
         writeFrame(
-            pipe,
+            conn,
             marker({
                 {"m",     "DROPPED"},
                 {"count", 1        }
@@ -151,7 +140,8 @@ bool writeFrame(HANDLE pipe, Frame const& f) {
     std::memcpy(header, &len, 4); // x64: little-endian
     std::memcpy(header + 8, &f.seq, 8);
     std::memcpy(header + 16, &f.tUs, 8);
-    if (!writeAll(pipe, header, kHeaderSize) || !writeAll(pipe, f.bytes.data(), f.bytes.size())) return false;
+    // One binary WebSocket message per frame, header included.
+    if (!conn.send(ws::kBinary, {std::string_view(header, kHeaderSize), f.bytes})) return false;
     gSent.fetch_add(1, std::memory_order_relaxed);
     return true;
 }
@@ -161,17 +151,7 @@ std::vector<Frame> gReplayFrames;
 
 void collectReplay(Frame&& f) { gReplayFrames.push_back(std::move(f)); }
 
-std::string modVersion() {
-    auto self = ll::mod::NativeMod::current();
-    if (!self) return {};
-    auto const& v = self->getManifest().version;
-    return v ? v->to_string() : std::string();
-}
-
-// The reader went away (PeekNamedPipe fails once it closed its end).
-bool readerGone(HANDLE pipe) { return !PeekNamedPipe(pipe, nullptr, 0, nullptr, nullptr, nullptr); }
-
-void serveReader(HANDLE pipe) {
+void serveReader(ws::Connection& conn) {
     {
         std::lock_guard lock(gQueueMutex);
         gQueue.clear();
@@ -213,20 +193,20 @@ void serveReader(HANDLE pipe) {
         {"link",     tap::netTapLink()                        },
         {"journal",  journal                                  },
     };
-    bool ok = writeFrame(pipe, marker(hello))
+    bool ok = writeFrame(conn, marker(hello))
            && writeFrame(
-                  pipe,
+                  conn,
                   marker({
                       {"m",      "REPLAY_BEGIN"      },
                       {"frames", gReplayFrames.size()}
     })
            );
-    for (size_t i = 0; ok && i < gReplayFrames.size(); ++i) ok = writeFrame(pipe, gReplayFrames[i]);
+    for (size_t i = 0; ok && i < gReplayFrames.size(); ++i) ok = writeFrame(conn, gReplayFrames[i]);
     gReplayFrames.clear();
     gReplayFrames.shrink_to_fit();
     ok = ok
       && writeFrame(
-             pipe,
+             conn,
              marker({
                  {"m",        "REPLAY_END"       },
                  {"complete", journal["complete"]}
@@ -254,97 +234,70 @@ void serveReader(HANDLE pipe) {
                 dropped
             );
             writeFrame(
-                pipe,
+                conn,
                 marker({
                     {"m",     "DROPPED"},
                     {"count", dropped  }
             })
             );
+            ok = false;
             break;
         }
         if (batch.empty()) {
-            if (readerGone(pipe)) break;
+            if (conn.closed()) break;
             continue;
         }
         for (auto& f : batch) {
             // Already part of the replay.
             if (f.kind == Kind::Clientbound && f.seq <= lastReplayed) continue;
-            if (!(ok = writeFrame(pipe, f))) break;
+            if (!(ok = writeFrame(conn, f))) break;
         }
         batch.clear();
     }
 
-    std::lock_guard lock(gQueueMutex);
-    gAttached = false;
-    gQueue.clear();
-    gQueuedBytes = 0;
+    {
+        std::lock_guard lock(gQueueMutex);
+        gAttached = false;
+        gQueue.clear();
+        gQueuedBytes = 0;
+    }
+    // Dropped (or a frame too large): the reader reconnects and gets a full replay. 1013 = try again later.
+    if (!ok) conn.close(1013, "tap reader dropped");
 }
 
-// Only this user may open the pipe (the tap carries the whole game session).
-struct CurrentUserOnly {
-    SECURITY_ATTRIBUTES  sa{sizeof(SECURITY_ATTRIBUTES), nullptr, FALSE};
-    PSECURITY_DESCRIPTOR sd = nullptr;
-
-    CurrentUserOnly() {
-        HANDLE token = nullptr;
-        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return;
-        DWORD size = 0;
-        GetTokenInformation(token, TokenUser, nullptr, 0, &size);
-        std::vector<char> buf(size);
-        LPWSTR            sid = nullptr;
-        if (size && GetTokenInformation(token, TokenUser, buf.data(), size, &size)
-            && ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(buf.data())->User.Sid, &sid)) {
-            std::wstring sddl = L"D:P(A;;GA;;;" + std::wstring(sid) + L")(A;;GA;;;SY)";
-            LocalFree(sid);
-            if (ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.c_str(), SDDL_REVISION_1, &sd, nullptr))
-                sa.lpSecurityDescriptor = sd;
-        }
-        CloseHandle(token);
-    }
-    ~CurrentUserOnly() {
-        if (sd) LocalFree(sd);
-    }
-    CurrentUserOnly(CurrentUserOnly const&)            = delete;
-    CurrentUserOnly& operator=(CurrentUserOnly const&) = delete;
-};
-
 void serve(std::stop_token) {
-    CurrentUserOnly security;
-    if (!security.sd)
-        log().error("tap: could not build the current-user DACL ({}); using the default one", GetLastError());
     while (!gStopping) {
-        HANDLE pipe = CreateNamedPipeW(
-            gTapPath.c_str(),
-            PIPE_ACCESS_DUPLEX, // duplex only so PeekNamedPipe notices a reader that left; nothing is read
-            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-            1,
-            1 << 20,
-            4096,
-            0,
-            security.sd ? &security.sa : nullptr
-        );
-        if (pipe == INVALID_HANDLE_VALUE) {
-            log().error("tap: CreateNamedPipe failed ({}); retrying", GetLastError());
-            std::this_thread::sleep_for(1s);
-            continue;
+        std::shared_ptr<ws::Connection> conn;
+        {
+            std::unique_lock lock(gSubMutex);
+            gSubCv.wait(lock, [] { return gStopping || gPending; });
+            if (gStopping) break;
+            conn = std::move(gPending);
         }
-        BOOL connected = ConnectNamedPipe(pipe, nullptr) || GetLastError() == ERROR_PIPE_CONNECTED;
-        if (connected && !gStopping) serveReader(pipe);
-        // No DisconnectNamedPipe: a closed server end still lets the reader drain what was written (DROPPED).
-        CloseHandle(pipe);
+        log().info("tap: client {} subscribed", conn->id());
+        serveReader(*conn);
+        log().info("tap: client {} left the tap", conn->id());
+        std::lock_guard lock(gSubMutex);
+        gSubscribed = false;
     }
-    gWriterDone = true;
+    std::lock_guard lock(gSubMutex);
+    gPending.reset();
+    gSubscribed = false;
+}
+
+json fail(char const* code, std::string const& error) {
+    return {
+        {"ok",    false},
+        {"code",  code },
+        {"error", error},
+    };
 }
 
 } // namespace
 
 void startTap() {
     if (!options().tap || gStarted.exchange(true)) return;
-    std::string const& name = options().pipeName;
-    gTapName                = name + "-tap";
-    gTapPath                = L"\\\\.\\pipe\\" + std::wstring(gTapName.begin(), gTapName.end());
-    gStopping               = false;
-    gWriterDone             = false;
+    gStopping = false;
     // Chain onto whatever publisher sink is installed already (the journal forwards the same way).
     // Still chained from a previous start (someone chained onto us since): gPrev is still right,
     // and taking gEmit again would make the two sinks forward to each other.
@@ -352,7 +305,7 @@ void startTap() {
     gStillChained = false;
     gWriter       = std::jthread(serve);
     tap::installNetTap();
-    log().info("tap pipe: \\\\.\\pipe\\{}", gTapName);
+    log().info("tap: on (a client subscribes with {op:\"tap\", action:\"subscribe\"})");
 }
 
 void stopTap() {
@@ -362,23 +315,24 @@ void stopTap() {
     // onEmit keeps forwarding to gPrev; frames just stop being queued).
     tap::EmitFn self = &onEmit;
     gStillChained    = !tap::gEmit.compare_exchange_strong(self, gPrev.load(), std::memory_order_acq_rel);
-    gStopping        = true;
-    gQueueCv.notify_all();
-    // Until the writer is out: unblock ConnectNamedPipe with a throwaway connection, and cancel a
-    // WriteFile to a reader that stopped reading. Repeated, as the writer may be between calls.
-    for (int i = 0; !gWriterDone && i < 300; ++i) {
-        HANDLE h = CreateFileW(gTapPath.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
-        if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-        CancelSynchronousIo(gWriter.native_handle());
-        if (!gWriterDone) std::this_thread::sleep_for(10ms);
+    {
+        std::lock_guard lock(gSubMutex);
+        gStopping = true;
     }
+    gQueueCv.notify_all();
+    gSubCv.notify_all();
+    // The writer leaves at its next wait; a send to the subscriber fails once the WebSocket server
+    // has stopped (disable() stops it first).
     gWriter.join();
 }
 
 std::string tapInfo() {
     json j{
         {"enabled",  gStarted.load()               },
-        {"pipe",     "\\\\.\\pipe\\" + gTapName    },
+        {"subscribed", [] {
+             std::lock_guard lock(gSubMutex);
+             return gSubscribed;
+         }()},
         {"attached", gAttached.load()              },
         {"link",     tap::netTapLink()             },
         {"counters",
@@ -414,6 +368,44 @@ std::string tapInfo() {
 }
 
 std::string tapHooks() { return tap::netTapHooks().dump(); }
+
+json tapOp(json const& req) {
+    if (!options().tap)
+        return {
+            {"ok",    false                                   },
+            {"code",  "disabled"                              },
+            {"key",   "tap"                                   },
+            {"error", "the tap is off (config.json \"tap\")"},
+        };
+    std::string action = req.value("action", "");
+    if (action.empty() || action == "status") {
+        json r{
+            {"ok", true}
+        };
+        r.update(json::parse(tapInfo()));
+        return r;
+    }
+    if (action != "subscribe") return fail("bad_request", "unknown tap action '" + action + "' (subscribe)");
+    auto conn = currentConnection();
+    if (!conn) return fail("bad_request", "subscribe needs a client connection");
+    {
+        std::lock_guard lock(gSubMutex);
+        if (gStopping) return fail("disabled", "BeDD is unloading");
+        if (gSubscribed) return fail("busy", "another client is subscribed to the tap (one at a time)");
+        gSubscribed = true;
+    }
+    // The frames start after this reply (HELLO first).
+    afterReply([conn] {
+        {
+            std::lock_guard lock(gSubMutex);
+            gPending = conn;
+        }
+        gSubCv.notify_all();
+    });
+    return {
+        {"ok", true}
+    };
+}
 
 // Any other sink in the chain (before ours, or chained onto ours since) takes every frame.
 bool tap::frameWanted() {

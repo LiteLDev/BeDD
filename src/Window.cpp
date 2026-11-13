@@ -254,18 +254,6 @@ void requestSync() {
     if (h && gSyncMsg) PostMessageW(h, gSyncMsg, 0, 0);
 }
 
-std::string processNameOf(DWORD pid) {
-    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!p) return {};
-    wchar_t buf[MAX_PATH]{};
-    DWORD   n = MAX_PATH;
-    QueryFullProcessImageNameW(p, 0, buf, &n);
-    CloseHandle(p);
-    std::wstring s(buf, n);
-    auto         slash = s.find_last_of(L"\\/");
-    return narrow(slash == std::wstring::npos ? s : s.substr(slash + 1));
-}
-
 void rememberReturnFocus() {
     char buf[32]{};
     if (GetEnvironmentVariableA("BEDD_RETURN_FOCUS", buf, sizeof(buf)) > 0) {
@@ -274,8 +262,6 @@ void rememberReturnFocus() {
     }
     HWND fg = real::GetForegroundWindow();
     if (!fg || processOf(fg) == GetCurrentProcessId()) return;
-    std::string name = processNameOf(processOf(fg));
-    if (_stricmp(name.c_str(), "LeviLauncher.exe") == 0) return; // the launcher closes soon
     gReturnFocus = fg;
 }
 
