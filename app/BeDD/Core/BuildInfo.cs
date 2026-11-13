@@ -5,7 +5,7 @@ namespace BeDD;
 public static class BuildInfo
 {
     public const string GameVersion = "1.26.60";
-    public const string LeviLaminaVersion = "26.60.2";
+    public const string LeviLaminaVersion = "26.60.7";
     // The WebSocket protocol the mod speaks (ping's "protocol").
     public const int Protocol = 2;
 
