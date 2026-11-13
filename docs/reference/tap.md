@@ -1,16 +1,18 @@
 # Tap protocol
 
 The tap is a read-only binary stream of the game packets the client receives and sends, for
-[bedboo](https://github.com/LiteLDev/bedboo)'s transport `bedd`. It is off unless the config turns `tap` on
-([Configuration](/guide/configuration#keys-for-bedboo)).
+[bedboo](https://github.com/LiteLDev/bedboo)'s transport `bedd`. It is on by default; config `tap` set to `false`
+turns it off ([Configuration](/guide/configuration#keys-for-bedboo)).
 
-## Pipe and frames
+## Subscribing and frames
 
-`\\.\pipe\<pipeName>-tap`, only with config `tap` (off by default). One reader at a time, local
-and current user only. BeDD writes, the reader only reads. It carries every clientbound game
-packet the client receives, an echo of every serverbound packet it sends (not login, the
-handshakes or request_network_settings), and JSON markers. bedboo derives the name as
-`<control pipe>-tap`.
+The tap rides on the game's [WebSocket](/reference/websocket). A connection sends
+`{"op":"tap","action":"subscribe"}`, gets `{"ok":true}`, and from then on receives one binary WebSocket message per
+frame; it sends nothing else on that connection (open another one for requests). One subscriber at a time: another
+`subscribe` answers `code:"busy"`, and a tap that is off answers `code:"disabled"`, `key:"tap"`. `{"op":"tap"}` without
+`action` is the status (see the [`tap` op](/reference/websocket#bedboo-ops)). BeDD writes, the subscriber only reads.
+It carries every clientbound game packet the client receives, an echo of every serverbound packet it sends (not login,
+the handshakes or request_network_settings), and JSON markers.
 
 Frames, little-endian:
 
@@ -18,7 +20,7 @@ Frames, little-endian:
 u32 len (bytes after this field) | u8 kind | u8 flags | u16 0 | u64 seq | u64 tUs (steady clock µs) | payload
 ```
 
-`len` is at most 16 MiB + 20. `seq` rises over the process (replayed frames keep theirs).
+Each binary message holds exactly one frame, `len` field included. `len` is at most 16 MiB + 20. `seq` rises over the process (replayed frames keep theirs).
 
 | kind | | payload |
 |---|---|---|
@@ -26,27 +28,27 @@ u32 len (bytes after this field) | u8 kind | u8 flags | u16 0 | u64 seq | u64 tU
 | 2 | SERVERBOUND_ECHO | the same, for a packet the client sent (never ids 1, 3, 4, 193) |
 | 4 | MARKER | UTF-8 JSON |
 
-Readers ignore other kinds. Flags: 1 replay (from the join journal), 2 reserialized
+Subscribers ignore other kinds. Flags: 1 replay (from the join journal), 2 reserialized
 (`Packet::write`, not wire bytes), 4 local link, 8 suppressed (reserved).
 
 | marker | fields |
 |---|---|
-| `HELLO` (always first) | `tap:1`, `mod`, `game:"1.26.60.05"`, `protocol` (2225), `pid`, `link{state, type, address}`, `journal{frames, bytes, complete}` (what this reader is replayed) |
+| `HELLO` (always first) | `tap:1`, `mod`, `game:"1.26.60.05"`, `protocol` (2225), `pid`, `link{state, type, address}`, `journal{frames, bytes, complete}` (what this subscriber is replayed) |
 | `LINK_UP` | `type` remote\|local, `address` |
 | `LINK_DOWN` | `reason` |
 | `REPLAY_BEGIN` | `frames` |
 | `REPLAY_END` | `complete` (false when the journal went past `tapJournalMiB`) |
-| `DROPPED` | `count`; the pipe closes after it |
+| `DROPPED` | `count`; the connection closes after it |
 
-A reader gets HELLO, REPLAY_BEGIN, the join journal's frames (flag replay), REPLAY_END, then the
+A subscriber gets HELLO, REPLAY_BEGIN, the join journal's frames (flag replay), REPLAY_END, then the
 live stream; live frames that arrive during the replay wait until REPLAY_END, and live frames the
 replay already held are skipped by seq. Without a journal the pair is empty (`complete:false`). A
-reader more than 32 MiB behind gets DROPPED and is disconnected; reconnecting gives a full replay.
+subscriber more than 32 MiB behind gets DROPPED and its connection is closed; subscribing again gives a full replay.
 
 All publishers share `src/TapSink.h`, which must stay byte-identical: each installs its sink with
 `prev = gEmit.exchange(&own)`, forwards every frame to `prev`, and on removal puts `prev` back
-only if `gEmit` is still its own (compare-exchange). The hooks only copy bytes; the pipe's writer
-thread drains its queue.
+only if `gEmit` is still its own (compare-exchange). The hooks only copy bytes; the subscriber's
+connection thread drains its queue.
 
 ## Remote servers (`NetTap.cpp`)
 
@@ -62,14 +64,14 @@ server_to_client_handshake, play_status, resource_packs_info, ..., start_game, .
 
 **Blob cache.** A client with its blob cache on gets sub-chunks as blob hashes and only the blobs
 it misses (`client_cache_miss_response`); the rest come from its cache on disk and never cross the
-wire, so a reader could not build the world. While the tap is on, BeDD therefore clears `enabled`
+wire, so a subscriber could not build the world. While the tap is on, BeDD therefore clears `enabled`
 in the client's `client_cache_status` before it is sent, and servers send every sub-chunk in full.
 The echo shows `enabled:false`.
 
 ## Singleplayer and LAN-host worlds (`TapLoopback.cpp`, config `tapLoopback`)
 
 `tapLoopback` (default `true`, effective only with `tap`) puts singleplayer worlds and LAN worlds
-the client hosts on the tap pipe. The client then talks to its in-process server through the
+the client hosts on the tap. The client then talks to its in-process server through the
 LocalConnector and the remote capture publishes nothing; `LoopbackPacketSender` is hooked instead,
 and each packet is re-serialized (varint header `id | senderSub << 10 | targetSub << 12`, then
 `Packet::write` with the sending `NetworkSystem`'s `ReflectionCtx`). Frames carry the flags
@@ -96,15 +98,15 @@ and each packet is re-serialized (varint header `id | senderSub << 10 | targetSu
   client counts; that check never writes `gLinkType`. The remote capture only publishes on a
   `Remote` link (`_sendInternal` also runs for the local link), so no packet is published twice. A
   sender method that calls another publishes a packet once.
-- Without a tap pipe (`tap::gEmit` null) frames are only counted. `state` reports
+- Without a tap sink (`tap::gEmit` null) frames are only counted. `state` reports
   `stats.tapLoopback{enabled, hooks, link, clientbound, echo, bytes, unpublished, guest}`.
 - With `trace`, the first 50 frames are logged (`trace tap loopback: in|out id= len=`) and the first
-  4000 are written to `mods\BeDD\data\tap-loopback.bin` in the tap pipe's framing (seq and tUs 0).
+  4000 are written to `mods\BeDD\data\tap-loopback.bin` in the tap framing (seq and tUs 0).
 
 ## Join journal (`TapJournal.cpp`)
 
 With `tap` on, the journal chains onto `bedd::tap::gEmit` and sets `bedd::tap::gReplay`, which the
-tap pipe calls for each new reader between `REPLAY_BEGIN` and `REPLAY_END`. Replayed frames keep
+tap calls for each new subscriber between `REPLAY_BEGIN` and `REPLAY_END`. Replayed frames keep
 their seq and order and carry flag `replay`.
 
 - Only CLIENTBOUND frames are kept. The journal resets on a new link (the `LINK_UP` marker or a
@@ -127,7 +129,7 @@ their seq and order and carry flag `replay`.
 - Not kept: `text`, `animate`, `network_stack_latency`, `play_sound`, `stop_sound`,
   `level_sound_event` (and v2), `spawn_particle_effect`, `level_event_generic`.
 - Past `tapJournalMiB` (default 128) frames are no longer kept and the journal reports
-  `complete:false` until the next reset: a late reader then misses chunks until the player
+  `complete:false` until the next reset: a late subscriber then misses chunks until the player
   re-enters them or the client rejoins.
 - `state` reports `stats.journal`: `enabled`, `frames`, `bytes`, `complete`, and the counters
   `seen` (clientbound frames), `compacted` (replaced by a later frame with the same key), `pruned`

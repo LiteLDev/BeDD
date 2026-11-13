@@ -4,3 +4,5 @@ dist/
 # levimc-kit, fetched from levimc.org by the package install (scripts/fetch-kit.mjs)
 /kit/
 vite.config.ts.timestamp-*
+# copied from ../spec/ by scripts/copy-spec.mjs (npm run build / dev)
+/public/bedd.asyncapi.yaml
