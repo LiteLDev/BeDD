@@ -1,6 +1,7 @@
 // Control pipe: \\.\pipe\BeDD, one JSON object per line in each direction.
 // See README.md for the protocol.
 #include "BeDD.h"
+#include "UiOre.h"
 
 #include <algorithm>
 #include <array>
@@ -389,6 +390,8 @@ json handle(json const& j) {
         r = timeScaleOp(j);
     } else if (op == "join") {
         r = joinOp(j);
+    } else if (op == "oreui") {
+        return oreUiOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
@@ -492,7 +495,7 @@ bool concurrentOp(std::string const& line) {
     if (!req.is_object()) return true;
     std::string op = req.value("op", "");
     return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
-        || op == "stack" || op == "timescale" || op == "join";
+        || op == "stack" || op == "timescale" || op == "join" || op == "oreui";
 }
 
 std::string handleClientLine(std::string const& line) {
