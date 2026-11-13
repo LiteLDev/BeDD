@@ -46,7 +46,7 @@ target(is_config("target_type", "server") and "BeDD-server" or "BeDD")
         {tools = {"clang_cl"}}
     )
     add_packages("levilamina", "nlohmann_json")
-    add_syslinks("user32", "ws2_32", "ole32", "uuid")
+    add_syslinks("user32", "gdi32", "ws2_32", "ole32", "oleaut32", "uuid", "windowscodecs")
     add_includedirs("src")
     add_headerfiles("src/**.h")
     if is_config("target_type", "server") then

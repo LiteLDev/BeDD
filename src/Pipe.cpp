@@ -1,6 +1,7 @@
 // Control pipe: \\.\pipe\BeDD, one JSON object per line in each direction.
 // See README.md for the protocol.
 #include "BeDD.h"
+#include "Screenshot.h"
 
 #include <algorithm>
 #include <array>
@@ -389,6 +390,8 @@ json handle(json const& j) {
         r = timeScaleOp(j);
     } else if (op == "join") {
         r = joinOp(j);
+    } else if (op == "screenshot") {
+        r = screenshotOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
@@ -483,6 +486,7 @@ int maxInstances() { return std::clamp(options().pipeInstances, 1, PIPE_UNLIMITE
 // Ops that run without gInputMutex: they post no window input. `tap` and `world` only read;
 // `look`, `input`, `send`, `stack`, `timescale` and `join` hand their work to the client thread (and
 // may wait for it, up to their timeoutMs), so serializing them would only stall the other clients.
+// `screenshot` only reads the window, and may wait for the game thread to answer PrintWindow.
 bool concurrentOp(std::string const& line) {
 #ifdef LL_PLAT_S
     (void)line;
@@ -492,7 +496,7 @@ bool concurrentOp(std::string const& line) {
     if (!req.is_object()) return true;
     std::string op = req.value("op", "");
     return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
-        || op == "stack" || op == "timescale" || op == "join";
+        || op == "stack" || op == "timescale" || op == "join" || op == "screenshot";
 }
 
 std::string handleClientLine(std::string const& line) {
