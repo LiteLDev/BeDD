@@ -7,3 +7,7 @@ SetConsoleOutputCP
 SetConsoleCP
 OpenProcess
 GetExitCodeProcess
+QueryFullProcessImageName
+CreateProcess
+CloseHandle
+FreeConsole
