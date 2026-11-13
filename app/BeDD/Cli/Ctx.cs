@@ -121,7 +121,10 @@ public sealed class Ctx
     // Columns separated by two spaces, the header in upper case.
     public static void Table(TextWriter w, IReadOnlyList<string> header, IEnumerable<IReadOnlyList<string>> rows)
     {
-        var all = new List<IReadOnlyList<string>> { header };
+        // An all-empty header means a table without a header row (help lists).
+        var all = new List<IReadOnlyList<string>>();
+        if (header.Any(h => h.Length > 0))
+            all.Add(header);
         all.AddRange(rows);
         var widths = new int[header.Count];
         foreach (var r in all)

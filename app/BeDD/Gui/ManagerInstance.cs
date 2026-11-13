@@ -6,14 +6,15 @@ using Windows.Win32;
 namespace BeDD.Gui;
 
 // How the one manager of a logon session is found from outside: the named mutex it holds while it
-// runs (`Local\BeDD.Manager`), the named event that stops it (`Local\BeDD.Manager.Stop`) and its
-// window class. With BEDD_HOME pointing elsewhere every name gets a suffix made from that folder, so
+// runs (`Local\BeDD.v2.Manager`), the named event that stops it (`Local\BeDD.v2.Manager.Stop`) and
+// its window class. The names differ from v1's PowerShell manager (`Local\BeDD.Manager`), which
+// links games over a pipe v2 games no longer have: one left running must not pass for a v2 manager. With BEDD_HOME pointing elsewhere every name gets a suffix made from that folder, so
 // a BeDD tree of its own (tests, a recording) has a manager of its own that sees only its games.
 public static class ManagerInstance
 {
-    private const string MutexBase = @"Local\BeDD.Manager";
-    private const string StopBase = @"Local\BeDD.Manager.Stop";
-    private const string ClassBase = "BeDD.Manager";
+    private const string MutexBase = @"Local\BeDD.v2.Manager";
+    private const string StopBase = @"Local\BeDD.v2.Manager.Stop";
+    private const string ClassBase = "BeDD.v2.Manager";
 
     // Tests set this to get names nobody else uses.
     internal static string? SuffixOverride { get; set; }

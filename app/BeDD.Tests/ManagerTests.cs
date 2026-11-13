@@ -197,9 +197,9 @@ public sealed class ManagerCommandTests : IDisposable
     [Fact]
     public void NamesHaveTheSessionPrefix()
     {
-        Assert.StartsWith(@"Local\BeDD.Manager.test-", ManagerInstance.MutexName);
-        Assert.StartsWith(@"Local\BeDD.Manager.Stop", ManagerInstance.StopEventName);
-        Assert.StartsWith("BeDD.Manager", ManagerInstance.WindowClass);
+        Assert.StartsWith(@"Local\BeDD.v2.Manager.test-", ManagerInstance.MutexName);
+        Assert.StartsWith(@"Local\BeDD.v2.Manager.Stop", ManagerInstance.StopEventName);
+        Assert.StartsWith("BeDD.v2.Manager", ManagerInstance.WindowClass);
     }
 
     [Fact]

@@ -1,13 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
     BeDD.exe: started without arguments it opens the manager window (Gui/); with arguments it is the
-    command line (Cli/), "BeDD.exe <noun> <verb> [arguments] [flags]". A GUI-subsystem program that
-    attaches to the caller's console for the command line, like LeviLauncher.exe.
+    command line (Cli/), "BeDD.exe <noun> <verb> [arguments] [flags]". A console program, so shells
+    and agents wait for the command line and get its output; as the manager window it drops its
+    console (ConsoleSetup.cs).
     NativeAOT: no reflection-based JSON (each unit adds a source-generated JsonSerializerContext),
     Win32 through CsWin32 (NativeMethods.txt).
   -->
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <OutputType>Exe</OutputType>
     <AssemblyName>BeDD</AssemblyName>
     <RootNamespace>BeDD</RootNamespace>
     <PublishAot>true</PublishAot>

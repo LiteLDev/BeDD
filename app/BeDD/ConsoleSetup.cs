@@ -1,44 +1,64 @@
+using System.Diagnostics;
 using Windows.Win32;
-using Windows.Win32.Storage.FileSystem;
-using Windows.Win32.System.Console;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace BeDD;
 
-// BeDD.exe is a GUI-subsystem program, so it starts without a console. For the command line it
-// attaches to the caller's console (as LeviLauncher.exe does); streams the caller redirected to a
-// file or pipe are kept. Started from Explorer with arguments there is no parent console: output is
-// discarded and the exit code still reports the outcome.
+// BeDD.exe is a console program, so shells and agents wait for the command line and get its output
+// and exit code (a GUI-subsystem exe returns at once in PowerShell and cmd). Without arguments it is
+// the manager window, which must not keep a console around:
+//   - double-clicked in Explorer, Windows made a console just for it: hide it and let it go (a
+//     console window may flash for a moment);
+//   - started without arguments from a terminal: start a copy of itself without a console and
+//     return at once, so the terminal stays free;
+//   - started detached (launch starts the manager this way): no console at all, nothing to do.
 internal static class ConsoleSetup
 {
-    private const uint AttachParentProcess = unchecked((uint)-1);
-
-    public static void AttachToParent()
+    // True when this process should go on as the manager window; false when it handed that to a
+    // copy of itself and should exit.
+    public static bool PrepareForGui()
     {
-        bool outOk = Valid(STD_HANDLE.STD_OUTPUT_HANDLE);
-        bool errOk = Valid(STD_HANDLE.STD_ERROR_HANDLE);
-        if (outOk && errOk)
-            return;
-        if (!PInvoke.AttachConsole(AttachParentProcess) && PInvoke.GetConsoleWindow() == default)
+        var console = PInvoke.GetConsoleWindow();
+        if (console == default)
+            return true;
+        if (ConsoleProcessCount() <= 1)
+        {
+            PInvoke.ShowWindow(console, SHOW_WINDOW_CMD.SW_HIDE);
+            PInvoke.FreeConsole();
+            return true;
+        }
+        string? self = Environment.ProcessPath;
+        if (self is null)
+            return true;
+        var psi = new ProcessStartInfo(self)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true, // a hidden console of its own, which it then frees (count 1)
+            WorkingDirectory = Path.GetDirectoryName(self)!,
+        };
+        using var _ = Process.Start(psi);
+        return false;
+    }
+
+    // UTF-8 for the command line's output (instance names in Chinese, ...).
+    public static void ForCommandLine()
+    {
+        if (PInvoke.GetConsoleWindow() == default)
             return;
         PInvoke.SetConsoleOutputCP(65001);
         PInvoke.SetConsoleCP(65001);
-        if (!outOk)
-            Console.SetOut(Open());
-        if (!errOk)
-            Console.SetError(Open());
+        try
+        {
+            Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+        }
+        catch (IOException)
+        {
+        }
     }
 
-    private static TextWriter Open()
+    private static unsafe uint ConsoleProcessCount()
     {
-        var stream = new FileStream("CONOUT$", FileMode.Open, FileAccess.Write);
-        return new StreamWriter(stream, new System.Text.UTF8Encoding(false)) { AutoFlush = true };
-    }
-
-    private static bool Valid(STD_HANDLE which)
-    {
-        var h = PInvoke.GetStdHandle(which);
-        if (h.IsNull || h == (nint)(-1))
-            return false;
-        return PInvoke.GetFileType(h) != FILE_TYPE.FILE_TYPE_UNKNOWN;
+        uint* list = stackalloc uint[8];
+        return PInvoke.GetConsoleProcessList(new Span<uint>(list, 8));
     }
 }
