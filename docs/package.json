@@ -10,7 +10,10 @@
   "scripts": {
     "postinstall": "node scripts/fetch-kit.mjs",
     "kit": "node scripts/fetch-kit.mjs",
+    "spec": "node scripts/copy-spec.mjs",
+    "predev": "node scripts/copy-spec.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-spec.mjs",
     "build": "node kit/docs/build.mjs",
     "preview": "node kit/scripts/serve-pages.mjs dist --base /BeDD/ --port 4173",
     "typecheck": "tsc --noEmit",

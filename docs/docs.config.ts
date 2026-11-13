@@ -21,7 +21,7 @@ interface Labels {
   harness: string;
   configuration: string;
   troubleshooting: string;
-  protocol: string;
+  websocket: string;
   tap: string;
   howItWorks: string;
   building: string;
@@ -45,7 +45,7 @@ const LABELS: Record<string, Labels> = {
     harness: 'Plugging into a harness',
     configuration: 'Configuration',
     troubleshooting: 'Troubleshooting',
-    protocol: 'Control pipe protocol',
+    websocket: 'WebSocket API',
     tap: 'Tap protocol',
     howItWorks: 'How it works',
     building: 'Building and contributing',
@@ -67,7 +67,7 @@ const LABELS: Record<string, Labels> = {
     harness: '接入测试框架',
     configuration: '配置',
     troubleshooting: '常见问题',
-    protocol: '控制管道协议',
+    websocket: 'WebSocket 接口',
     tap: 'Tap 协议',
     howItWorks: '工作原理',
     building: '构建与贡献',
@@ -106,7 +106,7 @@ const nav = (p: string, t: Labels): NavEntry[] => [
   {
     text: t.reference,
     items: [
-      { text: t.protocol, link: `${p}reference/protocol` },
+      { text: t.websocket, link: `${p}reference/websocket` },
       { text: t.tap, link: `${p}reference/tap` },
       { text: t.howItWorks, link: `${p}reference/how-it-works` },
       { text: t.building, link: `${p}reference/building` },

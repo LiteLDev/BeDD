@@ -1,13 +1,15 @@
 # Tap 协议
 
 tap 是一个只读的二进制流，包含客户端收发的游戏数据包，供 [bedboo](https://github.com/LiteLDev/bedboo) 的 `bedd` 传输使用。
-配置打开 `tap` 之前它是关闭的（[配置](/zh/guide/configuration#给-bedboo-用的配置项)）。
+它默认打开；把配置 `tap` 设为 `false` 即可关闭（[配置](/zh/guide/configuration#给-bedboo-用的配置项)）。
 
-## 管道与帧
+## 订阅与帧
 
-`\\.\pipe\<pipeName>-tap`，只在配置 `tap` 打开时存在（默认关闭）。一次一个读取方，仅本机、仅当前用户。BeDD 写，读取方只读。
+tap 走游戏的 [WebSocket](/zh/reference/websocket)。一个连接发送 `{"op":"tap","action":"subscribe"}`，收到 `{"ok":true}` 后，
+每一帧都作为一条二进制 WebSocket 消息发给它；这个连接上不要再发别的请求（另开一个连接）。同一时间只能有一个订阅方：
+再有人 `subscribe` 会得到 `code:"busy"`，tap 关闭时回答 `code:"disabled"`、`key:"tap"`。不带 `action` 的 `{"op":"tap"}` 是状态查询
+（见 [`tap` 操作](/zh/reference/websocket#bedboo-操作)）。BeDD 写，订阅方只读。
 它包含客户端收到的每个客户端方向游戏数据包、它发出的每个服务端方向数据包的回显（不含 login、握手和 request_network_settings），以及 JSON 标记。
-bedboo 把名字推导为 `<控制管道>-tap`。
 
 帧，小端序：
 
@@ -15,7 +17,7 @@ bedboo 把名字推导为 `<控制管道>-tap`。
 u32 len (bytes after this field) | u8 kind | u8 flags | u16 0 | u64 seq | u64 tUs (steady clock µs) | payload
 ```
 
-`len` 最多 16 MiB + 20。`seq` 在进程内递增（回放的帧保留原来的 seq）。
+每条二进制消息恰好是一帧（含 `len` 字段）。`len` 最多 16 MiB + 20。`seq` 在进程内递增（回放的帧保留原来的 seq）。
 
 | kind | | payload |
 |---|---|---|
@@ -23,22 +25,22 @@ u32 len (bytes after this field) | u8 kind | u8 flags | u16 0 | u64 seq | u64 tU
 | 2 | SERVERBOUND_ECHO | 同上，客户端发出的包（从不包括 id 1、3、4、193） |
 | 4 | MARKER | UTF-8 JSON |
 
-读取方忽略其他 kind。flags：1 回放（来自加入日志），2 重新序列化（`Packet::write`，不是线上字节），4 本地连接，8 被抑制（保留）。
+订阅方忽略其他 kind。flags：1 回放（来自加入日志），2 重新序列化（`Packet::write`，不是线上字节），4 本地连接，8 被抑制（保留）。
 
 | 标记 | 字段 |
 |---|---|
-| `HELLO`（总是第一个） | `tap:1`、`mod`、`game:"1.26.60.05"`、`protocol`（2225）、`pid`、`link{state, type, address}`、`journal{frames, bytes, complete}`（这个读取方被回放的内容） |
+| `HELLO`（总是第一个） | `tap:1`、`mod`、`game:"1.26.60.05"`、`protocol`（2225）、`pid`、`link{state, type, address}`、`journal{frames, bytes, complete}`（这个订阅方被回放的内容） |
 | `LINK_UP` | `type` remote\|local、`address` |
 | `LINK_DOWN` | `reason` |
 | `REPLAY_BEGIN` | `frames` |
 | `REPLAY_END` | `complete`（日志超过 `tapJournalMiB` 时为 false） |
-| `DROPPED` | `count`；之后管道关闭 |
+| `DROPPED` | `count`；之后连接关闭 |
 
-读取方依次收到 HELLO、REPLAY_BEGIN、加入日志的帧（带回放标志）、REPLAY_END，然后是实时流；回放期间到达的实时帧等到 REPLAY_END 之后再发，
-回放已包含的实时帧按 seq 跳过。没有日志时这一对标记之间为空（`complete:false`）。落后超过 32 MiB 的读取方会收到 DROPPED 并被断开；重新连接会得到完整回放。
+订阅方依次收到 HELLO、REPLAY_BEGIN、加入日志的帧（带回放标志）、REPLAY_END，然后是实时流；回放期间到达的实时帧等到 REPLAY_END 之后再发，
+回放已包含的实时帧按 seq 跳过。没有日志时这一对标记之间为空（`complete:false`）。落后超过 32 MiB 的订阅方会收到 DROPPED，连接随之关闭；重新订阅会得到完整回放。
 
 所有发布者共用 `src/TapSink.h`，它必须保持逐字节一致：每个发布者用 `prev = gEmit.exchange(&own)` 安装自己的 sink，把每帧转发给 `prev`，
-移除时只有 `gEmit` 仍是自己时才放回 `prev`（compare-exchange）。钩子只复制字节；管道的写线程负责清空队列。
+移除时只有 `gEmit` 仍是自己时才放回 `prev`（compare-exchange）。钩子只复制字节；订阅方的连接线程负责清空队列。
 
 ## 远程服务器（`NetTap.cpp`）
 
@@ -49,12 +51,12 @@ u32 len (bytes after this field) | u8 kind | u8 flags | u16 0 | u64 seq | u64 tU
 `tap trace #n in|out id len`：它们的顺序与 BDS 抓包一致（network_settings、server_to_client_handshake、play_status、resource_packs_info、……、start_game、……）。
 
 **Blob 缓存。** 打开 blob 缓存的客户端收到的子区块只是 blob 哈希，以及它缺的 blob（`client_cache_miss_response`）；其余来自它磁盘上的缓存，
-从不经过网络，读取方就无法构建世界。因此 tap 打开时，BeDD 在客户端的 `client_cache_status` 发出前清掉其中的 `enabled`，服务器就会完整发送每个子区块。
+从不经过网络，订阅方就无法构建世界。因此 tap 打开时，BeDD 在客户端的 `client_cache_status` 发出前清掉其中的 `enabled`，服务器就会完整发送每个子区块。
 回显里显示 `enabled:false`。
 
 ## 单人世界和局域网主机世界（`TapLoopback.cpp`，配置 `tapLoopback`）
 
-`tapLoopback`（默认 `true`，只在 `tap` 打开时有效）把单人世界和客户端开的局域网世界也放到 tap 管道上。这时客户端通过 LocalConnector
+`tapLoopback`（默认 `true`，只在 `tap` 打开时有效）把单人世界和客户端开的局域网世界也放到 tap 上。这时客户端通过 LocalConnector
 与进程内的服务器通信，远程抓取不发布任何东西；改为挂钩 `LoopbackPacketSender`，每个包重新序列化（varint 头 `id | senderSub << 10 | targetSub << 12`，
 然后用发送方 `NetworkSystem` 的 `ReflectionCtx` 调 `Packet::write`）。帧带 `reserialized`（2）和 `local`（4）标志。
 
@@ -69,13 +71,13 @@ u32 len (bytes after this field) | u8 kind | u8 flags | u16 0 | u64 seq | u64 tU
   和 tap 核心一样，所以回环 tap 不依赖 tap 核心也能工作。还不知道连接时（进程内服务器在客户端的连接调用返回前就开始发送），客户端的 `Local`
   连接也算；这个检查从不写 `gLinkType`。远程抓取只在 `Remote` 连接上发布（本地连接也会走 `_sendInternal`），所以没有包会被发布两次。
   一个发送方法调用另一个时，包只发布一次。
-- 没有 tap 管道（`tap::gEmit` 为空）时帧只计数。`state` 报告 `stats.tapLoopback{enabled, hooks, link, clientbound, echo, bytes, unpublished, guest}`。
-- 打开 `trace` 时，前 50 帧会记入日志（`trace tap loopback: in|out id= len=`），前 4000 帧按 tap 管道的帧格式写入
+- 没有 tap 接收端（`tap::gEmit` 为空）时帧只计数。`state` 报告 `stats.tapLoopback{enabled, hooks, link, clientbound, echo, bytes, unpublished, guest}`。
+- 打开 `trace` 时，前 50 帧会记入日志（`trace tap loopback: in|out id= len=`），前 4000 帧按 tap 的帧格式写入
   `mods\BeDD\data\tap-loopback.bin`（seq 和 tUs 为 0）。
 
 ## 加入日志（`TapJournal.cpp`）
 
-`tap` 打开时，日志挂到 `bedd::tap::gEmit` 链上并设置 `bedd::tap::gReplay`，tap 管道对每个新读取方在 `REPLAY_BEGIN` 和 `REPLAY_END` 之间调用它。
+`tap` 打开时，日志挂到 `bedd::tap::gEmit` 链上并设置 `bedd::tap::gReplay`，tap 对每个新订阅方在 `REPLAY_BEGIN` 和 `REPLAY_END` 之间调用它。
 回放的帧保持原来的 seq 和顺序，带 `replay` 标志。
 
 - 只保留 CLIENTBOUND 帧。日志在新连接（`LINK_UP` 标记或 `gLinkType` 变化）和 `start_game`（11）时重置，`start_game` 成为它的第一帧。
@@ -88,6 +90,6 @@ u32 len (bytes after this field) | u8 kind | u8 flags | u16 0 | u64 seq | u64 tU
   时，这个包才会被丢弃。日志无法遍历的包整个保留。
 - `remove_entity`（14）删除该实体的 `add_entity`/`add_item_entity`/`add_player` 帧（`add_player` 按其 unique id 的字节匹配），以及所有按它的 runtime id 作键的帧。
 - 不保留：`text`、`animate`、`network_stack_latency`、`play_sound`、`stop_sound`、`level_sound_event`（及 v2）、`spawn_particle_effect`、`level_event_generic`。
-- 超过 `tapJournalMiB`（默认 128）后不再保留帧，日志在下次重置前报告 `complete:false`：这时中途接入的读取方会缺区块，直到玩家重新进入这些区块或客户端重新加入。
+- 超过 `tapJournalMiB`（默认 128）后不再保留帧，日志在下次重置前报告 `complete:false`：这时中途接入的订阅方会缺区块，直到玩家重新进入这些区块或客户端重新加入。
 - `state` 报告 `stats.journal`：`enabled`、`frames`、`bytes`、`complete`，以及计数 `seen`（客户端方向帧）、`compacted`（被同键的后续帧取代）、
   `pruned`（add 帧被 `remove_entity` 删除的实体）、`transient`（不保留）、`overCap`（超过 `tapJournalMiB` 后未保留）、`resets` 和 `replays`。

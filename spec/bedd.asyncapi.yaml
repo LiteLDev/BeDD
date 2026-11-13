@@ -1,0 +1,1728 @@
+asyncapi: 3.0.0
+id: 'urn:levimc:bedd:websocket'
+
+info:
+  title: Be.D.D. WebSocket API
+  version: 2.0.0
+  description: |
+    The control API of a Minecraft Bedrock game (or a Bedrock Dedicated Server) that runs the BeDD
+    LeviLamina mod. Test scripts, agents, bedboo and the BeDD manager all talk to a game this way.
+
+    Every request is a JSON text message `{id, op, ...}`; the game answers each one with a JSON text
+    message that echoes `id`: `{id, ok:true, ...}` or `{id, ok:false, error, code?, key?}`. One
+    connection is served in order, one request at a time; open several connections to run requests
+    side by side. The tap (`{op:"tap", action:"subscribe"}`) turns a connection into a binary stream
+    of game packets.
+
+    The operations are written from the client's point of view: a client `send`s requests and
+    receives replies (and tap frames).
+
+    ## Three operation modes
+
+    All three are on at once (a config key set to `false` turns one feature off). `ping` lists them
+    with `defaultMode` and `modes`.
+
+    1. **bedboo** (the default and the first choice): semantic game ops on the client's own input
+       pipeline and network session: `world`, `look`, `input`, `slot`, `action`, `button`, `send`,
+       `stack`, `timescale`, `join`, `tap`. Small JSON in, small JSON out; this is what
+       [bedboo](https://github.com/LiteLDev/bedboo)'s transport `bedd` uses.
+    2. **ui**: the game's UI as an accessibility-style tree (`ui`): read a snapshot of the screens,
+       then act on a node by its `ref` (click, set text, scroll). Use it for menus and screens that
+       the bedboo ops do not cover.
+    3. **input** (the last resort): what a user does with a keyboard and mouse, plus screenshots:
+       `key`, `text`, `mouse`, `raw`, `release`, `flush`, `focus`, `window`, `screenshot`.
+       Screenshots and pixel coordinates are expensive for an agent (an image costs far more tokens
+       than a JSON snapshot) and break when the layout changes, so reach for them only when the
+       other two modes cannot do the job.
+
+    `ping`, `state`, `manager` and `close` belong to no mode (tag `system`).
+
+    ## Finding a game
+
+    A game writes `%LOCALAPPDATA%\BeDD\run\<pid>.json` (the root is `BEDD_HOME` when set) while its
+    WebSocket server listens and deletes it at exit; ignore a file whose process is gone:
+    `{protocol: 2, kind: "client"|"server", pid, url: "ws://127.0.0.1:<port>/v1", token, instance,
+    instanceDir, label, modVersion, startedAt}`. `BeDD.exe ps --json` lists the same endpoints.
+  license:
+    name: LGPL-3.0-or-later
+    url: https://www.gnu.org/licenses/lgpl-3.0.html
+  externalDocs:
+    description: WebSocket API reference
+    url: https://docs.levimc.org/BeDD/reference/websocket
+  tags:
+    - name: bedboo
+      description: Semantic game ops (the default mode).
+    - name: ui
+      description: The UI tree of the game's screens.
+    - name: input
+      description: Simulated keyboard and mouse, and screenshots (the last resort).
+    - name: system
+      description: Health, state, the manager link and closing the game.
+    - name: server
+      description: Ops of the server build (BeDD inside a Bedrock Dedicated Server).
+
+defaultContentType: application/json
+
+servers:
+  local:
+    host: '127.0.0.1:{port}'
+    protocol: ws
+    pathname: /v1
+    title: A game on this PC
+    summary: The WebSocket server of one game (or server) running BeDD.
+    description: |
+      Bound to 127.0.0.1 only. The port is config `wsPort` (default 0: a free port the system picks
+      at each start); read the `url` and `token` of the game from its discovery file
+      `%LOCALAPPDATA%\BeDD\run\<pid>.json` or from `BeDD.exe ps --json`.
+
+      Authenticate with `Authorization: Bearer <token>` or `?token=<token>` (else HTTP 401). A
+      handshake that carries an `Origin` header is refused with HTTP 403 unless that origin is listed
+      in config `allowOrigins` (default empty), so a web page in a browser cannot reach a game. At
+      most `wsMaxClients` (default 8) connections at once. Text messages are UTF-8 JSON; a message
+      is at most 16 MiB; no extensions (no compression).
+    variables:
+      port:
+        description: The port of the game's WebSocket server (from its discovery file).
+        examples:
+          - '53021'
+    security:
+      - $ref: '#/components/securitySchemes/bearer'
+      - $ref: '#/components/securitySchemes/queryToken'
+
+channels:
+  v1:
+    title: /v1
+    summary: The one WebSocket of a game.
+    description: |
+      Every request, reply and tap frame goes over this connection (the server's pathname `/v1`).
+      Requests are text messages; replies are text messages that echo the request's `id`; tap frames
+      are binary messages, only on a connection that subscribed to the tap.
+    messages:
+      pingRequest: { $ref: '#/components/messages/pingRequest' }
+      pingReply: { $ref: '#/components/messages/pingReply' }
+      stateRequest: { $ref: '#/components/messages/stateRequest' }
+      stateReply: { $ref: '#/components/messages/stateReply' }
+      managerRequest: { $ref: '#/components/messages/managerRequest' }
+      managerReply: { $ref: '#/components/messages/managerReply' }
+      closeRequest: { $ref: '#/components/messages/closeRequest' }
+      closeReply: { $ref: '#/components/messages/closeReply' }
+      worldRequest: { $ref: '#/components/messages/worldRequest' }
+      worldReply: { $ref: '#/components/messages/worldReply' }
+      lookRequest: { $ref: '#/components/messages/lookRequest' }
+      lookReply: { $ref: '#/components/messages/lookReply' }
+      inputRequest: { $ref: '#/components/messages/inputRequest' }
+      inputReply: { $ref: '#/components/messages/inputReply' }
+      slotRequest: { $ref: '#/components/messages/slotRequest' }
+      slotReply: { $ref: '#/components/messages/slotReply' }
+      actionRequest: { $ref: '#/components/messages/actionRequest' }
+      actionReply: { $ref: '#/components/messages/actionReply' }
+      buttonRequest: { $ref: '#/components/messages/buttonRequest' }
+      buttonReply: { $ref: '#/components/messages/buttonReply' }
+      sendRequest: { $ref: '#/components/messages/sendRequest' }
+      sendReply: { $ref: '#/components/messages/sendReply' }
+      stackRequest: { $ref: '#/components/messages/stackRequest' }
+      stackReply: { $ref: '#/components/messages/stackReply' }
+      timescaleRequest: { $ref: '#/components/messages/timescaleRequest' }
+      timescaleReply: { $ref: '#/components/messages/timescaleReply' }
+      joinRequest: { $ref: '#/components/messages/joinRequest' }
+      joinReply: { $ref: '#/components/messages/joinReply' }
+      tapRequest: { $ref: '#/components/messages/tapRequest' }
+      tapReply: { $ref: '#/components/messages/tapReply' }
+      tapFrame: { $ref: '#/components/messages/tapFrame' }
+      uiRequest: { $ref: '#/components/messages/uiRequest' }
+      uiReply: { $ref: '#/components/messages/uiReply' }
+      keyRequest: { $ref: '#/components/messages/keyRequest' }
+      textRequest: { $ref: '#/components/messages/textRequest' }
+      mouseRequest: { $ref: '#/components/messages/mouseRequest' }
+      rawRequest: { $ref: '#/components/messages/rawRequest' }
+      releaseRequest: { $ref: '#/components/messages/releaseRequest' }
+      flushRequest: { $ref: '#/components/messages/flushRequest' }
+      focusRequest: { $ref: '#/components/messages/focusRequest' }
+      windowRequest: { $ref: '#/components/messages/windowRequest' }
+      windowReply: { $ref: '#/components/messages/windowReply' }
+      screenshotRequest: { $ref: '#/components/messages/screenshotRequest' }
+      screenshotReply: { $ref: '#/components/messages/screenshotReply' }
+      inputDoneReply: { $ref: '#/components/messages/inputDoneReply' }
+      serverPingReply: { $ref: '#/components/messages/serverPingReply' }
+      serverStateReply: { $ref: '#/components/messages/serverStateReply' }
+      serverRequest: { $ref: '#/components/messages/serverRequest' }
+      serverReply: { $ref: '#/components/messages/serverReply' }
+      serverTimescaleReply: { $ref: '#/components/messages/serverTimescaleReply' }
+      commandRequest: { $ref: '#/components/messages/commandRequest' }
+      commandReply: { $ref: '#/components/messages/commandReply' }
+      errorReply: { $ref: '#/components/messages/errorReply' }
+
+operations:
+  # ---- system --------------------------------------------------------------------------------
+  ping:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: ping
+    summary: Health check; protocol version, modes and window.
+    tags: [{ $ref: '#/components/tags/system' }]
+    messages: [{ $ref: '#/channels/v1/messages/pingRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/pingReply' }
+        - { $ref: '#/channels/v1/messages/serverPingReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  state:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: state
+    summary: ping's fields plus counters, hooks, mode and connection.
+    tags: [{ $ref: '#/components/tags/system' }]
+    messages: [{ $ref: '#/channels/v1/messages/stateRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/stateReply' }
+        - { $ref: '#/channels/v1/messages/serverStateReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  manager:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: manager
+    summary: The BeDD manager attaches to the game (keeps it alive and off screen).
+    tags: [{ $ref: '#/components/tags/system' }]
+    messages: [{ $ref: '#/channels/v1/messages/managerRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/managerReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  close:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: close
+    summary: Closes the game.
+    tags: [{ $ref: '#/components/tags/system' }]
+    messages: [{ $ref: '#/channels/v1/messages/closeRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/closeReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+
+  # ---- bedboo --------------------------------------------------------------------------------
+  world:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: world
+    summary: Snapshot of the screen and the local player.
+    tags: [{ $ref: '#/components/tags/bedboo' }]
+    messages: [{ $ref: '#/channels/v1/messages/worldRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/worldReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  look:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: look
+    summary: Reads or turns the player's yaw and pitch.
+    tags: [{ $ref: '#/components/tags/bedboo' }]
+    messages: [{ $ref: '#/channels/v1/messages/lookRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/lookReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  input:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: input
+    summary: Moves the player inside the game's input pipeline (a dead-man switch).
+    tags: [{ $ref: '#/components/tags/bedboo' }]
+    messages: [{ $ref: '#/channels/v1/messages/inputRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/inputReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  slot:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: slot
+    summary: Reads or selects the hotbar slot.
+    tags: [{ $ref: '#/components/tags/bedboo' }]
+    messages: [{ $ref: '#/channels/v1/messages/slotRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/slotReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  action:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: action
+    summary: Drop, drop all, inventory, perspective, pause.
+    tags: [{ $ref: '#/components/tags/bedboo' }]
+    messages: [{ $ref: '#/channels/v1/messages/actionRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/actionReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  button:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: button
+    summary: Attack, use or pick, held for ticks or until a block changes.
+    tags: [{ $ref: '#/components/tags/bedboo' }]
+    messages: [{ $ref: '#/channels/v1/messages/buttonRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/buttonReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  send:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: send
+    summary: Sends one serverbound packet through the local player (allow-listed ids only).
+    tags: [{ $ref: '#/components/tags/bedboo' }]
+    messages: [{ $ref: '#/channels/v1/messages/sendRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/sendReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  stack:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: stack
+    summary: Item stack requests through the client, or what the client shows.
+    tags: [{ $ref: '#/components/tags/bedboo' }]
+    messages: [{ $ref: '#/channels/v1/messages/stackRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/stackReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  timescale:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: timescale
+    summary: Reads or sets the game speed (and pause) of a world this game hosts, or of the server.
+    tags: [{ $ref: '#/components/tags/bedboo' }, { $ref: '#/components/tags/server' }]
+    messages: [{ $ref: '#/channels/v1/messages/timescaleRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/timescaleReply' }
+        - { $ref: '#/channels/v1/messages/serverTimescaleReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  join:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: join
+    summary: Joins a server by address, or reports where the client plays.
+    tags: [{ $ref: '#/components/tags/bedboo' }]
+    messages: [{ $ref: '#/channels/v1/messages/joinRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/joinReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  tap:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: tap
+    summary: Tap status, or subscribe this connection to the packet stream.
+    tags: [{ $ref: '#/components/tags/bedboo' }]
+    messages: [{ $ref: '#/channels/v1/messages/tapRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/tapReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  tapFrames:
+    action: receive
+    channel: { $ref: '#/channels/v1' }
+    title: tap frames
+    summary: Binary messages on a connection subscribed to the tap, one frame each.
+    tags: [{ $ref: '#/components/tags/bedboo' }]
+    messages: [{ $ref: '#/channels/v1/messages/tapFrame' }]
+
+  # ---- ui ------------------------------------------------------------------------------------
+  ui:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: ui
+    summary: Reads the UI tree of the game's screens, or acts on a node by ref.
+    tags: [{ $ref: '#/components/tags/ui' }]
+    messages: [{ $ref: '#/channels/v1/messages/uiRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/uiReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+
+  # ---- input ---------------------------------------------------------------------------------
+  key:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: key
+    summary: Presses, holds or releases a key.
+    tags: [{ $ref: '#/components/tags/input' }]
+    messages: [{ $ref: '#/channels/v1/messages/keyRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/inputDoneReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  text:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: text
+    summary: Types text (one WM_CHAR per UTF-16 unit).
+    tags: [{ $ref: '#/components/tags/input' }]
+    messages: [{ $ref: '#/channels/v1/messages/textRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/inputDoneReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  mouse:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: mouse
+    summary: Moves the virtual cursor (to a point or a UI node) and clicks, presses or scrolls.
+    tags: [{ $ref: '#/components/tags/input' }]
+    messages: [{ $ref: '#/channels/v1/messages/mouseRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/inputDoneReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  raw:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: raw
+    summary: Relative mouse movement (the camera while the mouse is grabbed) and buttons.
+    tags: [{ $ref: '#/components/tags/input' }]
+    messages: [{ $ref: '#/channels/v1/messages/rawRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/inputDoneReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  release:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: release
+    summary: Releases every held key and button and ends the input override.
+    tags: [{ $ref: '#/components/tags/input' }]
+    messages: [{ $ref: '#/channels/v1/messages/releaseRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/inputDoneReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  flush:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: flush
+    summary: Waits until everything posted was dispatched.
+    tags: [{ $ref: '#/components/tags/input' }]
+    messages: [{ $ref: '#/channels/v1/messages/flushRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/inputDoneReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  focus:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: focus
+    summary: Re-sends the "focus gained" messages.
+    tags: [{ $ref: '#/components/tags/input' }]
+    messages: [{ $ref: '#/channels/v1/messages/focusRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/inputDoneReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  window:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: window
+    summary: Sets the client area size; never activates the window.
+    tags: [{ $ref: '#/components/tags/input' }]
+    messages: [{ $ref: '#/channels/v1/messages/windowRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/windowReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  screenshot:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: screenshot
+    summary: An image of the game window, even while it is covered or off screen.
+    tags: [{ $ref: '#/components/tags/input' }]
+    messages: [{ $ref: '#/channels/v1/messages/screenshotRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/screenshotReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+
+  # ---- server build --------------------------------------------------------------------------
+  server:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: server
+    summary: Server build only - the level's tick, tps, pause, port and players.
+    tags: [{ $ref: '#/components/tags/server' }]
+    messages: [{ $ref: '#/channels/v1/messages/serverRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/serverReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  command:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: command
+    summary: Server build only - runs a command as the server console would.
+    tags: [{ $ref: '#/components/tags/server' }]
+    messages: [{ $ref: '#/channels/v1/messages/commandRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/commandReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+
+components:
+  tags:
+    bedboo:
+      name: bedboo
+      description: Semantic game ops (the default mode).
+    ui:
+      name: ui
+      description: The UI tree of the game's screens.
+    input:
+      name: input
+      description: Simulated keyboard and mouse, and screenshots (the last resort).
+    system:
+      name: system
+      description: Health, state, the manager link and closing the game.
+    server:
+      name: server
+      description: Ops of the server build.
+
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: |
+        `Authorization: Bearer <token>` on the WebSocket handshake. The token (64 hex characters,
+        32 random bytes, new at every start) is in the game's discovery file. A wrong or missing
+        token is HTTP 401. Any handshake with an `Origin` header not listed in config `allowOrigins`
+        is HTTP 403.
+    queryToken:
+      type: httpApiKey
+      name: token
+      in: query
+      description: |
+        `ws://127.0.0.1:<port>/v1?token=<token>`, for clients that cannot set handshake headers
+        (the browser-style `WebSocket` of Node and Deno). The same `Origin` rule applies.
+
+  schemas:
+    Id:
+      description: Any JSON value; echoed in the reply as given.
+      type: [string, number, 'null']
+    Ok:
+      type: boolean
+      const: true
+    TimeoutMs:
+      type: integer
+      minimum: 0
+      description: How long to wait for the game before answering `timeout`.
+    Point:
+      type: object
+      properties:
+        x: { type: integer }
+        y: { type: integer }
+    Size:
+      type: object
+      properties:
+        w: { type: integer }
+        h: { type: integer }
+    Vec3:
+      type: object
+      properties:
+        x: { type: number }
+        y: { type: number }
+        z: { type: number }
+    Rect:
+      type: object
+      description: Client-area pixels (or fractions of the client area for `boundsNorm`).
+      required: [x, y, w, h]
+      properties:
+        x: { type: number }
+        y: { type: number }
+        w: { type: number }
+        h: { type: number }
+    Button:
+      type: string
+      enum: [left, right, middle]
+      default: left
+    ErrorCode:
+      type: string
+      description: |
+        Why an op failed. Errors without a `code` (an unknown op, a malformed request, a game
+        thread that did not process input in time) carry only `error`.
+        - `disabled`: the op's config key is `false` (the reply names it in `key`), or BeDD is unloading.
+        - `not_in_level`: the client is not in a world (no client tick within 20 tick intervals, at least 1 s); on the server build, the server has not started.
+        - `refused`: the game refused the request (a packet id outside `sendAllow`, no block targeted for `releaseOn:"blockChange"`, ...).
+        - `timeout`: the game did not get there within `timeoutMs` (it may still).
+        - `bad_args`: missing or invalid fields, or bytes the game cannot read.
+        - `busy`: something else holds it (a screen is open, a newer `look` replaced this one, a join is in progress, the tap already has a subscriber).
+        - `stopped`: BeDD is unloading (the game closes).
+        - `join_failed`: the client gave up joining and shows why.
+        - `not_allowed`: the host is off this PC and config `loopbackOnly` keeps the game from it (not in `allowHosts`).
+        - `unavailable`: a game hook the op needs did not install (see the game log).
+        - `no_client`: the client instance does not exist yet.
+        - `remote`: the world is on a server this game does not host (its speed cannot change from here).
+        - `server_led`: that server runs BeDD and leads the game speed: change it there.
+        - `stale_ref`: the `ref` is not in that snapshot, or its node is gone.
+        - `stale_snapshot`: the screens changed since that snapshot: read the tree again.
+        - `occluded`: another control covers the node at the point an action would hit.
+        - `not_ready`: no UI tree to read yet (the game is loading, no scene).
+        - `unsupported`: the node cannot do that action (an OreUI screen is one opaque node).
+      enum:
+        - disabled
+        - not_in_level
+        - refused
+        - timeout
+        - bad_args
+        - busy
+        - stopped
+        - join_failed
+        - not_allowed
+        - unavailable
+        - no_client
+        - remote
+        - server_led
+        - stale_ref
+        - stale_snapshot
+        - occluded
+        - not_ready
+        - unsupported
+    FeatureKey:
+      type: string
+      description: The config key that turns the op off when `false` (all default to `true`).
+      enum: [gameHooks, tap, allowSend, allowStack, ui]
+    Mode:
+      type: string
+      enum: [bedboo, input, ui]
+
+    Request:
+      type: object
+      description: The envelope of every request.
+      required: [op]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        op: { type: string }
+    Reply:
+      type: object
+      description: The envelope of every successful reply.
+      required: [ok]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        ok: { $ref: '#/components/schemas/Ok' }
+    ErrorReply:
+      type: object
+      required: [ok, error]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        ok: { type: boolean, const: false }
+        error: { type: string, description: 'Lower-case English for humans; match on `code`, not on this.' }
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        key: { $ref: '#/components/schemas/FeatureKey' }
+      additionalProperties: true
+
+    WindowInfo:
+      type: object
+      properties:
+        hwnd: { type: integer, description: 'The game window handle (0 before it exists).' }
+        managed: { type: boolean, description: 'A manager is attached.' }
+        client: { $ref: '#/components/schemas/Size' }
+        cursor: { $ref: '#/components/schemas/Point' }
+        realForeground: { type: boolean, description: 'The game window really is in the foreground.' }
+    Modes:
+      type: object
+      description: The ops of each mode.
+      properties:
+        bedboo: { type: array, items: { type: string } }
+        input: { type: array, items: { type: string } }
+        ui: { type: array, items: { type: string } }
+
+    StackSlot:
+      type: object
+      properties:
+        slot: { type: integer }
+        item: { type: string }
+        count: { type: integer }
+        stackId: { type: integer }
+    Effective:
+      type: [object, 'null']
+      description: As that side's Minecraft reported after it last applied a change (null before the first).
+      properties:
+        scale: { type: number }
+        paused: { type: boolean }
+        ticksPerSecond: { type: number }
+
+    UiNode:
+      type: object
+      properties:
+        role: { type: string, description: 'button, toggle, slider, textbox, label, image, list, scroll, group, screen, ...' }
+        name: { type: string, description: 'The control name or its accessible label.' }
+        text: { type: string, description: 'The text it shows.' }
+        value: { description: 'A toggle state, slider value or text field content.' }
+        state:
+          type: object
+          description: 'Flags such as visible, enabled, focused, checked, selected.'
+          additionalProperties: { type: boolean }
+        bounds: { $ref: '#/components/schemas/Rect' }
+        boundsNorm: { $ref: '#/components/schemas/Rect' }
+        actions: { type: array, items: { type: string, enum: [click, setText, scroll] } }
+        children: { type: array, items: { type: string }, description: 'Refs of the child nodes.' }
+        source:
+          type: object
+          description: 'Where the node comes from: `{kind:"jsonui", ...}` or `{kind:"oreui", url}`.'
+          properties:
+            kind: { type: string, enum: [jsonui, oreui] }
+            url: { type: string }
+          additionalProperties: true
+        hash: { type: string, description: 'Changes when the node changes.' }
+
+  messages:
+    # ---- system ------------------------------------------------------------------------------
+    pingRequest:
+      name: ping
+      title: ping request
+      tags: [{ $ref: '#/components/tags/system' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: ping }
+      examples:
+        - name: ping
+          payload: { id: 1, op: ping }
+    pingReply:
+      name: ping
+      title: ping reply (game)
+      tags: [{ $ref: '#/components/tags/system' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - $ref: '#/components/schemas/WindowInfo'
+          - type: object
+            required: [protocol, pid, defaultMode, modes]
+            properties:
+              protocol: { type: integer, const: 2 }
+              pid: { type: integer }
+              defaultMode: { const: bedboo }
+              modes: { $ref: '#/components/schemas/Modes' }
+      examples:
+        - name: ping
+          payload:
+            id: 1
+            ok: true
+            protocol: 2
+            pid: 23116
+            defaultMode: bedboo
+            modes:
+              bedboo: [world, look, input, slot, action, button, send, stack, timescale, join, tap]
+              input: [key, text, mouse, raw, release, flush, focus, window, screenshot]
+              ui: [ui]
+            hwnd: 4589122
+            managed: true
+            client: { w: 1280, h: 720 }
+            cursor: { x: 640, y: 360 }
+            realForeground: false
+    serverPingReply:
+      name: ping
+      title: ping reply (server build)
+      tags: [{ $ref: '#/components/tags/server' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            required: [protocol, pid, target]
+            properties:
+              protocol: { type: integer, const: 2 }
+              pid: { type: integer }
+              target: { const: server }
+      examples:
+        - name: ping
+          payload: { id: 1, ok: true, protocol: 2, pid: 8812, target: server }
+    stateRequest:
+      name: state
+      title: state request
+      tags: [{ $ref: '#/components/tags/system' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: state }
+      examples:
+        - name: state
+          payload: { id: 2, op: state }
+    stateReply:
+      name: state
+      title: state reply (game)
+      tags: [{ $ref: '#/components/tags/system' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - $ref: '#/components/schemas/WindowInfo'
+          - type: object
+            properties:
+              stats:
+                type: object
+                description: 'Counters: synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal, sendsRefused.'
+                additionalProperties: true
+              clients: { type: integer, description: 'WebSocket clients connected now.' }
+              hooks:
+                type: object
+                description: 'Each game hook a feature installed (false while the feature is off).'
+                additionalProperties: { type: boolean }
+              mode: { type: string, enum: [ClientOnly, ClientServer, Remote], description: 'Config `mode`.' }
+              connection:
+                type: object
+                description: Where the client plays.
+                properties:
+                  connection: { type: string, enum: [none, local, remote] }
+                  inLevel: { type: boolean }
+                  host: { type: string }
+                  port: { type: integer }
+      examples:
+        - name: state
+          payload:
+            id: 2
+            ok: true
+            hwnd: 4589122
+            managed: true
+            client: { w: 1280, h: 720 }
+            clients: 2
+            mode: ClientOnly
+            connection: { connection: local, inLevel: true, host: '', port: 0 }
+            hooks: { netTap: true }
+            stats: { synthetic: 412, swallowedInput: 0 }
+    serverStateReply:
+      name: state
+      title: state reply (server build)
+      tags: [{ $ref: '#/components/tags/server' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              target: { const: server }
+              clients: { type: integer }
+              loopbackOnly: { type: boolean }
+              stats:
+                type: object
+                properties:
+                  loopbackRebinds: { type: integer }
+                  serverQueriesRefused: { type: integer }
+    managerRequest:
+      name: manager
+      title: manager request
+      summary: The BeDD manager GUI attaches to the game.
+      description: |
+        While a connection is attached the game window stays off screen, off the taskbar and out of
+        Alt+Tab. With config `manager` (default `true`) a game that no manager attaches to within
+        30 s of its window existing, or whose attached connection drops, closes itself. With
+        `manager:false` the window stays hidden and the game never closes on its own.
+      tags: [{ $ref: '#/components/tags/system' }]
+      payload:
+        type: object
+        required: [op, action]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: manager }
+          action: { type: string, enum: [attach] }
+      examples:
+        - name: attach
+          payload: { id: 1, op: manager, action: attach }
+    managerReply:
+      name: manager
+      title: manager reply
+      tags: [{ $ref: '#/components/tags/system' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              attached: { type: boolean }
+              label: { type: string, description: 'From the env `BEDD_LABEL` of the game.' }
+            additionalProperties: true
+    closeRequest:
+      name: close
+      title: close request
+      tags: [{ $ref: '#/components/tags/system' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: close }
+      examples:
+        - name: close
+          payload: { id: 9, op: close }
+    closeReply:
+      name: close
+      title: close reply
+      description: Sent before the game starts closing; the connection then closes with it.
+      tags: [{ $ref: '#/components/tags/system' }]
+      payload: { $ref: '#/components/schemas/Reply' }
+
+    # ---- bedboo ------------------------------------------------------------------------------
+    worldRequest:
+      name: world
+      title: world request
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: world }
+      examples:
+        - name: world
+          payload: { id: 3, op: world }
+    worldReply:
+      name: world
+      title: world reply
+      description: Config key `gameHooks`. A snapshot the client thread takes (screen every frame, player every tick).
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              inLevel: { type: boolean }
+              levelEpoch: { type: integer, description: '+1 per world joined.' }
+              topScreen: { type: string, description: 'For example hud_screen, pause_screen.' }
+              mouseGrabbed: { type: boolean }
+              showingMenu: { type: boolean }
+              inputMode: { type: string, enum: [mouse, touch, gamepad, undefined] }
+              player:
+                type: [object, 'null']
+                description: Null outside a world.
+                properties:
+                  runtimeId: { type: integer }
+                  eye: { $ref: '#/components/schemas/Vec3' }
+                  rot:
+                    type: object
+                    properties:
+                      yaw: { type: number }
+                      pitch: { type: number }
+                  slot: { type: integer }
+              tick: { type: integer, description: 'Client ticks seen.' }
+      examples:
+        - name: in a world
+          payload:
+            id: 3
+            ok: true
+            inLevel: true
+            levelEpoch: 1
+            topScreen: hud_screen
+            mouseGrabbed: true
+            showingMenu: false
+            inputMode: mouse
+            player: { runtimeId: 1, eye: { x: 0.5, y: 65.62, z: 0.5 }, rot: { yaw: 0, pitch: 0 }, slot: 0 }
+            tick: 5120
+    lookRequest:
+      name: look
+      title: look request
+      description: |
+        Config key `gameHooks`. Without `yaw`/`pitch`: a probe. Degrees as in player_auth_input: yaw 0 = +Z,
+        90 = -X; pitch -90 = up, clamped to +-89.9. Replies once both are within 0.5 degrees.
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: look }
+          yaw: { type: number }
+          pitch: { type: number, minimum: -90, maximum: 90 }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 1000
+            maximum: 60000
+      examples:
+        - name: look down a little
+          payload: { id: 4, op: look, yaw: 90, pitch: 30 }
+    lookReply:
+      name: look
+      title: look reply
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              inLevel: { type: boolean, description: 'Probe only.' }
+              yaw: { type: number }
+              pitch: { type: number }
+              tick: { type: integer }
+              turns: { type: integer, description: 'Ticks it took (action form).' }
+    inputRequest:
+      name: input
+      title: input request
+      description: |
+        Config key `gameHooks`. Without fields: a probe. A dead-man switch: the override ends `ttlMs`
+        after the request (or after `ttlTicks` client ticks), on `ttlMs:0`, on `release` and when the
+        owning connection closes.
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: input }
+          move:
+            type: object
+            description: 'player_auth_input move vector: x = left - right, z = forward - back, each in [-1, 1].'
+            properties:
+              x: { type: number, minimum: -1, maximum: 1 }
+              z: { type: number, minimum: -1, maximum: 1 }
+          jump: { type: boolean }
+          sneak: { type: boolean }
+          sprint: { type: boolean }
+          ttlMs: { type: integer, minimum: 0, maximum: 60000, default: 300 }
+          ttlTicks: { type: integer, minimum: 1, maximum: 1200, description: 'Not with ttlMs (bad_args).' }
+      examples:
+        - name: walk forward for a second
+          payload: { id: 5, op: input, move: { x: 0, z: 1 }, sprint: true, ttlMs: 1000 }
+    inputReply:
+      name: input
+      title: input reply
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              active: { type: boolean }
+              via: { type: string, enum: [hooks, keys] }
+              hooks:
+                type: object
+                properties:
+                  raw: { type: boolean }
+                  state: { type: boolean }
+              tick: { type: integer }
+              applied: { type: integer }
+              ticksLeft: { type: integer }
+    slotRequest:
+      name: slot
+      title: slot request
+      description: Config key `gameHooks`. Without `slot`, a probe. Replied once the player holds the slot.
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: slot }
+          slot: { type: integer, minimum: 0, maximum: 8 }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 1000
+      examples:
+        - name: hold slot 3
+          payload: { id: 6, op: slot, slot: 2 }
+    slotReply:
+      name: slot
+      title: slot reply
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              slot: { type: [integer, 'null'] }
+              via: { type: string, enum: [keys, none] }
+              tick: { type: integer }
+    actionRequest:
+      name: action
+      title: action request
+      description: Config key `gameHooks`. Without `name`, a probe listing the names.
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: action }
+          name: { type: string, enum: [drop, dropAll, inventory, perspective, pause] }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 1000
+      examples:
+        - name: open the inventory
+          payload: { id: 7, op: action, name: inventory }
+    actionReply:
+      name: action
+      title: action reply
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              names: { type: array, items: { type: string } }
+              tick: { type: integer }
+    buttonRequest:
+      name: button
+      title: button request
+      description: Config key `gameHooks`. Without `button`, a probe. Never blocks the connection.
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: button }
+          button: { type: string, enum: [attack, use, pick] }
+          action: { type: string, enum: [down, up, click], default: click }
+          holdTicks: { type: integer, minimum: 1, description: 'Click default 2.' }
+          releaseOn: { type: string, enum: [blockChange] }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 1000
+      examples:
+        - name: mine the targeted block
+          payload: { id: 8, op: button, button: attack, action: down, releaseOn: blockChange }
+    buttonReply:
+      name: button
+      title: button reply
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              held: { type: array, items: { type: string } }
+              block: { $ref: '#/components/schemas/Vec3' }
+              tick: { type: integer }
+    sendRequest:
+      name: send
+      title: send request
+      description: |
+        Config key `allowSend`. Without `buf`, a probe. `buf` is the base64 of one serverbound packet
+        (varint header + body, as bedrock-protocol serializes it), sent through the local player. Ids
+        outside `sendAllow` are `refused`; 1, 30, 144 and 147 are always refused.
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: send }
+          buf: { type: string, contentEncoding: base64 }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 2000
+            maximum: 10000
+    sendReply:
+      name: send
+      title: send reply
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              allow: { type: array, items: { type: integer }, description: 'Probe: the ids in sendAllow.' }
+              packetId: { type: integer }
+              name: { type: string }
+      examples:
+        - name: sent
+          payload: { id: 10, ok: true, packetId: 77, name: CommandRequestPacket }
+    stackRequest:
+      name: stack
+      title: stack request
+      description: |
+        Config key `allowStack`. Without fields, a probe. `buf` is the base64 of one whole
+        item_stack_request packet (id 147); `view:true` returns what the client shows.
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: stack }
+          buf: { type: string, contentEncoding: base64 }
+          view: { type: boolean }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 2000
+    stackReply:
+      name: stack
+      title: stack reply
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              enabled: { type: boolean }
+              via: { const: raw }
+              stats:
+                type: object
+                properties:
+                  sent: { type: integer }
+                  answered: { type: integer }
+                  rejected: { type: integer }
+                  failed: { type: integer }
+                  resyncs: { type: integer }
+              requestIds: { type: array, items: { type: integer } }
+              map:
+                type: object
+                description: "Caller's request ids (as strings) to the client ids sent."
+                additionalProperties: { type: integer }
+              inventory: { type: array, items: { $ref: '#/components/schemas/StackSlot' } }
+              ui: { type: array, items: { $ref: '#/components/schemas/StackSlot' } }
+              open:
+                type: object
+                properties:
+                  containerId: { type: integer }
+                  type: { type: string }
+                  items: { type: array, items: { $ref: '#/components/schemas/StackSlot' } }
+    timescaleRequest:
+      name: timescale
+      title: timescale request
+      description: |
+        Not behind a config key. Without `scale`/`paused`, a probe. On a game it changes a world the
+        game hosts (client and local server together); on the server build, the server.
+      tags: [{ $ref: '#/components/tags/bedboo' }, { $ref: '#/components/tags/server' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: timescale }
+          scale: { type: number, minimum: 0.05, maximum: 20, description: '1 = normal (20 ticks a second); clamped.' }
+          paused: { type: boolean }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            description: 'Default 2000 on a game, 5000 on the server build.'
+      examples:
+        - name: double speed
+          payload: { id: 11, op: timescale, scale: 2 }
+    timescaleReply:
+      name: timescale
+      title: timescale reply (game)
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              scale: { type: number }
+              paused: { type: boolean }
+              source: { type: string, enum: [default, config, local, server] }
+              tps:
+                type: object
+                properties:
+                  client: { type: number }
+                  server: { type: [number, 'null'] }
+              ticksPerSecond: { type: number }
+              effective:
+                type: object
+                properties:
+                  client: { $ref: '#/components/schemas/Effective' }
+                  server: { $ref: '#/components/schemas/Effective' }
+              local: { type: boolean }
+              inLevel: { type: boolean }
+    serverTimescaleReply:
+      name: timescale
+      title: timescale reply (server build)
+      tags: [{ $ref: '#/components/tags/server' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              scale: { type: number }
+              paused: { type: boolean }
+              source: { type: string, enum: [default, config, local] }
+              tps:
+                type: object
+                properties:
+                  client: { type: 'null' }
+                  server: { type: number }
+              ticksPerSecond: { type: number, description: '20 x scale, 0 while paused.' }
+    joinRequest:
+      name: join
+      title: join request
+      description: |
+        Without `host`: where the client plays. With `host`, the client joins that server through the
+        game's own external-server join, from the title screen or from a world (which it leaves first),
+        answering the "not rated" and "Trust this server?" prompts.
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: join }
+          host: { type: string }
+          port: { type: integer, default: 19132 }
+          wait: { type: boolean, description: 'Reply once in the level (joined:true), not once connecting.' }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 60000
+      examples:
+        - name: join a local BDS
+          payload: { id: 12, op: join, host: 127.0.0.1, port: 19132, wait: true }
+    joinReply:
+      name: join
+      title: join reply
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              started: { type: boolean }
+              joined: { type: boolean }
+              left: { type: boolean, description: 'A world was left first.' }
+              mode: { type: string }
+              connection: { type: string, enum: [none, local, remote] }
+              host: { type: string }
+              port: { type: integer }
+              inLevel: { type: boolean }
+              joining: { description: 'The attempt in progress.' }
+              last: { description: 'How the last attempt ended.' }
+    tapRequest:
+      name: tap
+      title: tap request
+      description: |
+        Config key `tap`. Without `action`: the status. `action:"subscribe"` answers `{ok:true}` and from
+        then on this connection receives binary messages, one tap frame each (HELLO, the join journal's
+        replay, then the live stream). One subscriber at a time (another gets `busy`); a subscriber more
+        than 32 MiB behind gets DROPPED and the connection is closed. Send nothing else on a subscribed
+        connection.
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: tap }
+          action: { type: string, enum: [subscribe] }
+      examples:
+        - name: subscribe
+          payload: { id: 1, op: tap, action: subscribe }
+    tapReply:
+      name: tap
+      title: tap reply
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              enabled: { type: boolean }
+              attached: { type: boolean, description: 'A subscriber is connected.' }
+              link:
+                type: object
+                properties:
+                  state: { type: string, enum: [up, down] }
+                  type: { type: string, enum: [remote, local] }
+                  address: { type: string }
+              journal:
+                type: object
+                properties:
+                  frames: { type: integer }
+                  bytes: { type: integer }
+                  complete: { type: boolean }
+              lastReplay: { type: object, additionalProperties: true }
+              replay: { type: boolean }
+              counters:
+                type: object
+                properties:
+                  in: { type: integer }
+                  out: { type: integer }
+                  dropped: { type: integer }
+                  sent: { type: integer }
+                  readers: { type: integer }
+              hooks: { type: object, additionalProperties: true }
+    tapFrame:
+      name: tapFrame
+      title: tap frame
+      summary: One binary WebSocket message per frame.
+      description: |
+        Little-endian: `u32 len (bytes after this field) | u8 kind | u8 flags | u16 0 | u64 seq |
+        u64 tUs (steady clock microseconds) | payload`. kind 1 CLIENTBOUND (a game packet: varint header
+        + body), 2 SERVERBOUND_ECHO, 4 MARKER (UTF-8 JSON: HELLO, LINK_UP, LINK_DOWN, REPLAY_BEGIN,
+        REPLAY_END, DROPPED); readers ignore other kinds. Flags: 1 replay, 2 reserialized, 4 local link,
+        8 suppressed. See the tap reference.
+      contentType: application/octet-stream
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        type: string
+        format: binary
+      externalDocs:
+        url: https://docs.levimc.org/BeDD/reference/tap
+
+    # ---- ui ----------------------------------------------------------------------------------
+    uiRequest:
+      name: ui
+      title: ui request
+      description: |
+        Config key `ui`. Without `action`: read the tree. JSON UI screens are walked control by control;
+        an OreUI screen is one opaque node `{role:"group", source:{kind:"oreui", url}}`. With `action`
+        and `ref` (from the snapshot named by `snapshot`): act on that node through the same virtual
+        mouse and keyboard as the input ops.
+      tags: [{ $ref: '#/components/tags/ui' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: ui }
+          depth: { type: integer, minimum: 1, description: 'Levels below each root to include.' }
+          scope: { type: string, description: 'A ref to read below, instead of every screen.' }
+          includeInvisible: { type: boolean, default: false }
+          maxNodes: { type: integer, minimum: 1 }
+          snapshot: { type: string, description: 'The snapshot the ref comes from (action form).' }
+          action: { type: string, enum: [click, setText, scroll] }
+          ref: { type: string }
+          text: { type: string, description: 'setText: the new content.' }
+          notches: { type: integer, description: 'scroll: wheel notches (positive = up).' }
+      examples:
+        - name: read
+          payload: { id: 20, op: ui, depth: 6 }
+        - name: click
+          payload: { id: 21, op: ui, snapshot: s17, action: click, ref: n42 }
+        - name: type into a text box
+          payload: { id: 22, op: ui, snapshot: s17, action: setText, ref: n57, text: My World }
+    uiReply:
+      name: ui
+      title: ui reply
+      tags: [{ $ref: '#/components/tags/ui' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              snapshot: { type: string, description: 'Names this read; pass it with an action.' }
+              screens: { type: array, items: { type: string }, description: 'The scene stack, bottom first.' }
+              active: { type: string, description: 'The screen on top.' }
+              roots: { type: array, items: { type: string }, description: 'Refs of the root nodes.' }
+              nodes:
+                type: object
+                description: Every node by ref.
+                additionalProperties: { $ref: '#/components/schemas/UiNode' }
+              truncated: { type: boolean, description: 'maxNodes or depth cut the tree.' }
+      examples:
+        - name: start screen
+          payload:
+            id: 20
+            ok: true
+            snapshot: s17
+            screens: [start_screen]
+            active: start_screen
+            roots: [n1]
+            truncated: false
+            nodes:
+              n1: { role: screen, name: start_screen, children: [n42], actions: [], hash: 9f1c }
+              n42:
+                role: button
+                name: play_button
+                text: Play
+                state: { visible: true, enabled: true }
+                bounds: { x: 540, y: 330, w: 200, h: 40 }
+                boundsNorm: { x: 0.42, y: 0.46, w: 0.16, h: 0.06 }
+                actions: [click]
+                children: []
+                source: { kind: jsonui }
+                hash: 03ab
+
+    # ---- input -------------------------------------------------------------------------------
+    keyRequest:
+      name: key
+      title: key request
+      description: 'Names: letters, digits, ESC, ENTER, BACK, TAB, SPACE, SHIFT, CTRL, ALT, LEFT/UP/RIGHT/DOWN, HOME, END, PGUP, PGDN, INSERT, DELETE, F1..F24, SLASH, GRAVE, MINUS, EQUALS.'
+      tags: [{ $ref: '#/components/tags/input' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: key }
+          key: { type: string }
+          vk: { type: integer, minimum: 1, maximum: 254 }
+          action: { type: string, enum: [press, down, up], default: press }
+          holdMs: { type: integer, minimum: 0, default: 60 }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 5000
+      examples:
+        - name: escape
+          payload: { id: 30, op: key, key: ESC }
+    textRequest:
+      name: text
+      title: text request
+      tags: [{ $ref: '#/components/tags/input' }]
+      payload:
+        type: object
+        required: [op, text]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: text }
+          text: { type: string }
+          delayMs: { type: integer, minimum: 0, default: 0 }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 5000
+      examples:
+        - name: chat
+          payload: { id: 31, op: text, text: hello }
+    mouseRequest:
+      name: mouse
+      title: mouse request
+      description: |
+        Moves the virtual cursor (if a point or a node is given), then presses buttons or scrolls on the
+        virtual GameInput mouse. A point is `x`,`y` (client pixels), `rx`,`ry` (fractions of the client
+        area) or `ref` + `snapshot` (the centre of a ui node; `stale_ref`, `stale_snapshot`, `occluded`).
+      tags: [{ $ref: '#/components/tags/input' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: mouse }
+          action: { type: string, enum: [move, down, up, click, wheel], default: move }
+          x: { type: integer }
+          y: { type: integer }
+          rx: { type: number, minimum: 0, maximum: 1 }
+          ry: { type: number, minimum: 0, maximum: 1 }
+          ref: { type: string }
+          snapshot: { type: string }
+          button: { $ref: '#/components/schemas/Button' }
+          notches: { type: integer, default: 1 }
+          holdMs: { type: integer, minimum: 50, default: 80 }
+          settleMs: { type: integer, minimum: 0, default: 50 }
+          afterMs: { type: integer, minimum: 0, default: 50 }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 5000
+      examples:
+        - name: click at a fraction
+          payload: { id: 32, op: mouse, action: click, rx: 0.498, ry: 0.474 }
+        - name: click a ui node
+          payload: { id: 33, op: mouse, action: click, ref: n42, snapshot: s17 }
+    rawRequest:
+      name: raw
+      title: raw request
+      tags: [{ $ref: '#/components/tags/input' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: raw }
+          action: { type: string, enum: [move, down, up, click, wheel], default: move }
+          dx: { type: integer, description: Mouse counts. }
+          dy: { type: integer }
+          steps: { type: integer, minimum: 1, default: 1 }
+          button: { $ref: '#/components/schemas/Button' }
+          notches: { type: integer, default: 1 }
+          holdMs: { type: integer, minimum: 50, default: 80 }
+      examples:
+        - name: turn right
+          payload: { id: 34, op: raw, dx: 300, steps: 5 }
+    releaseRequest:
+      name: release
+      title: release request
+      description: Releases every held key and button, whoever pressed it, and ends the `input` override.
+      tags: [{ $ref: '#/components/tags/input' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: release }
+    flushRequest:
+      name: flush
+      title: flush request
+      tags: [{ $ref: '#/components/tags/input' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: flush }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 5000
+    focusRequest:
+      name: focus
+      title: focus request
+      tags: [{ $ref: '#/components/tags/input' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: focus }
+    windowRequest:
+      name: window
+      title: window request
+      tags: [{ $ref: '#/components/tags/input' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: window }
+          clientWidth: { type: integer, minimum: 0 }
+          clientHeight: { type: integer, minimum: 0 }
+      examples:
+        - name: 1280x720
+          payload: { id: 35, op: window, clientWidth: 1280, clientHeight: 720 }
+    windowReply:
+      name: window
+      title: window reply
+      tags: [{ $ref: '#/components/tags/input' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - $ref: '#/components/schemas/WindowInfo'
+          - type: object
+            properties:
+              result: { description: 'What the layout change did.' }
+    screenshotRequest:
+      name: screenshot
+      title: screenshot request
+      description: |
+        PrintWindow (PW_RENDERFULLCONTENT) of the game window, encoded with WIC; works while the window
+        is covered or off screen. Costly for an agent: prefer `world` or `ui`.
+      tags: [{ $ref: '#/components/tags/input' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: screenshot }
+          format: { type: string, enum: [png, jpeg], default: png }
+          quality: { type: integer, minimum: 1, maximum: 100, description: 'JPEG quality.' }
+          maxWidth: { type: integer, minimum: 1, default: 960, description: 'Scaled down to at most this width.' }
+          region: { $ref: '#/components/schemas/Rect' }
+      examples:
+        - name: small jpeg
+          payload: { id: 36, op: screenshot, format: jpeg, quality: 70, maxWidth: 640 }
+    screenshotReply:
+      name: screenshot
+      title: screenshot reply
+      tags: [{ $ref: '#/components/tags/input' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            required: [width, height, format, data]
+            properties:
+              width: { type: integer }
+              height: { type: integer }
+              format: { type: string, enum: [png, jpeg] }
+              data: { type: string, contentEncoding: base64 }
+    inputDoneReply:
+      name: inputDone
+      title: input op reply
+      description: The reply of key, text, mouse, raw, release, flush and focus, after the game thread dispatched the input.
+      tags: [{ $ref: '#/components/tags/input' }]
+      payload: { $ref: '#/components/schemas/Reply' }
+
+    # ---- server build ------------------------------------------------------------------------
+    serverRequest:
+      name: server
+      title: server request
+      tags: [{ $ref: '#/components/tags/server' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: server }
+    serverReply:
+      name: server
+      title: server reply
+      tags: [{ $ref: '#/components/tags/server' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              tick: { type: integer }
+              tps: { type: number }
+              paused: { type: boolean }
+              port: { type: integer }
+              players:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name: { type: string }
+                    xuid: { type: string }
+    commandRequest:
+      name: command
+      title: command request
+      tags: [{ $ref: '#/components/tags/server' }]
+      payload:
+        type: object
+        required: [op, command]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: command }
+          command: { type: string, description: 'A leading / is optional.' }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 10000
+      examples:
+        - name: time
+          payload: { id: 40, op: command, command: time set day }
+    commandReply:
+      name: command
+      title: command reply
+      tags: [{ $ref: '#/components/tags/server' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              success: { type: boolean }
+              successCount: { type: integer }
+              output: { type: array, items: { type: string } }
+
+    errorReply:
+      name: error
+      title: error reply
+      tags:
+        - { $ref: '#/components/tags/system' }
+      payload: { $ref: '#/components/schemas/ErrorReply' }
+      examples:
+        - name: disabled
+          payload: { id: 10, ok: false, code: disabled, key: allowSend, error: 'send is off (config.json "allowSend")' }
+        - name: not in a world
+          payload: { id: 6, ok: false, code: not_in_level, error: the client is not in a world }
+        - name: stale snapshot
+          payload: { id: 21, ok: false, code: stale_snapshot, error: the screens changed since snapshot s17 }
+        - name: unknown op
+          payload: { id: 99, ok: false, error: "unknown op 'fly'" }
