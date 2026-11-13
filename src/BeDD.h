@@ -83,6 +83,9 @@ struct Options {
     /// Game speed, 0.05..20; 1 = normal. A client applies it on entering a world it hosts
     /// (TimeScale.cpp); a server once it has started, and broadcasts it to its players (LevelEvent 3007).
     float timeScale = 1.0f;
+    /// The `ui` op and `mouse` with a ref (UiTree.cpp); uiMaxNodes caps the nodes of a snapshot.
+    bool ui         = true;
+    int  uiMaxNodes = 1000;
 };
 
 /// Read once in load() from <mod>/config/config.json.

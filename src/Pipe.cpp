@@ -5,6 +5,7 @@
 #include "BeDD.h"
 #include "Discovery.h"
 #include "Screenshot.h"
+#include "UiTree.h"
 #include "WsServer.h"
 
 #include <algorithm>
@@ -347,6 +348,7 @@ json handle(json const& j) {
         // mouse: absolute pointer (menus, inventories). raw: relative movement (the in-world
         // camera while the mouse is grabbed). Buttons and wheel work the same in both.
         bool        raw    = op == "raw";
+        if (!raw && j.contains("ref")) return uiMouseOp(j); // aimed at a control of a `ui` snapshot (UiActions.cpp)
         std::string action = j.value("action", "move");
         if (!raw && (j.contains("x") || j.contains("rx") || action == "move")) {
             postMove(targetPoint(j));
@@ -417,6 +419,8 @@ json handle(json const& j) {
         r = closeOp(j);
     } else if (op == "screenshot") {
         r = screenshotOp(j);
+    } else if (op == "ui") {
+        r = uiOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
@@ -495,9 +499,10 @@ std::vector<std::function<void(uint64_t)>> gGoneCallbacks; // guarded by gGoneMu
 std::mutex gInputMutex;
 
 // Ops that run without gInputMutex: they post no window input. `tap` and `world` only read;
-// `look`, `input`, `send`, `stack`, `timescale` and `join` hand their work to the client thread (and
-// may wait for it, up to their timeoutMs), so serializing them would only stall the other clients.
-// `screenshot` only reads the window, and may wait for the game thread to answer PrintWindow.
+// `look`, `input`, `send`, `stack`, `timescale`, `join` and a `ui` snapshot (no "action") hand their
+// work to the client thread (and may wait for it, up to their timeoutMs), so serializing them would
+// only stall the other clients. `screenshot` only reads the window, and may wait for the game thread
+// to answer PrintWindow.
 bool concurrentOp(std::string const& line) {
 #ifdef LL_PLAT_S
     (void)line;
@@ -508,7 +513,7 @@ bool concurrentOp(std::string const& line) {
     std::string op = req.value("op", "");
     return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
         || op == "stack" || op == "timescale" || op == "join" || op == "manager" || op == "close"
-        || op == "screenshot";
+        || op == "screenshot" || (op == "ui" && !req.contains("action"));
 }
 
 std::string handleClientLine(std::string const& line) {
