@@ -1,13 +1,15 @@
-// Control pipe: \\.\pipe\BeDD, one JSON object per line in each direction.
-// See README.md for the protocol.
+// The control protocol: one JSON request per WebSocket text message, one JSON reply per request,
+// in order on each connection (WsServer.cpp is the transport). See docs/reference/protocol.md.
+// handle() dispatches the ops; the rest of this file ties connections to their clients (held keys,
+// the disconnect cleanup) and starts the WebSocket server and its discovery file.
 #include "BeDD.h"
+#include "Discovery.h"
+#include "WsServer.h"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <condition_variable>
 #include <functional>
-#include <list>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -23,19 +25,17 @@ namespace {
 using json = nlohmann::json;
 using namespace std::chrono_literals;
 
-constexpr int kProtocol = 1;
+constexpr int kProtocol = 2;
 
-std::wstring gPipePath; // \\.\pipe\<options().pipeName>
-
-std::jthread      gServer;
-std::atomic<bool> gStopping{false};
-
-// The control-pipe client the current thread serves (0 = none: the manager link, the game thread).
-thread_local uint64_t tClient = 0;
+// The client (WebSocket connection) the current thread serves (0 = none: the game thread).
+thread_local uint64_t                        tClient = 0;
+thread_local std::shared_ptr<ws::Connection> tConnection;
+// Run on the connection's thread once the reply of the current request is sent (afterReply()).
+thread_local std::vector<std::function<void()>> tAfterReply;
 
 #ifndef LL_PLAT_S // the game client's ops; a server's are below (#else)
 
-// Which client last pressed each virtual key / mouse button (0 = nobody, or not a pipe client).
+// Which client last pressed each virtual key / mouse button (0 = nobody, or not a client).
 std::array<std::atomic<uint64_t>, 256> gKeyOwner{};
 
 // The generic modifiers are their left keys in the virtual state (vstate::setKey): one owner slot each.
@@ -223,6 +223,20 @@ void flushOrThrow(json const& j) {
     if (!flush(timeout)) throw OpError("the game did not process the input within the timeout (game thread busy?)");
 }
 
+// The keys and mouse buttons down in the virtual state, and the client that pressed each (`state`).
+json heldInput() {
+    json held = json::array();
+    for (int vk = 1; vk < 256; ++vk) {
+        if (vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU) continue; // their left keys are listed
+        if (!vstate::keyDown(vk)) continue;
+        held.push_back({
+            {"vk",     vk                                         },
+            {"client", gKeyOwner[static_cast<size_t>(vk)].load()},
+        });
+    }
+    return held;
+}
+
 json windowInfo() {
     HWND h = gameWindow();
     json j{
@@ -245,8 +259,15 @@ json handle(json const& j) {
         {"ok", true}
     };
     if (op == "ping") {
-        r["protocol"] = kProtocol;
-        r["pid"]      = GetCurrentProcessId();
+        r["protocol"]    = kProtocol;
+        r["pid"]         = GetCurrentProcessId();
+        r["kind"]        = "client";
+        r["defaultMode"] = "bedboo";
+        r["modes"]       = {
+            {"bedboo", {"world", "look", "input", "slot", "action", "button", "send", "stack", "timescale", "join", "tap"}},
+            {"input",  {"key", "text", "mouse", "raw", "release", "flush", "focus", "window", "screenshot"}              },
+            {"ui",     {"ui"}                                                                                      },
+        };
         r.update(windowInfo());
     } else if (op == "state") {
         auto& s = stats();
@@ -271,7 +292,8 @@ json handle(json const& j) {
         };
         json tap = json::parse(tapHooks());
         for (auto& [name, on] : tap.items()) r["hooks"][name] = on;
-        r["clients"] = pipeClients();
+        r["clients"] = connectedClients();
+        r["held"]    = heldInput();
         r["mode"]       = options().mode;
         r["connection"] = connectionInfo();
         r["stats"]["sendsRefused"] = sendsRefused();
@@ -371,8 +393,7 @@ json handle(json const& j) {
     } else if (op == "look") {
         r = lookOp(j);
     } else if (op == "tap") {
-        if (!options().tap) return {{"ok", false}, {"code", "disabled"}, {"error", "the tap is off (config.json \"tap\")"}};
-        r.update(json::parse(tapInfo()));
+        return tapOp(j);
     } else if (op == "slot") {
         r = gameActionOp(op, j);
     } else if (op == "action") {
@@ -389,6 +410,10 @@ json handle(json const& j) {
         r = timeScaleOp(j);
     } else if (op == "join") {
         r = joinOp(j);
+    } else if (op == "manager") {
+        r = managerOp(j);
+    } else if (op == "close") {
+        r = closeOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
@@ -406,10 +431,11 @@ json handle(json const& j) {
     if (op == "ping") {
         r["protocol"] = kProtocol;
         r["pid"]      = GetCurrentProcessId();
+        r["kind"]     = "server";
         r["target"]   = "server";
     } else if (op == "state") {
         r["target"]       = "server";
-        r["clients"]      = pipeClients();
+        r["clients"]      = connectedClients();
         r["loopbackOnly"] = options().loopbackOnly;
         r["stats"]        = {
             {"loopbackRebinds",      loopbackRebinds()     },
@@ -456,29 +482,14 @@ std::string handleControlLine(std::string const& line) {
 namespace {
 
 // ---------------------------------------------------------------------------------------------
-// Clients: up to options().pipeInstances at once, each served by its own thread.
+// Clients: one per WebSocket connection (up to options().wsMaxClients), each served by its own
+// thread (WsServer.cpp), which handles its requests in order.
 // ---------------------------------------------------------------------------------------------
-struct Client {
-    uint64_t          id = 0;
-    HANDLE            pipe = INVALID_HANDLE_VALUE;
-    std::jthread      thread;
-    std::atomic<bool> done{false}; // its thread is about to return (joinable without blocking)
-};
-
-std::mutex                         gClientsMutex;
-std::condition_variable            gClientsCv;
-std::list<std::unique_ptr<Client>> gClients; // guarded by gClientsMutex
-std::atomic<int>                   gConnected{0};
-std::atomic<bool>                  gServeDone{false}; // the serve thread left its loop
-uint64_t                           gNextClient = 0; // serve thread only
-
-std::mutex                                     gGoneMutex;
-std::vector<std::function<void(uint64_t)>>     gGoneCallbacks; // guarded by gGoneMutex
+std::mutex                                 gGoneMutex;
+std::vector<std::function<void(uint64_t)>> gGoneCallbacks; // guarded by gGoneMutex
 
 // Serializes the ops that post input, so two clients cannot interleave a press or a typed text.
 std::mutex gInputMutex;
-
-int maxInstances() { return std::clamp(options().pipeInstances, 1, PIPE_UNLIMITED_INSTANCES - 1); }
 
 // Ops that run without gInputMutex: they post no window input. `tap` and `world` only read;
 // `look`, `input`, `send`, `stack`, `timescale` and `join` hand their work to the client thread (and
@@ -492,7 +503,7 @@ bool concurrentOp(std::string const& line) {
     if (!req.is_object()) return true;
     std::string op = req.value("op", "");
     return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
-        || op == "stack" || op == "timescale" || op == "join";
+        || op == "stack" || op == "timescale" || op == "join" || op == "manager" || op == "close";
 }
 
 std::string handleClientLine(std::string const& line) {
@@ -519,9 +530,9 @@ void releaseClientInput(uint64_t id) {
                 postKey(vk, false);
                 posted = true;
             }
-            log().info("control pipe client {} left holding vk {:#x}: released", id, vk);
+            log().info("client {} left holding vk {:#x}: released", id, vk);
         } catch (std::exception const& e) {
-            log().warn("control pipe client {}: could not release vk {:#x}: {}", id, vk, e.what());
+            log().warn("client {}: could not release vk {:#x}: {}", id, vk, e.what());
         }
     }
     if (posted) flush(1s);
@@ -530,7 +541,7 @@ void releaseClientInput(uint64_t id) {
 #endif // LL_PLAT_S
 
 // The per-client disconnect path: everything a client left behind is released here. Units with
-// per-client state register with onPipeClientGone() (or add their one-line release call below).
+// per-client state register with onClientGone() (or add their one-line release call below).
 void clientGone(uint64_t id) {
     std::lock_guard input(gInputMutex);
 #ifndef LL_PLAT_S
@@ -547,154 +558,87 @@ void clientGone(uint64_t id) {
         try {
             fn(id);
         } catch (std::exception const& e) {
-            log().warn("control pipe client {}: disconnect callback failed: {}", id, e.what());
+            log().warn("client {}: disconnect callback failed: {}", id, e.what());
         }
     }
 }
 
-void serveClient(HANDLE pipe) {
-    std::string buf;
-    char        chunk[4096];
-    while (!gStopping) {
-        DWORD n = 0;
-        if (!ReadFile(pipe, chunk, sizeof(chunk), &n, nullptr) || n == 0) return;
-        buf.append(chunk, n);
-        size_t nl;
-        while ((nl = buf.find('\n')) != std::string::npos) {
-            std::string line = buf.substr(0, nl);
-            buf.erase(0, nl + 1);
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (line.empty()) continue;
-            std::string out = handleClientLine(line);
-            DWORD       written = 0;
-            if (!WriteFile(pipe, out.data(), static_cast<DWORD>(out.size()), &written, nullptr)) return;
+// The WebSocket handlers, all on the connection's own thread.
+void onOpen(std::shared_ptr<ws::Connection> const& conn) {
+    tClient     = conn->id();
+    tConnection = conn;
+}
+
+void onMessage(std::shared_ptr<ws::Connection> const& conn, uint8_t opcode, std::string&& data) {
+    std::string out;
+    if (opcode != ws::kText) {
+        out = json{
+            {"ok",    false                                       },
+            {"code",  "bad_request"                               },
+            {"error", "requests are JSON objects in text messages"},
+        }.dump();
+    } else {
+        out = handleClientLine(data);
+        if (!out.empty() && out.back() == '\n') out.pop_back();
+    }
+    conn->sendText(out);
+    auto after = std::move(tAfterReply);
+    tAfterReply.clear();
+    for (auto& fn : after) {
+        try {
+            fn();
+        } catch (std::exception const& e) {
+            log().warn("client {}: {}", conn->id(), e.what());
         }
     }
 }
 
-void closePipe(HANDLE pipe) {
-    FlushFileBuffers(pipe);
-    DisconnectNamedPipe(pipe);
-    CloseHandle(pipe);
-}
-
-void runClient(Client& c) {
-    tClient = c.id;
-    serveClient(c.pipe);
-    closePipe(c.pipe);
-    --gConnected;
+void onClosed(std::shared_ptr<ws::Connection> const& conn, bool stopping) {
     // At shutdown the game thread is the one stopping us: posting (and flushing) input would only time out.
-    if (!gStopping) clientGone(c.id);
-    {
-        std::lock_guard lock(gClientsMutex);
-        c.done = true;
-    }
-    gClientsCv.notify_all();
-}
-
-// Joins the threads of clients that have left (gClientsMutex held).
-void reapClients() {
-    for (auto it = gClients.begin(); it != gClients.end();) {
-        if ((*it)->done) {
-            (*it)->thread.join();
-            it = gClients.erase(it);
-        } else {
-            ++it;
-        }
-    }
-}
-
-void serve(std::stop_token) {
-    int const instances = maxInstances();
-    while (!gStopping) {
-        {
-            // Every instance is connected: the next one can only be created once a client leaves.
-            std::unique_lock lock(gClientsMutex);
-            gClientsCv.wait(lock, [&] { return gStopping || gConnected < instances; });
-            reapClients();
-        }
-        if (gStopping) break;
-        HANDLE pipe = CreateNamedPipeW(
-            gPipePath.c_str(),
-            PIPE_ACCESS_DUPLEX,
-            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-            static_cast<DWORD>(instances),
-            1 << 16,
-            1 << 16,
-            0,
-            nullptr
-        );
-        if (pipe == INVALID_HANDLE_VALUE) {
-            log().error("CreateNamedPipe failed ({}); retrying", GetLastError());
-            std::this_thread::sleep_for(1s);
-            continue;
-        }
-        BOOL connected = ConnectNamedPipe(pipe, nullptr) || GetLastError() == ERROR_PIPE_CONNECTED;
-        if (!connected || gStopping) {
-            closePipe(pipe);
-            continue;
-        }
-        // Hand the connection to its own thread and create the next instance right away.
-        std::lock_guard lock(gClientsMutex);
-        auto&           c = gClients.emplace_back(std::make_unique<Client>());
-        c->id             = ++gNextClient;
-        c->pipe           = pipe;
-        ++gConnected;
-        c->thread = std::jthread([client = c.get()] { runClient(*client); });
-    }
-    gServeDone = true;
+    if (!stopping) clientGone(conn->id());
+    tConnection.reset();
+    tClient = 0;
 }
 
 } // namespace
 
-uint64_t currentPipeClient() { return tClient; }
+uint64_t currentClient() { return tClient; }
 
-int pipeClients() { return gConnected; }
+std::shared_ptr<ws::Connection> currentConnection() { return tConnection; }
 
-void onPipeClientGone(std::function<void(uint64_t)> fn) {
+void afterReply(std::function<void()> fn) { tAfterReply.push_back(std::move(fn)); }
+
+int connectedClients() { return ws::connections(); }
+
+void onClientGone(std::function<void(uint64_t)> fn) {
     std::lock_guard lock(gGoneMutex);
     gGoneCallbacks.push_back(std::move(fn));
 }
 
-void startPipeServer() {
-    std::string const& name = options().pipeName;
-    gPipePath               = L"\\\\.\\pipe\\" + std::wstring(name.begin(), name.end());
-    gStopping               = false;
-    gServeDone              = false;
-    gServer                 = std::jthread(serve);
-    log().info("control pipe: \\\\.\\pipe\\{} ({} instances)", name, maxInstances());
+void startControlServer() {
+    std::string token;
+    try {
+        token = ws::newToken();
+    } catch (std::exception const& e) {
+        log().error("websocket: no token ({}); not listening", e.what());
+        return;
+    }
+    int const  maxClients = std::max(1, options().wsMaxClients);
+    ws::Config config{
+        .port         = options().wsPort,
+        .maxClients   = maxClients,
+        .token        = token,
+        .allowOrigins = options().allowOrigins,
+    };
+    int port = ws::start(std::move(config), {.open = onOpen, .message = onMessage, .closed = onClosed});
+    if (!port) return;
+    log().info("websocket: ws://127.0.0.1:{}/v1 ({} clients at once)", port, maxClients);
+    writeDiscovery(port, token);
 }
 
-void stopPipeServer() {
-    if (!gServer.joinable()) return;
-    {
-        std::lock_guard lock(gClientsMutex);
-        gStopping = true;
-    }
-    gClientsCv.notify_all();
-    // Unblock ConnectNamedPipe with a throwaway connection (again, should the serve thread only
-    // have been about to block in it).
-    for (int i = 0; i < 100 && !gServeDone; ++i) {
-        HANDLE h = CreateFileW(gPipePath.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
-        if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-        CancelSynchronousIo(gServer.native_handle());
-        std::this_thread::sleep_for(20ms);
-    }
-    gServer.join();
-    // Every client still connected is blocked in ReadFile (or about to be: cancel until it returns).
-    std::list<std::unique_ptr<Client>> clients;
-    {
-        std::lock_guard lock(gClientsMutex);
-        clients.swap(gClients);
-    }
-    for (auto& c : clients) {
-        for (int i = 0; i < 100 && !c->done; ++i) {
-            CancelSynchronousIo(c->thread.native_handle());
-            std::unique_lock lock(gClientsMutex);
-            gClientsCv.wait_for(lock, 20ms, [&] { return c->done.load(); });
-        }
-        c->thread.join();
-    }
+void stopControlServer() {
+    deleteDiscovery(); // first: nobody should find a server that is going away
+    ws::stop();
 }
 
 } // namespace bedd

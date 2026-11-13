@@ -1,15 +1,18 @@
-// Link to the manager window of this logon session (client/BeDDManager.ps1) on
-// \\.\pipe\BeDD-Manager-<session id>. The game says hello once, then answers the
-// manager's requests: every control-pipe op, plus "close". The game window always stays off screen
-// and off the taskbar (Window.cpp) and the manager is the only place that shows it; the manager also
-// puts the game into a kill-on-close job, so closing the manager closes the game.
+// The manager: BeDD.exe's window connects to every game's WebSocket server and sends
+// `{op:"manager", action:"attach"}`; it shows the game (DWM thumbnail) and closes it when it is
+// closed. The game window always stays off screen, off the taskbar and out of Alt+Tab (Window.cpp,
+// ApiHooks.cpp), attached or not: the manager is the only place that shows it.
 //
-// A game never runs without the manager: with none running, the mod starts it (config
-// managerScript, which Install-BeDDMod writes); with none linked in time, or once the link is lost
-// for good, the game closes.
+// With config manager (default true) a game never runs without the manager: if none attached within
+// 30 s of the game window existing, or once the attached connection dropped and no manager attached
+// again within 3 s (BeDD.exe restarting its connection), the game closes. With
+// manager:false it stays (hidden) whatever happens, e.g. for a harness that drives it directly.
+// `{op:"close"}` closes the game.
 #include "BeDD.h"
+#include "Discovery.h"
 
 #include <format>
+#include <mutex>
 #include <thread>
 
 #include <nlohmann/json.hpp>
@@ -21,231 +24,121 @@ namespace {
 using json = nlohmann::json;
 using namespace std::chrono_literals;
 
-constexpr int kLinkProtocol = 1;
-// How long a game waits for its first link (the manager may be starting, the game loading).
-constexpr auto kFirstLinkTimeout = 90s;
+// How long a game waits for its first attach once its window exists (BeDD.exe connects as soon as
+// the discovery file appears, and the window comes a little later).
+constexpr auto kAttachDeadline = 30s;
+// How long a manager whose connection dropped has to attach again.
+constexpr auto kReattachGrace = 3s;
 
-std::jthread gLink;
+std::jthread gWatcher;
 
-// The session's manager, or the one BEDD_MANAGER_PIPE names (e.g. a recording's own).
-std::wstring managerPipePath() {
-    wchar_t buf[256]{};
-    DWORD   n = GetEnvironmentVariableW(L"BEDD_MANAGER_PIPE", buf, 256);
-    if (n > 0 && n < 256) return L"\\\\.\\pipe\\" + std::wstring(buf, n);
-    DWORD session = 0;
-    ProcessIdToSessionId(GetCurrentProcessId(), &session);
-    return std::format(L"\\\\.\\pipe\\BeDD-Manager-{}", session);
-}
-
-std::string utf8(std::wstring const& w) {
-    if (w.empty()) return {};
-    int         n = WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()), nullptr, 0, nullptr, nullptr);
-    std::string s(static_cast<size_t>(n), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()), s.data(), n, nullptr, nullptr);
-    return s;
-}
-
-// The game instance: the folder of Minecraft.Windows.exe (versions\<instance>).
-std::string instanceName() {
-    wchar_t buf[MAX_PATH]{};
-    DWORD   n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    std::wstring path(buf, n);
-    auto         slash = path.find_last_of(L"\\/");
-    if (slash == std::wstring::npos) return {};
-    path.resize(slash);
-    slash = path.find_last_of(L"\\/");
-    return utf8(slash == std::wstring::npos ? path : path.substr(slash + 1));
-}
-
-// Who started the game (Start-BeDDGame.ps1 sets it: the project and worktree of the caller).
-std::string label() {
-    wchar_t buf[512]{};
-    DWORD   n = GetEnvironmentVariableW(L"BEDD_LABEL", buf, 512);
-    return n > 0 && n < 512 ? utf8(std::wstring(buf, n)) : std::string();
-}
-
-HANDLE connect() {
-    std::wstring path = managerPipePath();
-    for (int attempt = 0; attempt < 2; ++attempt) {
-        HANDLE h = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
-        if (h != INVALID_HANDLE_VALUE) return h;
-        // Every instance busy for a moment (another game is connecting): wait for the next one.
-        if (GetLastError() != ERROR_PIPE_BUSY || !WaitNamedPipeW(path.c_str(), 500)) return nullptr;
-    }
-    return nullptr;
-}
-
-bool writeLine(HANDLE h, std::string const& line) {
-    DWORD written = 0;
-    return WriteFile(h, line.data(), static_cast<DWORD>(line.size()), &written, nullptr) && written == line.size();
-}
-
-bool sayHello(HANDLE h) {
-    json hello{
-        {"op",         "hello"                                    },
-        {"protocol",   kLinkProtocol                              },
-        {"pid",        GetCurrentProcessId()                      },
-        {"hwnd",       reinterpret_cast<uintptr_t>(gameWindow())  },
-        {"pipe",       options().pipeName                         },
-        {"instance",   instanceName()                             },
-        {"label",      label()                                    },
-    };
-    return writeLine(h, hello.dump() + "\n");
-}
-
-// The manager's answer to hello: only then is the game linked (a manager that is closing hangs up
-// without one).
-bool welcomed(HANDLE h) {
-    std::string line;
-    for (int waited = 0; waited < 3000;) {
-        DWORD avail = 0;
-        if (!PeekNamedPipe(h, nullptr, 0, nullptr, &avail, nullptr)) return false;
-        if (!avail) {
-            std::this_thread::sleep_for(10ms);
-            waited += 10;
-            continue;
-        }
-        char  c = 0;
-        DWORD n = 0;
-        if (!ReadFile(h, &c, 1, &n, nullptr) || n == 0) return false;
-        if (c == '\n') {
-            json reply = json::parse(line, nullptr, false);
-            return reply.is_object() && reply.value("ok", false);
-        }
-        line += c;
-    }
-    return false;
-}
-
-// Connected, said hello and welcomed; nullptr when no manager takes the game.
-HANDLE link() {
-    HANDLE h = connect();
-    if (h && sayHello(h) && welcomed(h)) return h;
-    if (h) CloseHandle(h);
-    return nullptr;
-}
-
-std::string handleManagerLine(std::string const& line) {
-    json req = json::parse(line, nullptr, false);
-    if (req.is_object()) {
-        std::string op = req.value("op", "");
-        json        r{
-            {"ok", true}
-        };
-        if (op == "close") {
-            HWND h = gameWindow();
-            if (!h || !PostMessageW(h, WM_CLOSE, 0, 0)) r = {{"ok", false}, {"error", "no game window to close"}};
-            else log().info("the manager window asked the game to close");
-        } else {
-            return handleControlLine(line);
-        }
-        if (req.contains("id")) r["id"] = req["id"];
-        return r.dump() + "\n";
-    }
-    return handleControlLine(line);
-}
-
-// Answers the manager's requests until it goes away.
-void serve(HANDLE pipe, std::stop_token const& stop) {
-    std::string buf;
-    char        chunk[4096];
-    while (!stop.stop_requested()) {
-        DWORD n = 0;
-        if (!ReadFile(pipe, chunk, sizeof(chunk), &n, nullptr) || n == 0) return;
-        buf.append(chunk, n);
-        size_t nl;
-        while ((nl = buf.find('\n')) != std::string::npos) {
-            std::string line = buf.substr(0, nl);
-            buf.erase(0, nl + 1);
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (line.empty()) continue;
-            if (!writeLine(pipe, handleManagerLine(line))) return;
-        }
-    }
-}
-
-bool sleepUnlessStopped(std::stop_token const& stop, std::chrono::milliseconds ms) {
-    for (auto t = 0ms; t < ms && !stop.stop_requested(); t += 50ms) std::this_thread::sleep_for(50ms);
-    return !stop.stop_requested();
-}
-
-// pwsh -File <managerScript> -Ensure, which starts the manager outside this process tree.
-void startManager() {
-    std::string const& script = options().managerScript;
-    if (script.empty()) {
-        log().error("no manager window running and no managerScript in config.json to start one");
-        return;
-    }
-    int          n = MultiByteToWideChar(CP_UTF8, 0, script.data(), static_cast<int>(script.size()), nullptr, 0);
-    std::wstring wide(static_cast<size_t>(n), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, script.data(), static_cast<int>(script.size()), wide.data(), n);
-    std::wstring        cmd = L"pwsh.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + wide + L"\" -Ensure";
-    STARTUPINFOW        si{sizeof(si)};
-    PROCESS_INFORMATION pi{};
-    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-        log().error("could not start the manager window ({}): error {}", script, GetLastError());
-        return;
-    }
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-    log().info("no manager window running: starting it ({})", script);
-}
+using Clock = std::chrono::steady_clock;
+std::mutex        gMutex;
+uint64_t          gAttached = 0;   // the client that attached (0 = none), guarded by gMutex
+bool              gEverAttached = false; // guarded by gMutex
+Clock::time_point gLostAt{};       // the attached connection dropped (0 = no), guarded by gMutex
 
 // A game the manager does not show must not run at all.
 [[noreturn]] void closeUnmanaged(char const* why) {
-    log().error("{}: closing the game (a BeDD game only runs inside the manager window)", why);
+    log().error("{}: closing the game (config manager: a BeDD game only runs inside the manager window)", why);
+    deleteDiscovery(); // disable() does not run
     TerminateProcess(GetCurrentProcess(), 1);
     ExitProcess(1);
 }
 
-void run(std::stop_token stop, HANDLE first) {
-    HANDLE pipe = first;
-    if (!pipe) {
-        startManager();
-        for (auto waited = 0ms; !pipe && waited < kFirstLinkTimeout; waited += 500ms) {
-            if (!sleepUnlessStopped(stop, 500ms)) return;
-            pipe = link();
-        }
-        if (!pipe) closeUnmanaged("no manager window linked within 90 s");
+// The attached manager's connection dropped (on its departing client thread; not at shutdown).
+void onGone(uint64_t client) {
+    {
+        std::lock_guard lock(gMutex);
+        if (client == 0 || client != gAttached) return;
+        gAttached = 0;
     }
-    bool again = false;
+    setManaged(false);
+    if (options().manager) {
+        log().warn("the manager (client {}) went away; the game closes unless it attaches again within 3 s", client);
+        std::lock_guard lock(gMutex);
+        gLostAt = Clock::now();
+        return;
+    }
+    log().info("the manager (client {}) went away; the game stays (config manager is false)", client);
+}
+
+// Config manager: closes the game when no manager attached within kAttachDeadline of its window
+// existing, or none attached again within kReattachGrace of the attached one going away.
+void watch(std::stop_token stop) {
+    auto windowSince = Clock::time_point{};
     while (!stop.stop_requested()) {
-        log().info("linked to the manager window{}", again ? " again" : "");
-        setManaged(true);
-        serve(pipe, stop);
-        CloseHandle(pipe);
-        pipe = nullptr;
+        std::this_thread::sleep_for(100ms);
+        auto now = Clock::now();
+        bool ever = false;
+        auto lostAt = Clock::time_point{};
+        {
+            std::lock_guard lock(gMutex);
+            ever   = gEverAttached;
+            lostAt = gLostAt;
+        }
         if (stop.stop_requested()) break;
-        // Lost the link: link again right away if the manager is still there (it dropped the link
-        // after a slow answer).
-        for (int attempt = 0; attempt < 12 && !pipe && sleepUnlessStopped(stop, 250ms); ++attempt) pipe = link();
-        if (stop.stop_requested()) break;
-        // The manager closed without closing the game (it normally does).
-        if (!pipe) closeUnmanaged("the manager window went away");
-        again = true;
+        if (lostAt != Clock::time_point{} && now - lostAt >= kReattachGrace) closeUnmanaged("the manager went away");
+        if (ever || !gameWindow()) continue;
+        if (windowSince == Clock::time_point{}) windowSince = now;
+        if (now - windowSince >= kAttachDeadline) closeUnmanaged("no manager attached within 30 s of the game window");
     }
-    if (pipe) CloseHandle(pipe);
 }
 
 } // namespace
 
 void startManagerLink() {
-    // The first attempt runs right here, before the game creates its window.
-    HANDLE first = link();
-    if (first) setManaged(true);
-    gLink = std::jthread(run, first);
+    static bool registered = false;
+    if (!registered) {
+        registered = true;
+        onClientGone(onGone);
+    }
+    if (options().manager && !gWatcher.joinable()) gWatcher = std::jthread(watch);
 }
 
 void stopManagerLink() {
-    if (!gLink.joinable()) return;
-    gLink.request_stop();
-    // Unblock a ReadFile on the link (again, in case the thread only got to it after a cancel).
-    HANDLE thread = gLink.native_handle();
-    for (int i = 0; i < 100 && WaitForSingleObject(thread, 0) == WAIT_TIMEOUT; ++i) {
-        CancelSynchronousIo(thread);
-        WaitForSingleObject(thread, 50);
+    if (!gWatcher.joinable()) return;
+    gWatcher.request_stop();
+    gWatcher.join();
+}
+
+json managerOp(json const& req) {
+    std::string action = req.value("action", "");
+    uint64_t    client = currentClient();
+    if (action == "attach") {
+        if (!client) return {{"ok", false}, {"code", "bad_request"}, {"error", "attach needs a client connection"}};
+        uint64_t before = 0;
+        {
+            std::lock_guard lock(gMutex);
+            before        = gAttached;
+            gAttached     = client;
+            gEverAttached = true;
+            gLostAt       = {};
+        }
+        setManaged(true);
+        if (before != client) log().info("the manager attached (client {}{})", client, before ? std::format(", replacing client {}", before) : "");
+    } else if (!action.empty()) {
+        return {{"ok", false}, {"code", "bad_request"}, {"error", "unknown manager action '" + action + "' (attach)"}};
     }
-    gLink.join();
+    std::lock_guard lock(gMutex);
+    return {
+        {"ok",       true                                   },
+        {"attached", gAttached != 0                         },
+        {"you",      gAttached != 0 && gAttached == client  },
+        {"manager",  options().manager                      },
+        {"pid",      GetCurrentProcessId()                  },
+        {"hwnd",     reinterpret_cast<uintptr_t>(gameWindow())},
+        {"instance", instanceName()                         },
+        {"label",    label()                                },
+    };
+}
+
+json closeOp(json const&) {
+    HWND h = gameWindow();
+    if (!h || !PostMessageW(h, WM_CLOSE, 0, 0))
+        return {{"ok", false}, {"code", "not_ready"}, {"error", "no game window to close"}};
+    log().info("client {} asked the game to close", currentClient());
+    return {{"ok", true}};
 }
 
 } // namespace bedd
