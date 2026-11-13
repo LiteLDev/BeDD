@@ -162,7 +162,7 @@ bool runOnClientThread(std::function<void()> fn, std::chrono::milliseconds timeo
 
 bool lookupRef(std::string const& snapshot, std::string const& ref, StoredNode& out, json& error) {
     std::lock_guard lock(gSnapMutex);
-    auto            it = gSnaps.find(currentPipeClient());
+    auto            it = gSnaps.find(currentClient());
     if (it == gSnaps.end() || it->second.id != snapshot) {
         std::string last = it == gSnaps.end() ? "none" : it->second.id;
         error            = fail("stale_snapshot", "snapshot '" + snapshot + "' is not this connection's last ui snapshot (" + last + "): take a new one with {op:\"ui\"}");
@@ -314,7 +314,7 @@ json readOp(json const& req) {
     };
     {
         std::lock_guard lock(gSnapMutex);
-        gSnaps[currentPipeClient()] = std::move(snap);
+        gSnaps[currentClient()] = std::move(snap);
     }
     return r;
 }
@@ -333,7 +333,7 @@ LL_TYPE_INSTANCE_HOOK(UiFrameHook, ll::memory::HookPriority::Normal, ClientInsta
 void startUi() {
     if (!options().ui || ui::gHooked) return;
     std::call_once(ui::gGoneOnce, [] {
-        onPipeClientGone([](uint64_t client) {
+        onClientGone([](uint64_t client) {
             std::lock_guard lock(ui::gSnapMutex);
             ui::gSnaps.erase(client);
         });

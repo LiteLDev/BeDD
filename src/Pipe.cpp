@@ -5,6 +5,7 @@
 #include "BeDD.h"
 #include "Discovery.h"
 #include "Screenshot.h"
+#include "UiOre.h"
 #include "UiTree.h"
 #include "WsServer.h"
 
@@ -421,6 +422,8 @@ json handle(json const& j) {
         r = screenshotOp(j);
     } else if (op == "ui") {
         r = uiOp(j);
+    } else if (op == "oreui") {
+        return oreUiOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
@@ -513,7 +516,7 @@ bool concurrentOp(std::string const& line) {
     std::string op = req.value("op", "");
     return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
         || op == "stack" || op == "timescale" || op == "join" || op == "manager" || op == "close"
-        || op == "screenshot" || (op == "ui" && !req.contains("action"));
+        || op == "screenshot" || op == "oreui" || (op == "ui" && !req.contains("action"));
 }
 
 std::string handleClientLine(std::string const& line) {
