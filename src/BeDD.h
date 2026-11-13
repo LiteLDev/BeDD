@@ -58,7 +58,7 @@ struct Options {
     /// the PC are queried, and UDP goes out on the PC's address towards them, to them only.
     std::vector<std::string> allowHosts;
     /// Where the world runs: "ClientOnly" (a local world), "ClientServer" (a BDS with BeDD on this
-    /// PC), "Remote" (a server without BeDD). Start-BeDDGame.ps1 -Mode writes it; `state` reports it.
+    /// PC), "Remote" (a server without BeDD). `BeDD.exe mod config --world-mode` writes it; `state` reports it.
     std::string mode = "ClientOnly";
     /// Mute the game (FMOD master channel group): headless games stay silent.
     /// Hook the client's own game systems for the world, look, input, slot, action and button ops.

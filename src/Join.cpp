@@ -347,7 +347,7 @@ json joinOp(json const& req) {
         a->port = req["port"].get<int>();
     }
     if (!reachable(a->host))
-        return fail("not_allowed", a->host + " is off the PC and not in allowHosts (loopbackOnly): use Remote mode (Start-BeDDGame.ps1 -Mode Remote -ServerHost)");
+        return fail("not_allowed", a->host + " is off the PC and not in allowHosts (loopbackOnly): use Remote mode (BeDD.exe mod config <instance> --world-mode Remote --server-host <host>)");
     bool wait    = req.value("wait", false);
     auto timeout = std::chrono::milliseconds(std::clamp(req.value("timeoutMs", 60000), 100, 600000));
     a->deadline  = Clock::now() + timeout;

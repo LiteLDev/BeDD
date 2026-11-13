@@ -87,17 +87,15 @@ use `tools\out\dev.stop` to end it then.
 `docs/` is the documentation site (<https://docs.levimc.org/BeDD/>, built with levimc-kit by
 `.github/workflows/docs.yml`; `cd docs; npm ci; npm run build`). `docs/public/showcase/` holds its
 gallery and the README pictures.
-`tools/showcase/record.ps1 [-KeepOpen]` reproduces the desktop video: under the shared e2e lock
-(plus the `hi<N>-e2e.lock` of each clone) it prepares three clone instances (`-hi2`..`-hi4`, other
-mods moved aside), restores the `tools/showcase/fixtures/Showcase.zip` world, starts the games in
-a manager window of its own (`BEDD_MANAGER_PIPE`, so other runs' games stay out of the take),
-enters the world, runs `demo.ps1` in a console window off the screen and without the focus, and
-records the manager window and that console with ffmpeg's `gfxcapture` (Windows.Graphics.Capture:
-each window's own picture, whatever covers it) to `tools/showcase/out/take-<n>-manager.mkv` and
-`take-<n>-terminal.mkv`. Nothing is moved in front of you and nothing takes the focus. With
-`-KeepOpen`, creating `tools/showcase/out/take` starts another take and `tools/showcase/out/stop`
-ends the session. `tools/showcase/encode.ps1` puts a take together, the manager on the left and the
-terminal on the right, into the MP4, WebP and poster files.
+`tools/showcase/record.mjs [--keep-open] [--dry-run]` (Node 24, no dependencies) reproduces the
+desktop video: it makes three clones with `BeDD.exe instance clone`, installs the mod, restores the
+`tools/showcase/fixtures/Showcase.zip` world, launches the games with `BeDD.exe launch` and drives
+them over their WebSocket (bedboo ops first, `ui` for menus, raw input only where nothing semantic
+exists), while ffmpeg records the manager window to `tools/showcase/out/take-<n>-manager.mkv` and the
+script's own log to `take-<n>-terminal.mkv`. Nothing is moved in front of you and nothing takes the
+focus. With `--keep-open`, creating `tools/showcase/out/take` starts another take and
+`tools/showcase/out/stop` ends the session. `node tools/showcase/encode.mjs` puts a take together,
+the manager on the left and the terminal on the right, into the MP4, WebP and poster files.
 
 ## Source layout
 
@@ -111,8 +109,12 @@ terminal on the right, into the MP4, WebP and poster files.
 | `src/Audio.cpp` | FMOD hooks: the game's master channel group is muted (`mute`) |
 | `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`: no firewall prompt, no queries to servers off the PC); in the server target too |
 | `src/ServerTimeScale.cpp` | server target only: the `server`, `timescale` and `command` ops, config `timeScale`, LevelEvent 3007 to the players |
-| `src/Pipe.cpp` | control pipe and protocol |
-| `src/Manager.cpp` | link to the session's manager window |
+| `src/Pipe.cpp` | the ops: `handle()` dispatch, per-connection ownership and cleanup |
+| `src/WsServer.cpp`, `src/Discovery.cpp` | the WebSocket server (127.0.0.1, token, `/v1`) and `run\<pid>.json` |
+| `src/Screenshot.cpp` | `screenshot` op (PrintWindow + WIC) |
+| `src/UiTree.cpp`, `src/UiJson.cpp`, `src/UiActions.cpp` | `ui` op: JSON UI tree, refs, click/setText/scroll |
+| `src/UiOre.cpp` | `oreui` op: the Ore UI DOM through the game's V8 |
+| `src/Manager.cpp` | the `manager` and `close` ops: kept hidden while the manager is attached |
 | `src/Trace.cpp` | trace-mode input logging |
 | `src/MoveInput.cpp` | `input` op: move override in the client's `ClientInputUpdateSystem` with a dead-man TTL (`gameHooks`) |
 | `src/Send.cpp` | `send` op (`allowSend`): allowlisted serverbound packets, sent by the local player on the client thread |
@@ -120,12 +122,14 @@ terminal on the right, into the MP4, WebP and poster files.
 | `src/GameActions.cpp` | `slot`, `action` and tick-based `button` ops (`gameHooks`) |
 | `src/Stack.cpp` | `stack` op (`allowStack`): item stack requests sent by the local client |
 | `src/TapSink.h` | the frame type and sink chain every tap publisher shares (keep it byte-identical) |
-| `src/Tap.cpp`, `src/Tap.h` | tap pipe: framing, markers, writer thread, the `tap` op |
+| `src/Tap.cpp`, `src/Tap.h` | the tap: framing, markers, writer thread, the `tap` op and its WebSocket subscriber |
 | `src/NetTap.cpp` | tap capture on a remote server link, and the blob cache switch |
 | `src/TapLoopback.cpp` | tap capture in singleplayer and LAN-host worlds (re-serialized packets) |
 | `src/TapJournal.cpp` | the tap's join journal (compacted replay for a late reader) |
 | `src/MemoryOperators.cpp` | routes `new`/`delete` through LeviLamina's allocator (required by LeviLamina) |
-| `client/` | PowerShell client, harness shim, game start (`Start-BeDDGame.ps1`), manager window (`BeDDManager.ps1`), clone script and setup (`BeDDSetup.psm1`, `Initialize-BeDD.ps1`: finds the game instance and sets up what a new PC lacks), all shipped next to the DLL |
+| `app/` | `BeDD.exe` (C# NativeAOT): `Cli/` commands, `Core/` instances, launch, servers, discovery, WebSocket client, `Gui/` manager window; `BeDD.Tests/` |
+| `tests/ws/` | protocol tests against a running game (`node --test tests/ws/`) |
+| `spec/bedd.asyncapi.yaml` | the WebSocket API (AsyncAPI 3.0) |
 
 When you hook a game or LeviLamina symbol, check the SDK headers under
 `%LOCALAPPDATA%\.xmake\packages\l\levilamina\<version>\<hash>\include` first. Only call `MCAPI`,

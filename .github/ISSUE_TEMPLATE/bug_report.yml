@@ -15,7 +15,7 @@ body:
       label: Steps to reproduce
       placeholder: |
         1. Start the game with background mode on
-        2. Send-BeDDKey E
+        2. {"op":"key","key":"E"} over the WebSocket
         3. ...
     validations:
       required: true

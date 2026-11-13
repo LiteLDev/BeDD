@@ -72,12 +72,11 @@ Ctrl+C 或创建 `tools\out\dev.stop` 会关掉游戏（除非 `--keep`）并结
 `docs/` 是文档站点（<https://docs.levimc.org/BeDD/>，由 `.github/workflows/docs.yml` 用 levimc-kit 构建；`cd docs; npm ci; npm run build`）。
 `docs/public/showcase/` 存放站点的展示内容和 README 里的图片。
 
-`tools/showcase/record.ps1 [-KeepOpen]` 重新录制桌面视频：在共享 e2e 锁（以及每个克隆的 `hi<N>-e2e.lock`）下，它准备三个克隆实例
-（`-hi2`..`-hi4`，其他模组挪开），恢复 `tools/showcase/fixtures/Showcase.zip` 存档，在它自己的管理窗口里启动游戏（`BEDD_MANAGER_PIPE`，这样别的测试的游戏不会进画面）
-并进入世界，在屏幕外、不抢焦点的控制台窗口里运行 `demo.ps1`，然后用 ffmpeg 的 `gfxcapture`（Windows.Graphics.Capture：直接录窗口自己的画面，被挡住也不影响）
-录下管理窗口和这个控制台，存为 `tools/showcase/out/take-<n>-manager.mkv` 和 `take-<n>-terminal.mkv`。不会有窗口挪到你面前，也不会抢焦点。
-带 `-KeepOpen` 时，创建 `tools/showcase/out/take` 开始下一次录制，`tools/showcase/out/stop` 结束。
-`tools/showcase/encode.ps1` 把一次录制拼成左边管理窗口、右边终端的画面，剪成 MP4、WebP 和封面图。
+`tools/showcase/record.mjs [--keep-open] [--dry-run]`（Node 24，无依赖）重新录制桌面视频：用 `BeDD.exe instance clone` 做三个克隆、
+安装模组、恢复 `tools/showcase/fixtures/Showcase.zip` 存档，用 `BeDD.exe launch` 启动游戏并通过 WebSocket 操控（优先 bedboo 操作，
+菜单用 `ui`，只有没有语义操作时才用原始输入），同时用 ffmpeg 把管理窗口录到 `tools/showcase/out/take-<n>-manager.mkv`，把脚本自己的日志录到
+`take-<n>-terminal.mkv`。不会有窗口跳到你面前，也不会抢焦点。带 `--keep-open` 时，创建 `tools/showcase/out/take` 开始下一次录制，
+`tools/showcase/out/stop` 结束。`node tools/showcase/encode.mjs` 把一次录制拼成左边管理窗口、右边终端的画面，输出 MP4、WebP 和封面图。
 
 ## 源码结构
 
@@ -91,8 +90,12 @@ Ctrl+C 或创建 `tools\out\dev.stop` 会关掉游戏（除非 `--keep`）并结
 | `src/Audio.cpp` | FMOD 钩子：静音游戏的主通道组（`mute`） |
 | `src/NetHooks.cpp` | 只用本机网络（`loopbackOnly`：没有防火墙提示，不查询本机以外的服务器）；服务端目标也有 |
 | `src/ServerTimeScale.cpp` | 仅服务端目标：`server`、`timescale`、`command` 操作，配置 `timeScale`，向玩家发 LevelEvent 3007 |
-| `src/Pipe.cpp` | 控制管道和协议 |
-| `src/Manager.cpp` | 与会话管理窗口的连接 |
+| `src/Pipe.cpp` | 各操作：`handle()` 分派、按连接的归属与清理 |
+| `src/WsServer.cpp`、`src/Discovery.cpp` | WebSocket 服务器（127.0.0.1、令牌、`/v1`）和 `run\<pid>.json` |
+| `src/Screenshot.cpp` | `screenshot` 操作（PrintWindow + WIC） |
+| `src/UiTree.cpp`、`src/UiJson.cpp`、`src/UiActions.cpp` | `ui` 操作：JSON UI 控件树、引用、click/setText/scroll |
+| `src/UiOre.cpp` | `oreui` 操作：通过游戏的 V8 读取 Ore UI 的 DOM |
+| `src/Manager.cpp` | `manager` 和 `close` 操作：管理窗口挂接期间保持隐藏 |
 | `src/Trace.cpp` | trace 模式的输入日志 |
 | `src/MoveInput.cpp` | `input` 操作：在客户端的 `ClientInputUpdateSystem` 里覆盖移动，带死人开关 TTL（`gameHooks`） |
 | `src/Send.cpp` | `send` 操作（`allowSend`）：允许列表内的服务端方向数据包，在客户端线程上由本地玩家发送 |
@@ -100,12 +103,14 @@ Ctrl+C 或创建 `tools\out\dev.stop` 会关掉游戏（除非 `--keep`）并结
 | `src/GameActions.cpp` | `slot`、`action` 和按刻计算的 `button` 操作（`gameHooks`） |
 | `src/Stack.cpp` | `stack` 操作（`allowStack`）：由本地客户端发送的物品堆请求 |
 | `src/TapSink.h` | 所有 tap 发布者共用的帧类型和 sink 链（保持逐字节一致） |
-| `src/Tap.cpp`、`src/Tap.h` | tap 管道：帧格式、标记、写线程、`tap` 操作 |
+| `src/Tap.cpp`、`src/Tap.h` | tap：帧格式、标记、写线程、`tap` 操作及其 WebSocket 订阅方 |
 | `src/NetTap.cpp` | 远程服务器连接上的 tap 抓取，以及 blob 缓存开关 |
 | `src/TapLoopback.cpp` | 单人世界和局域网主机世界里的 tap 抓取（重新序列化的包） |
 | `src/TapJournal.cpp` | tap 的加入日志（给晚到读取方的压缩回放） |
 | `src/MemoryOperators.cpp` | 让 `new`/`delete` 走 LeviLamina 的分配器（LeviLamina 要求） |
-| `client/` | PowerShell 客户端、框架垫片、游戏启动（`Start-BeDDGame.ps1`）、管理窗口（`BeDDManager.ps1`）、克隆脚本和准备脚本（`BeDDSetup.psm1`、`Initialize-BeDD.ps1`：找到游戏实例并补齐新电脑缺的东西），都和 DLL 放在一起发布 |
+| `app/` | `BeDD.exe`（C# NativeAOT）：`Cli/` 命令，`Core/` 实例、启动、服务器、发现文件、WebSocket 客户端，`Gui/` 管理窗口；`BeDD.Tests/` |
+| `tests/ws/` | 针对运行中游戏的协议测试（`node --test tests/ws/`） |
+| `spec/bedd.asyncapi.yaml` | WebSocket 接口（AsyncAPI 3.0） |
 
 挂钩游戏或 LeviLamina 的符号时，先查 `%LOCALAPPDATA%\.xmake\packages\l\levilamina\<version>\<hash>\include` 下的 SDK 头文件。
 只调用 `MCAPI`、`MCFOLD` 和 `MCTAPI` 函数。
