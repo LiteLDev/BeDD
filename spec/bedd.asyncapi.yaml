@@ -131,6 +131,8 @@ channels:
       tapFrame: { $ref: '#/components/messages/tapFrame' }
       uiRequest: { $ref: '#/components/messages/uiRequest' }
       uiReply: { $ref: '#/components/messages/uiReply' }
+      oreuiRequest: { $ref: '#/components/messages/oreuiRequest' }
+      oreuiReply: { $ref: '#/components/messages/oreuiReply' }
       keyRequest: { $ref: '#/components/messages/keyRequest' }
       textRequest: { $ref: '#/components/messages/textRequest' }
       mouseRequest: { $ref: '#/components/messages/mouseRequest' }
@@ -359,6 +361,18 @@ operations:
       channel: { $ref: '#/channels/v1' }
       messages:
         - { $ref: '#/channels/v1/messages/uiReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  oreui:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: oreui
+    summary: Reads the DOM of the Ore UI view (the screens `ui` shows as one opaque node).
+    tags: [{ $ref: '#/components/tags/ui' }]
+    messages: [{ $ref: '#/channels/v1/messages/oreuiRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/oreuiReply' }
         - { $ref: '#/channels/v1/messages/errorReply' }
 
   # ---- input ---------------------------------------------------------------------------------
@@ -743,7 +757,7 @@ components:
             modes:
               bedboo: [world, look, input, slot, action, button, send, stack, timescale, join, tap]
               input: [key, text, mouse, raw, release, flush, focus, window, screenshot]
-              ui: [ui]
+              ui: [ui, oreui]
             hwnd: 4589122
             managed: true
             client: { w: 1280, h: 720 }
@@ -1454,6 +1468,64 @@ components:
                 children: []
                 source: { kind: jsonui }
                 hash: 03ab
+
+    oreuiRequest:
+      name: oreui
+      title: oreui request
+      description: |
+        Config key `ui`. Reads the DOM of the Ore UI view (world list, settings and the other HTML
+        screens) with a read-only script run in the view's V8 context; it never changes the page.
+        Nodes have no refs: act on one with `mouse` at the centre of its `bounds` (game client
+        pixels). Written against the V8 9.x in the game's v8.dll; another major version answers
+        `unsupported` unless `force` is set. Errors are `unsupported` (with `findings`), `not_ready`
+        (no Ore UI screen ran script within `timeoutMs`) and `disabled`.
+      tags: [{ $ref: '#/components/tags/ui' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: oreui }
+          url: { type: string, description: 'Wait for a view whose URL contains this.' }
+          maxNodes: { type: integer, minimum: 1, maximum: 50000, default: 2000 }
+          maxText: { type: integer, minimum: 8, maximum: 4096, default: 200, description: 'Characters kept of each text.' }
+          timeoutMs: { type: integer, minimum: 100, default: 3000, description: 'How long to wait for the view to run script.' }
+          force: { type: boolean, default: false, description: 'Run on a V8 major version the op was not written for.' }
+      examples:
+        - name: read
+          payload: { id: 23, op: oreui }
+    oreuiReply:
+      name: oreui
+      title: oreui reply
+      tags: [{ $ref: '#/components/tags/ui' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              url: { type: string, description: 'The page (route) the view shows.' }
+              title: { type: string }
+              width: { type: integer }
+              height: { type: integer }
+              nodes:
+                type: array
+                description: Document order; `children` are indexes into this array.
+                items:
+                  type: object
+                  properties:
+                    tag: { type: string }
+                    id: { type: string }
+                    class: { type: string }
+                    testId: { type: string, description: 'data-testid' }
+                    role: { type: string }
+                    name: { type: string, description: 'aria-label, title, alt, placeholder or name.' }
+                    text: { type: string, description: 'Own text of the element.' }
+                    value: { type: string }
+                    state: { type: object, additionalProperties: { type: boolean } }
+                    bounds: { $ref: '#/components/schemas/Rect' }
+                    children: { type: array, items: { type: integer } }
+              truncated: { type: boolean }
+              findings: { type: object, description: 'Gameface and V8 versions and how the DOM was read.' }
 
     # ---- input -------------------------------------------------------------------------------
     keyRequest:

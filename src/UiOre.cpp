@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
+#include <cstdlib>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -124,6 +125,10 @@ Export const kExports[] = {
 };
 
 constexpr char kGamefaceVersion[] = "?GetLibraryVersion@Library@cohtml@@SAPEBDXZ";
+constexpr char kV8Version[]       = "?GetVersion@V8@v8@@SAPEBDXZ";
+// The V8 major version the ABI notes above were checked against. Another major version may keep the
+// export names but change what they do, so the op refuses it unless the request says "force": true.
+constexpr int kV8Major = 9;
 
 // Read-only DOM walk, run in the view's context. %MAX% / %MAXT% are replaced with the node and text
 // caps. Every DOM access is guarded: Gameface implements a subset of the DOM.
@@ -413,6 +418,16 @@ json oreUiOp(json const& req) {
         );
     HMODULE v8 = GetModuleHandleW(L"v8.dll");
     if (!v8) return unsupported("v8.dll is not loaded (Gameface has not started its script engine yet?)", findings);
+    if (auto version = reinterpret_cast<VersionFn>(GetProcAddress(v8, kV8Version))) {
+        char const* v = version();
+        findings["v8"] = v ? v : "";
+        if (v && std::atoi(v) != kV8Major && !req.value("force", false))
+            return unsupported(
+                std::string("v8.dll is V8 ") + v + "; the oreui op was written against V8 " + std::to_string(kV8Major)
+                    + ".x (send \"force\": true to try anyway)",
+                findings
+            );
+    }
     json missing = json::array();
     if (!resolveApi(v8, missing)) {
         findings["missingExports"] = missing;

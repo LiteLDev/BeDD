@@ -13,7 +13,7 @@ Be.D.D. 的游戏有三种驱动方式。三种同时开启，走同一条 [WebS
 ```json
 { "ok": true, "protocol": 2, "defaultMode": "bedboo",
   "modes": { "bedboo": ["world", "look", "input", "slot", "action", "button", "send", "stack", "timescale", "join", "tap"],
-             "ui": ["ui"],
+             "ui": ["ui", "oreui"],
              "input": ["key", "text", "mouse", "raw", "release", "flush", "focus", "window", "screenshot"] } }
 ```
 

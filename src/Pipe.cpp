@@ -269,7 +269,7 @@ json handle(json const& j) {
         r["modes"]       = {
             {"bedboo", {"world", "look", "input", "slot", "action", "button", "send", "stack", "timescale", "join", "tap"}},
             {"input",  {"key", "text", "mouse", "raw", "release", "flush", "focus", "window", "screenshot"}              },
-            {"ui",     {"ui"}                                                                                      },
+            {"ui",     {"ui", "oreui"}                                                                             },
         };
         r.update(windowInfo());
     } else if (op == "state") {

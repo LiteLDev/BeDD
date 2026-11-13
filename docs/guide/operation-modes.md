@@ -14,7 +14,7 @@ A Be.D.D. game can be driven three ways. All three are on at the same time, over
 ```json
 { "ok": true, "protocol": 2, "defaultMode": "bedboo",
   "modes": { "bedboo": ["world", "look", "input", "slot", "action", "button", "send", "stack", "timescale", "join", "tap"],
-             "ui": ["ui"],
+             "ui": ["ui", "oreui"],
              "input": ["key", "text", "mouse", "raw", "release", "flush", "focus", "window", "screenshot"] } }
 ```
 

@@ -116,3 +116,35 @@ The game has no RTTI, so BeDD tells component types apart by their vtables: a te
 its exported `render`, text boxes, sliders and scroll views from ScreenView's lists of them, buttons
 and toggles by the state controls they point to. Sliders and toggles were not seen in a JSON UI
 screen of 1.26.60 (the settings are Ore UI).
+
+## Ore UI screens: `oreui`
+
+`ui` shows an Ore UI screen as one node. To see inside it, send `{"op":"oreui"}`: BeDD runs a
+read-only script in the Ore UI view's page and returns its DOM.
+
+```json
+{"id": 23, "op": "oreui"}
+```
+
+The reply has `url` (the route, such as `/play/all`), `title`, `width` and `height`, `nodes` in
+document order and `truncated`. A node has `tag`, and when present `id`, `class`, `testId`
+(`data-testid`), `role`, `name` (`aria-label`, `title`, `alt`, `placeholder` or `name`), `text`
+(its own text), `value`, `state` (`disabled`, `checked`, `selected`, `expanded`, `hidden`,
+`focused`, `invisible`), `bounds` in game client pixels and `children` (indexes into `nodes`).
+
+Ore UI nodes have no refs. To press one, send `mouse` with `action: "click"` at the centre of
+its `bounds`. This is how to open a world from the world list:
+
+```js
+const dom = await call('oreui')
+const tile = dom.nodes.find(n => n.text === 'My World' && n.bounds?.w > 0)
+await call('mouse', { action: 'click', x: tile.bounds.x + tile.bounds.w / 2, y: tile.bounds.y + tile.bounds.h / 2 })
+```
+
+The script runs the next time the view runs any script of its own, which an Ore UI screen does
+many times a second. `timeoutMs` (`3000`) is how long to wait, and `url` waits for a view whose URL contains it; with no Ore UI screen on top the
+op ends in `not_ready`. `maxNodes` (`2000`) and `maxText` (`200`) limit the reply.
+
+`oreui` calls the V8 engine in the game's `v8.dll` (V8 9 in 1.26.60). On another major version it
+answers `unsupported` with the version in `findings.v8`; `"force": true` tries anyway. If a call
+into V8 ever crashes, BeDD catches it and turns `oreui` off until the game restarts.

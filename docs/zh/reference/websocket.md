@@ -157,7 +157,7 @@ BeDD 提供三种驱动游戏的方式，全部同时可用。按这个顺序选
 {"ok": true, "protocol": 2, "pid": 23116, "defaultMode": "bedboo",
  "modes": {"bedboo": ["world","look","input","slot","action","button","send","stack","timescale","join","tap"],
            "input": ["key","text","mouse","raw","release","flush","focus","window","screenshot"],
-           "ui": ["ui"]},
+           "ui": ["ui","oreui"]},
  "hwnd": 4589122, "managed": true, "client": {"w": 1280, "h": 720}, "cursor": {"x": 640, "y": 360},
  "realForeground": false}
 ```
@@ -310,13 +310,16 @@ Alt+Tab 里。配置 `manager`（默认 `true`）打开时，窗口出现后 30 
 | `{op:"ui", snapshot, action:"click", ref}` | 点击分发后回复 `{ok}` |
 | `{op:"ui", snapshot, action:"setText", ref, text}` | `{ok}`：文本框内容变为 `text` |
 | `{op:"ui", snapshot, action:"scroll", ref, notches}` | `{ok}` |
+| `{op:"oreui", url?, maxNodes?, maxText?, timeoutMs?, force?}` | `{url, title, width, height, nodes[], truncated, findings}`：Ore UI 视图的 DOM |
 
 - 节点是 `{role, name, text, value, state, bounds, boundsNorm, actions, children, source, hash}`：`bounds` 是客户区像素，
   `boundsNorm` 是占客户区的比例，`actions` 是节点接受的动作，`children` 是子节点的 ref，节点一变 `hash` 就变。
 - `screens` 是界面栈，`active` 是最上层的界面，`roots` 是它的根节点 ref。`scope` 只读某个 ref 之下的部分；`depth` 和 `maxNodes` 会截断树
   （`truncated:true`）；不可见的控件默认不列出，除非给 `includeInvisible`。
 - JSON UI 界面逐个控件读取（SceneStack → `UIScene::mScreenView` → `VisualTree::mRootControl` → `UIControl::mChildren`/`mComponents`）。
-  OreUI 界面是一个不透明节点 `{role:"group", source:{kind:"oreui", url}}`：在那里用 bedboo 操作，实在不行再用 input 操作。
+  OreUI 界面是一个不透明节点 `{role:"group", source:{kind:"oreui", url}}`。`oreui` 读取其内部：以节点数组给出视图的 DOM（`tag`、`id`、`class`、
+  `testId`、`role`、`name`、`text`、`value`、`state`、`bounds`，`children` 为下标）；给出 `url` 时等待 URL 包含它的视图。Ore UI 节点没有 ref：
+  用 `mouse` 点击其 `bounds` 的中心。见 [UI 控件树](./ui#ore-ui-界面-oreui)。
 - 动作与 input 操作走同一个虚拟鼠标和键盘，所以不需要任何玩家做不到的事。`mouse` 也接受 `ref` + `snapshot` 代替坐标：瞄准节点中心。
 - 错误：`stale_ref`（这个 ref 不在该快照里，或者节点已经没了）、`stale_snapshot`（界面变了：重新读树）、`occluded`（有别的控件挡住了节点）、
   `not_ready`（还没有树：游戏在加载）、`unsupported`（节点不支持这个动作）。

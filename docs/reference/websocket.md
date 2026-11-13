@@ -166,7 +166,7 @@ BeDD offers three ways to drive the game, all on at once. Pick them in this orde
 {"ok": true, "protocol": 2, "pid": 23116, "defaultMode": "bedboo",
  "modes": {"bedboo": ["world","look","input","slot","action","button","send","stack","timescale","join","tap"],
            "input": ["key","text","mouse","raw","release","flush","focus","window","screenshot"],
-           "ui": ["ui"]},
+           "ui": ["ui","oreui"]},
  "hwnd": 4589122, "managed": true, "client": {"w": 1280, "h": 720}, "cursor": {"x": 640, "y": 360},
  "realForeground": false}
 ```
@@ -373,6 +373,7 @@ desktop app (issue [#21](https://github.com/LiteLDev/BeDD/issues/21)), and acts 
 | `{op:"ui", snapshot, action:"click", ref}` | `{ok}` once the click was dispatched |
 | `{op:"ui", snapshot, action:"setText", ref, text}` | `{ok}`: the text box holds `text` |
 | `{op:"ui", snapshot, action:"scroll", ref, notches}` | `{ok}` |
+| `{op:"oreui", url?, maxNodes?, maxText?, timeoutMs?, force?}` | `{url, title, width, height, nodes[], truncated, findings}`: the DOM of the Ore UI view |
 
 - A node is `{role, name, text, value, state, bounds, boundsNorm, actions, children, source, hash}`: `bounds` in client
   pixels, `boundsNorm` in fractions of the client area, `actions` what the node accepts, `children` refs, `hash`
@@ -382,7 +383,9 @@ desktop app (issue [#21](https://github.com/LiteLDev/BeDD/issues/21)), and acts 
   `includeInvisible`.
 - JSON UI screens are read control by control (SceneStack → `UIScene::mScreenView` → `VisualTree::mRootControl` →
   `UIControl::mChildren`/`mComponents`). An OreUI screen is one opaque node `{role:"group", source:{kind:"oreui", url}}`:
-  use the bedboo ops or, last, the input ops there.
+  `oreui` reads inside it: the view's DOM as a node array (`tag`, `id`, `class`, `testId`, `role`, `name`, `text`,
+  `value`, `state`, `bounds`, `children` as indexes); `url` waits for a view whose URL contains it. Ore UI nodes
+  have no refs: click one with `mouse` at the centre of its `bounds`. See [UI tree](./ui#ore-ui-screens-oreui).
 - Actions go through the same virtual mouse and keyboard as the input ops, so they need nothing the game would not
   accept from a player. `mouse` also takes `ref` + `snapshot` instead of a point: it aims at the centre of the node.
 - Errors: `stale_ref` (the ref is not in that snapshot, or its node is gone), `stale_snapshot` (the screens changed:

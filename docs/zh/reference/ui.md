@@ -72,3 +72,25 @@
 悬停落在指针下最内层的控件上：背包中格子的 `grid_item_for_inventory` 里有一个显示 `hovered` 的 `item_button_ref`。界面的入场动画会短暂移动控件：请在界面稳定后再取快照。
 
 游戏没有 RTTI，BeDD 通过虚表区分组件类型：文字组件靠其导出的 `render`，文本框、滑块和滚动视图来自 ScreenView 中的对应列表，按钮和开关靠它们指向的状态控件。1.26.60 的 JSON UI 界面里没有见到滑块和开关（设置界面是 Ore UI）。
+
+## Ore UI 界面：`oreui`
+
+`ui` 把 Ore UI 界面显示为一个节点。要看它的内部，发送 `{"op":"oreui"}`：BeDD 在 Ore UI 视图的页面中运行一段只读脚本，返回它的 DOM。
+
+```json
+{"id": 23, "op": "oreui"}
+```
+
+回复含 `url`（路由，如 `/play/all`）、`title`、`width`、`height`、按文档顺序排列的 `nodes` 和 `truncated`。节点有 `tag`，以及（存在时）`id`、`class`、`testId`（`data-testid`）、`role`、`name`（`aria-label`、`title`、`alt`、`placeholder` 或 `name`）、`text`（节点自身的文字）、`value`、`state`（`disabled`、`checked`、`selected`、`expanded`、`hidden`、`focused`、`invisible`）、以游戏客户区像素计的 `bounds`，以及 `children`（`nodes` 中的下标）。
+
+Ore UI 节点没有 ref。要点击某个节点，向其 `bounds` 的中心发送 `action: "click"` 的 `mouse`。例如从世界列表打开一个世界：
+
+```js
+const dom = await call('oreui')
+const tile = dom.nodes.find(n => n.text === 'My World' && n.bounds?.w > 0)
+await call('mouse', { action: 'click', x: tile.bounds.x + tile.bounds.w / 2, y: tile.bounds.y + tile.bounds.h / 2 })
+```
+
+脚本在视图下一次运行自己的脚本时执行，Ore UI 界面每秒会运行很多次。`timeoutMs`（`3000`）是等待时长，`url` 等待 URL 包含它的视图；最前面没有 Ore UI 界面时，该操作以 `not_ready` 结束。`maxNodes`（`2000`）和 `maxText`（`200`）限制回复大小。
+
+`oreui` 调用游戏 `v8.dll` 中的 V8 引擎（1.26.60 中为 V8 9）。遇到其他主版本时，它返回 `unsupported`，并在 `findings.v8` 中给出版本；`"force": true` 则仍然尝试。若对 V8 的调用崩溃，BeDD 会捕获它，并在游戏重启前关闭 `oreui`。
