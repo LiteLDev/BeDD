@@ -13,7 +13,7 @@ option("target_type")
     set_values("client", "server")
 option_end()
 
-add_requires("levilamina 26.60.2", {configs = {target_type = get_config("target_type")}})
+add_requires("levilamina 26.60.7", {configs = {target_type = get_config("target_type")}})
 add_requires("levibuildscript")
 add_requires("nlohmann_json v3.12.0")
 

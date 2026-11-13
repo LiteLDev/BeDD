@@ -23,7 +23,7 @@
 
 # The game and LeviLamina this build of BeDD is made for (xmake.lua's levilamina package).
 $script:GameVersion       = '1.26.60'
-$script:LeviLaminaVersion = '26.60.2'
+$script:LeviLaminaVersion = '26.60.7'
 # Downloaded tools (LeviLauncher, lip, the .NET runtime for lip).
 $script:ToolsDir = Join-Path $env:LOCALAPPDATA 'BeDD\tools'
 
