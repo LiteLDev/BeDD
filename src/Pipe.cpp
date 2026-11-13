@@ -4,6 +4,7 @@
 // the disconnect cleanup) and starts the WebSocket server and its discovery file.
 #include "BeDD.h"
 #include "Discovery.h"
+#include "Screenshot.h"
 #include "WsServer.h"
 
 #include <algorithm>
@@ -414,6 +415,8 @@ json handle(json const& j) {
         r = managerOp(j);
     } else if (op == "close") {
         r = closeOp(j);
+    } else if (op == "screenshot") {
+        r = screenshotOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
@@ -494,6 +497,7 @@ std::mutex gInputMutex;
 // Ops that run without gInputMutex: they post no window input. `tap` and `world` only read;
 // `look`, `input`, `send`, `stack`, `timescale` and `join` hand their work to the client thread (and
 // may wait for it, up to their timeoutMs), so serializing them would only stall the other clients.
+// `screenshot` only reads the window, and may wait for the game thread to answer PrintWindow.
 bool concurrentOp(std::string const& line) {
 #ifdef LL_PLAT_S
     (void)line;
@@ -503,7 +507,8 @@ bool concurrentOp(std::string const& line) {
     if (!req.is_object()) return true;
     std::string op = req.value("op", "");
     return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
-        || op == "stack" || op == "timescale" || op == "join" || op == "manager" || op == "close";
+        || op == "stack" || op == "timescale" || op == "join" || op == "manager" || op == "close"
+        || op == "screenshot";
 }
 
 std::string handleClientLine(std::string const& line) {
