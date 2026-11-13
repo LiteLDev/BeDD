@@ -1,0 +1,15 @@
+{
+  "name": "bedd-showcase",
+  "private": true,
+  "description": "Records the BeDD showcase videos: headless games driven over WebSocket",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "record": "node record.mjs",
+    "demo": "node demo.mjs",
+    "encode": "node encode.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}
