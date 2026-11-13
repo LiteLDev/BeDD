@@ -2,35 +2,70 @@
 
 ## 构建
 
-需要 Windows x64、[xmake](https://xmake.io)、MSVC 14.4x 或更新的 Visual Studio 生成工具，以及 LLVM（`clang-cl`）。
-`tools/build.ps1` 会找到它们，缺的用 winget 安装，然后构建：
+需要 Windows x64、[xmake](https://xmake.io)、带 C++ 工作负载（MSVC 14.4x 或更新）的 Visual Studio 生成工具（2022 或 2026）、
+构建模组用的 LLVM（`clang-cl`）、构建 `BeDD.exe` 用的 .NET 10 SDK，以及构建文档站点用的 Node.js 24 或更新版本。
+缺的东西用 winget 装一次（LLVM 和生成工具会要求管理员权限），然后开一个新终端，让 `PATH` 包含它们：
 
 ```powershell
-pwsh -NoProfile -File tools/build.ps1   # [-Mode debug]
+winget install -e --id Xmake-io.Xmake
+winget install -e --id LLVM.LLVM
+winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+#   或 Visual Studio 2026：--id Microsoft.VisualStudio.BuildTools，--override 相同
+winget install -e --id Microsoft.DotNet.SDK.10
+winget install -e --id OpenJS.NodeJS.LTS
 ```
 
-手动构建：
+**模组**（`bin\BeDD\`：DLL 和它的 manifest）。xmake 自己会找到生成工具；LLVM 要在 `PATH` 上：
 
 ```powershell
-xmake f -a x64 -m release -p windows --target_type=client -y
-xmake -y        # -> bin\BeDD\（DLL、manifest 以及 client\ 里的所有文件）
+$env:PATH = "C:\Program Files\LLVM\bin;$env:PATH"
+xmake f -P . -y -m release -p windows --target_type=client   # 调试版用 -m debug
+xmake -P . -y
 ```
 
-模组打包器从 `git describe` 读取版本号，所以仓库至少要有一个提交。
+`-P .` 表示构建当前目录的项目。不加的话 xmake 会向上查找项目，在另一个检出里的 git worktree 中会去构建那个检出。
+模组打包器从 `git describe` 读取版本号，所以仓库至少要有一个提交（以及它的标签：浅克隆里先 `git fetch --tags`）。
 
-**服务端目标**（客户端服务端共同调试模式）：`tools/build.ps1 -TargetType server`，或上面换成 `--target_type=server`，
+**服务端目标**（客户端服务端共同调试模式）：上面换成 `--target_type=server`，
 构建装了 LeviLamina 的 Bedrock 专用服务器（BDS）运行的模组，输出到 `bin\BeDD-server\`（DLL 和 manifest，平台 `server`）。
 它只有控制管道、只用本机网络和服务端操作（`src/ServerTimeScale.cpp`），不含客户端的任何部分（文件由 `xmake.lua` 列出；
 `src/` 的其余部分需要客户端版 LeviLamina 的头文件）。把这个目录复制到服务器的 `mods\`（即 `mods\BeDD-server\`）；它读取 `mods\BeDD-server\config\config.json`，提供 `\\.\pipe\BeDD-Server`。
 
-`xmake-requires.lock` 锁定两个目标的包，但 xmake 会把它改写成只含当前配置目标的锁定项。`tools/build.ps1` 构建完会把它恢复；
-手动构建时，配置另一个目标前先 `git checkout xmake-requires.lock`（CI 也这样做）。要更新锁定版本，分别配置两个目标，
-保留两边的条目，提交合并后的文件。
+```powershell
+git checkout -- xmake-requires.lock
+xmake f -P . -y -m release -p windows --target_type=server
+xmake -P . -y
+git checkout -- xmake-requires.lock
+```
 
-`tools\dev.ps1 [-Trace]` 是一个试验场：它拿到共享的 e2e 锁（`%APPDATA%\levilauncher.exe\bei-e2e.lock`），把模块部署进 BeDD 找到的实例
-（新电脑上先准备好，见[在新电脑上准备](/zh/guide/new-pc)），没有管理窗口时先启动它，通过 LeviLauncher 启动游戏（游戏显示在管理窗口里），并把每次前台和光标锁定的变化记录到
-`tools\out\desktop-watch.log`，直到游戏退出或 `tools\out\dev.stop` 存在（`tools\out\dev.restart` 会重新部署并重启，不释放锁）。
-它最后总会关掉游戏、删掉模块并释放锁。
+`xmake-requires.lock` 锁定两个目标的包，但 xmake 会把它改写成只含当前配置目标的锁定项：构建完、配置另一个目标前，
+先 `git checkout -- xmake-requires.lock`（CI 也这样做）。要更新锁定版本，分别配置两个目标，保留两边的条目，提交合并后的文件。
+
+**应用**（`BeDD.exe`，C# NativeAOT）。AOT 链接器通过 `vswhere.exe` 找 C++ 生成工具，它在 Visual Studio Installer 目录里；
+发布时把它加到 `PATH`：
+
+```powershell
+$env:PATH = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer;$env:PATH"
+dotnet publish app/BeDD/BeDD.csproj -c Release -o bin\app   # -> bin\app\BeDD.exe
+dotnet test app/BeDD.slnx                                   # 单元测试（不需要 vswhere）
+```
+
+**开发循环。** `bin\app\BeDD.exe dev` 是刚构建好的模组的试验场：它为开发用的槽位克隆基础实例（`instance clone`，默认槽位 9，可用 `--slot` 改），
+把 `bin\BeDD` 装进克隆（`mod install`，或用 `--from <dir>` 指定），在后台启动游戏（`launch`，标签默认 `dev`，可用 `--label` 改），然后保持运行。
+期间它把每次前台窗口和光标锁定矩形的变化记录到 `tools\out\desktop-watch.log`（或 `--watch-log <file>`）：
+以 `MINECRAFT HAS THE FOREGROUND` 结尾的行表示有游戏抢了焦点（dev 同时会打印一条警告），锁定矩形要一直是 `full`。
+这份日志就是游戏没有抢用户鼠标键盘的证据。
+
+```powershell
+bin\app\BeDD.exe dev                 # Ctrl+C 关掉游戏并退出
+bin\app\BeDD.exe dev --slot 3 --keep # dev 退出时让游戏继续运行
+bin\app\BeDD.exe dev --watch-only    # 只监视桌面（游戏由别的方式启动）
+```
+
+Ctrl+C 或创建 `tools\out\dev.stop` 会关掉游戏（除非 `--keep`）并结束 dev；`tools\out\dev.restart` 会关掉游戏、重新安装重新构建的模组并再次启动。
+游戏退出时 dev 也会结束。它只会关闭从自己的克隆启动的游戏，同一个槽位同时只能有一个 dev 循环
+（锁是 `%LOCALAPPDATA%\BeDD\locks\dev-<slot>.lock`，dev 无论怎样退出都会释放）。`BeDD.exe` 是窗口程序，shell 可能不会等它结束：
+在 PowerShell 里用管道（`bin\app\BeDD.exe dev | Out-Host`）让提示符一直等到 dev 结束，这时用 `tools\out\dev.stop` 结束它。
 
 ## 文档与展示素材
 
@@ -80,7 +115,7 @@ xmake -y        # -> bin\BeDD\（DLL、manifest 以及 client\ 里的所有文�
 1. Fork 仓库，从 `main` 建分支。
 2. 每个 pull request 只做一件事。说明它做了什么、你怎么测试的。
 3. 遵循现有风格：C++20、仓库里的 `.clang-format` 和 `.editorconfig`，代码和注释用英文。
-4. 在游戏里测试：`tools/dev.ps1 -Trace`，然后通过 `BeDD.psm1` 驱动游戏，检查输入有效、游戏从不抢前台（`tools/out/desktop-watch.log`），
+4. 在游戏里测试：`bin\app\BeDD.exe dev`，然后通过 `BeDD.exe` 驱动游戏，检查输入有效、游戏从不抢前台（`tools/out/desktop-watch.log`），
    真实输入也到不了游戏。
 5. CI 通过后才能合并。
 
