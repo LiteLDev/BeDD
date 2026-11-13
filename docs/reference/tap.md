@@ -2,7 +2,7 @@
 
 The tap is a read-only binary stream of the game packets the client receives and sends, for
 [bedboo](https://github.com/LiteLDev/bedboo)'s transport `bedd`. It is on by default; config `tap` set to `false`
-turns it off ([Configuration](/guide/configuration#keys-for-bedboo)).
+turns it off ([Configuration](/guide/configuration#feature-keys)).
 
 ## Subscribing and frames
 

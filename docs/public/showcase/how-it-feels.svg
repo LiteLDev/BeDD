@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-labelledby="t d">
   <title id="t">Your input stays yours, the script drives the games</title>
-  <desc id="d">Your mouse and keyboard go to your own apps and never reach the games. A test script sends keys, text and clicks over one pipe per game to three headless Minecraft instances, shown together in one manager window, and each game answers once it has handled the input.</desc>
+  <desc id="d">Your mouse and keyboard go to your own apps and never reach the games. A test script sends keys, text and clicks over one WebSocket per game to three headless Minecraft instances, shown together in one manager window, and each game answers once it has handled the input.</desc>
   <style>
     .bg { fill: #16213a; }
     .card { fill: #1f2d4b; stroke: #33476f; stroke-width: 2; }
@@ -78,7 +78,7 @@
 
   <!-- the script -->
   <rect class="card" x="430" y="250" width="320" height="220" rx="14"/>
-  <text class="h" x="454" y="290">e2e.ps1</text>
+  <text class="h" x="454" y="290">e2e.mjs</text>
   <rect class="hl l1" x="444" y="306" width="292" height="26" rx="4"/>
   <rect class="hl l2" x="444" y="340" width="292" height="26" rx="4"/>
   <rect class="hl l3" x="444" y="374" width="292" height="26" rx="4"/>
@@ -160,5 +160,5 @@
   </g>
   <path class="ok r3" d="M1196 616 l8 8 l16 -18"/>
 
-  <text class="s" x="1050" y="684" text-anchor="middle">headless games, one pipe each, one manager window</text>
+  <text class="s" x="1050" y="684" text-anchor="middle">headless games, one WebSocket each, one manager window</text>
 </svg>

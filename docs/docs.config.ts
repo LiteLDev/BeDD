@@ -17,8 +17,9 @@ interface Labels {
   scripts: string;
   usage: string;
   severalGames: string;
+  operationModes: string;
   modes: string;
-  harness: string;
+  integrating: string;
   configuration: string;
   troubleshooting: string;
   websocket: string;
@@ -41,8 +42,9 @@ const LABELS: Record<string, Labels> = {
     scripts: 'Writing tests',
     usage: 'Driving the game',
     severalGames: 'Several games at once',
-    modes: 'Client and server modes',
-    harness: 'Plugging into a harness',
+    operationModes: 'Operation modes',
+    modes: 'Where the world runs',
+    integrating: 'Integrating with your tests',
     configuration: 'Configuration',
     troubleshooting: 'Troubleshooting',
     websocket: 'WebSocket API',
@@ -63,8 +65,9 @@ const LABELS: Record<string, Labels> = {
     scripts: '编写测试',
     usage: '驱动游戏',
     severalGames: '多开',
-    modes: '客户端与服务端模式',
-    harness: '接入测试框架',
+    operationModes: '操作模式',
+    modes: '世界在哪里运行',
+    integrating: '接入你的测试',
     configuration: '配置',
     troubleshooting: '常见问题',
     websocket: 'WebSocket 接口',
@@ -93,9 +96,10 @@ const nav = (p: string, t: Labels): NavEntry[] => [
         text: t.scripts,
         items: [
           { text: t.usage, link: `${p}guide/usage` },
+          { text: t.operationModes, link: `${p}guide/operation-modes` },
           { text: t.severalGames, link: `${p}guide/several-games` },
           { text: t.modes, link: `${p}guide/modes` },
-          { text: t.harness, link: `${p}guide/harness` },
+          { text: t.integrating, link: `${p}guide/integrating` },
           { text: t.configuration, link: `${p}guide/configuration` },
         ],
       },

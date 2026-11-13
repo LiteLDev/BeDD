@@ -1,83 +1,91 @@
-# Client and server modes
+# Where the world runs
 
-Be.D.D. debugs a client mod in one of three setups:
+Be.D.D. debugs a client mod in one of three world modes. This is about where the world runs, not about how your test
+drives the game (that is the [operation mode](/guide/operation-modes)).
 
-| Mode | What runs | Use it for |
+| World mode | What runs | Use it for |
 |---|---|---|
-| **Client only** | a game with the BeDD module, in a singleplayer or LAN world | most client mod tests |
-| **Client + server** | a game with BeDD and a Bedrock Dedicated Server (BDS) with BeDD's server module, on the same PC | client behaviour against a real server, both sides scripted; the server's game speed leads the client's |
-| **Client → remote** | a game with BeDD joined to a server elsewhere | a server you do not run (BeDD is only in the client) |
+| **Client only** (`ClientOnly`, default) | a game with the BeDD mod, in a singleplayer or LAN world | most client mod tests |
+| **Client + server** (`ClientServer`) | a game with BeDD and a Bedrock Dedicated Server (BDS) with BeDD's server mod, on the same PC | client behaviour against a real server, both sides scripted; the server's game speed leads the client's |
+| **Client → remote** (`Remote`) | a game with BeDD joined to a server elsewhere | a server you do not run (BeDD is only in the client) |
 
-The client side is the same in all three: [Driving the game](/guide/usage), [Several games at once](/guide/several-games).
-This page is about the server.
+Pick it per run with `BeDD.exe launch --world-mode <mode>`, or once per clone with
+`BeDD.exe mod config <instance> --set mode=<mode>`. The client side is the same in all three:
+[Driving the game](/guide/usage), [Several games at once](/guide/several-games). This page is about the server.
 
 ## Client + server
 
-`BeDDSetup.psm1` sets up a server and `Start-BeDDServer.ps1` runs it in the background, both next to the module in
-`bin\BeDD`:
-
 ```powershell
-Import-Module .\BeDDSetup.psm1
-Initialize-BeDDServer -Name s1 -ModuleDir ..\BeDD-server    # %LOCALAPPDATA%\BeDD\servers\s1, made ready
-$s = & .\Start-BeDDServer.ps1 -Name s1                       # up, with BeDD's pipe; $s.Port, $s.PipeName
-Connect-BeDD -PipeName $s.PipeName                           # the server's control pipe (BeDD.psm1)
-# ... start a game (Start-BeDDGame.ps1) and join 127.0.0.1:$($s.Port) from it ...
-& .\Start-BeDDServer.ps1 -Name s1 -Stop                      # saves the world and exits
+BeDD.exe server init s1                     # %LOCALAPPDATA%\BeDD\servers\s1, made ready
+BeDD.exe server start s1 --json             # up in the background: pid, port, url, token
+BeDD.exe launch --slot 1 --world-mode ClientServer --detach
+# ... join 127.0.0.1:<port> from the game (the join op), drive both sides ...
+BeDD.exe server stop s1                     # saves the world and exits
+```
+
+The server has a WebSocket of its own, found the same way as a game's (`run\<pid>.json` with `"kind": "server"`,
+`BeDD.exe ps --json`). It answers `ping`, `state`, `server` (tick, ticks per second, port, players), `timescale` and
+`command`:
+
+```js
+await server('command', { command: 'time set day' });   // as the server console would; replies the output lines
+await server('timescale', { scale: 3 });                 // the game speed of the server, which its players follow
 ```
 
 ### Setting up a server
 
-`Initialize-BeDDServer` installs LeviLamina's server package with lip into an empty folder; that package brings the
-official BDS of Minecraft 1.26.60 with it (downloaded from minecraft.net, about 100 MB). Like the game setup, it
-skips whatever is already done, runs one setup at a time on the PC and never asks anything, so harnesses and CI can
-call it before every run. A server's mods live in `mods\`, so the module goes to `mods\BeDD-server` (LeviLamina loads a mod only from the folder named after it).
+`server init` installs LeviLamina's server package with lip (downloaded to `%LOCALAPPDATA%\BeDD\tools`) into an empty
+folder; that package brings the official BDS of Minecraft 1.26.60 with it (downloaded from minecraft.net, about
+100 MB), and puts BeDD's server mod into `mods\BeDD-server`. It skips whatever is already done, runs one setup at a
+time on the PC and never asks anything, so harnesses and CI can call it before every run.
 
-| Parameter | |
+| Flag | |
 |---|---|
-| `-Name` | the server, a folder under `%LOCALAPPDATA%\BeDD\servers` (`BEDD_SERVERS_DIR`); default `server` |
-| `-Port`, `-PortV6` | default: the server's ports from before, else the first free pair of 19140/19141, 19142/19143, …, so servers never meet a game's 19132 or each other |
-| `-Transport` | default `nethernet`: since 1.26.60 the game joins servers over NetherNet only (a `raknet` server fails with "Terracotta"). The server signals on TCP `server-port` and carries the game over UDP; with `-ServerIp 127.0.0.1` (the default) it publishes `127.0.0.1:<port>` for that (`server-udp-ports`), since BeDD keeps both sides' sockets on loopback. The first join to a server asks "Trust this server?" |
-| `-ServerIp` | default `127.0.0.1`: only games on this PC join; `''` listens on every interface |
-| `-OnlineMode` | default `$false`: games join without Xbox authentication |
-| `-LevelName`, `-Gamemode`, `-Difficulty`, `-LevelSeed`, `-MaxPlayers`, `-AllowCheats` | `server.properties` (defaults `Bedrock level`, `creative`, `peaceful`, random, 10, `$true`) |
-| `-Properties @{ 'view-distance' = 16 }` | any other `server.properties` key |
-| `-ModuleDir` | the BeDD server module (`bin\BeDD-server`), copied to `mods\BeDD-server` when it changed. `Start-BeDDServer.ps1` starts no server without it ([no firewall prompts](#no-firewall-prompts)) |
-| `-PipeName` | BeDD's control pipe in the server, default `BeDD-Server-<Name>` |
-| `-TimeScale` | config `timeScale`: the game speed the server starts with |
-| `-Trace`, `-Config @{ … }` | config `trace`, and any other key of the module's `config\config.json` |
+| `<name>` | the server, a folder under `%LOCALAPPDATA%\BeDD\servers` (`BEDD_SERVERS_DIR`); default `server` |
+| `--port`, `--port-v6` | default: the server's ports from before, else the first free pair of 19140/19141, 19142/19143, …, so servers never meet a game's 19132 or each other |
+| `--transport` | default `nethernet`: since 1.26.60 the game joins servers over NetherNet only (a `raknet` server fails with "Terracotta"). The server signals on TCP `server-port` and carries the game over UDP; with `--server-ip 127.0.0.1` (the default) it publishes `127.0.0.1:<port>` for that (`server-udp-ports`), since BeDD keeps both sides' sockets on loopback. The first join to a server asks "Trust this server?" |
+| `--server-ip` | default `127.0.0.1`: only games on this PC join; `''` listens on every interface |
+| `--online-mode` | games must sign in with Xbox to join (default off) |
+| `--property key=value` | any `server.properties` key, repeatable: `level-name`, `gamemode` (default `creative`), `difficulty` (`peaceful`), `level-seed`, `max-players`, `allow-cheats` (`true`), `view-distance`, … |
+| `--set key=value` | a key of the server mod's `config\config.json`, repeatable: `timeScale` (the game speed it starts with), `trace`, … |
 
-It returns the server: `Dir`, `Port`, `PortV6`, `PipeName`, `LogPath` and `Problems` (`bedd` while it has no BeDD
-module). `Get-BeDDServer -Name s1` returns the same without changing anything.
+`BeDD.exe server list` shows every server with its folder, ports and whether it runs; `server remove <name>`
+deletes one.
 
 ### Starting and stopping
 
-`Start-BeDDServer.ps1 -Name s1` starts `bedrock_server_mod.exe` (the BDS with LeviLamina) with no window at all:
-nothing shows up on the desktop or takes the focus. Everything the server prints goes to `logs\console.log` in its folder. It waits until the server is
-up and, with the module, until BeDD's pipe exists, and returns `Process`, `PipeName` (`$null` without the module),
-`Port`, `PortV6`, `Dir` and `LogPath`. A server that already runs is returned as it is.
+`server start <name>` starts `bedrock_server_mod.exe` (the BDS with LeviLamina) with no window at all: nothing shows
+up on the desktop or takes the focus. Everything the server prints goes to `logs\console.log` in its folder. It waits
+until the server is up and its WebSocket listens, and prints `pid`, `port`, `portV6`, `url`, `token`, `dir` and
+`log`. A server that already runs is reported as it is. `--timeout <s>` is how long to wait (180).
 
-| Parameter | |
-|---|---|
-| `-Name`, `-ServersDir` | which server |
-| `-Command '<line>'` | type a line into the server console, e.g. `-Command 'time set day'` |
-| `-Stop` | send `stop` (the server saves the world and exits), and kill it after `-StopTimeoutSeconds` (30) |
-| `-TimeoutSeconds` | how long to wait for it to start (180) |
-| `-AllowFirewallPrompt` | start it without BeDD's loopback binding (see below) |
+`server stop <name>` sends `stop` (the server saves the world and exits), and kills it after 30 s.
 
 ### No firewall prompts
 
 A BDS listens on every network interface, and the first time a program does that Windows Firewall asks on the desktop
-whether to allow it, once per server folder, which would stop an unattended run. BeDD's server module binds every
+whether to allow it, once per server folder, which would stop an unattended run. BeDD's server mod binds every
 socket of the server to the loopback address instead (config `loopbackOnly`, default on, as in the client), so Windows
-never asks, and only games on this PC can join. `Initialize-BeDDServer` also sets `server-ip=127.0.0.1` and turns LAN
+never asks, and only games on this PC can join. `server init` also sets `server-ip=127.0.0.1` and turns LAN
 visibility off, which would otherwise bind Bedrock's default ports as well.
 
-So `Start-BeDDServer.ps1` refuses to start a server that has no BeDD server module in `mods\BeDD-server`, has
-another module there, or has `"loopbackOnly": false` in its `config.json`, and says which. Should LeviLamina still
-fail to load the module, it stops the server before the server opens its network. `-AllowFirewallPrompt` starts it
-anyway, for a server that games on other PCs should join (with `-ServerIp ''`): then allow it when Windows asks.
+So `server start` refuses to start a server that has no BeDD server mod in `mods\BeDD-server`, has another mod there,
+or has `"loopbackOnly": false` in its `config.json`, and says which. Should LeviLamina still fail to load the mod, it
+stops the server before the server opens its network. `--allow-firewall-prompt` starts it anyway, for a server that
+games on other PCs should join (with `--server-ip ''`): then allow it when Windows asks.
 
 ### Several servers
 
-Each server has its own folder, ports and pipe, so runs in parallel each start their own: give each a `-Name` of its
-own (e.g. the slot of its game) and leave `-Port` out.
+Each server has its own folder, ports and WebSocket, so runs in parallel each start their own: give each a name of
+its own (e.g. the slot of its game) and leave `--port` out.
+
+## Client → remote
+
+```powershell
+BeDD.exe mod config 1.26.60.05-1 --set 'allowHosts=["play.example.net"]'
+BeDD.exe launch --slot 1 --world-mode Remote --exclusive-signaling --detach
+```
+
+The game stays on loopback for everything except the hosts in `allowHosts`
+([Configuration](/guide/configuration#no-firewall-prompts)). A server that needs an online sign-in also needs the PC
+to itself while it plays: `--exclusive-signaling` ([Rules for parallel runs](/guide/several-games#rules-for-parallel-runs)).
