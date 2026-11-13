@@ -423,6 +423,7 @@ json handle(json const& j) {
     } else if (op == "ui") {
         r = uiOp(j);
     } else if (op == "oreui") {
+        if (!options().ui) return {{"ok", false}, {"code", "disabled"}, {"key", "ui"}, {"error", "oreui is off (config.json \"ui\": true)"}};
         return oreUiOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");

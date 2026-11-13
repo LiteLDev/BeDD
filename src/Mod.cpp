@@ -78,7 +78,6 @@ void readOptions(std::filesystem::path const& file) {
     if (j.value("mute", true) == false) log().warn("mute: false is ignored: a BeDD game is always silent");
     gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
     gOptions.tap          = j.value("tap", gOptions.tap);
-    gOptions.ui           = j.value("ui", gOptions.ui);
     gOptions.tapLoopback  = gOptions.tap && j.value("tapLoopback", gOptions.tapLoopback);
     gOptions.tapJournalMiB = j.value("tapJournalMiB", gOptions.tapJournalMiB);
     gOptions.allowSend    = j.value("allowSend", gOptions.allowSend);

@@ -67,8 +67,6 @@ struct Options {
     /// The tap (Tap.cpp, `{op:"tap", action:"subscribe"}`): the game packets the client receives and
     /// sends, with a join journal (TapJournal.cpp) so a reader can attach in the middle of a session.
     bool tap = true;
-    /// The `ui` op (the UI tree of the screens the game shows).
-    bool ui = true;
     /// With "tap": also tap singleplayer worlds and LAN worlds this client hosts (TapLoopback.cpp).
     /// Read as tap && tapLoopback, so it is off unless the tap is on.
     bool tapLoopback = true;
