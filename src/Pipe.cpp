@@ -1,6 +1,7 @@
 // Control pipe: \\.\pipe\BeDD, one JSON object per line in each direction.
 // See README.md for the protocol.
 #include "BeDD.h"
+#include "UiTree.h"
 
 #include <algorithm>
 #include <array>
@@ -324,6 +325,7 @@ json handle(json const& j) {
         // mouse: absolute pointer (menus, inventories). raw: relative movement (the in-world
         // camera while the mouse is grabbed). Buttons and wheel work the same in both.
         bool        raw    = op == "raw";
+        if (!raw && j.contains("ref")) return uiMouseOp(j); // aimed at a control of a `ui` snapshot (UiActions.cpp)
         std::string action = j.value("action", "move");
         if (!raw && (j.contains("x") || j.contains("rx") || action == "move")) {
             postMove(targetPoint(j));
@@ -389,6 +391,8 @@ json handle(json const& j) {
         r = timeScaleOp(j);
     } else if (op == "join") {
         r = joinOp(j);
+    } else if (op == "ui") {
+        r = uiOp(j);
     } else {
         throw OpError("unknown op '" + op + "'");
     }
@@ -481,8 +485,9 @@ std::mutex gInputMutex;
 int maxInstances() { return std::clamp(options().pipeInstances, 1, PIPE_UNLIMITED_INSTANCES - 1); }
 
 // Ops that run without gInputMutex: they post no window input. `tap` and `world` only read;
-// `look`, `input`, `send`, `stack`, `timescale` and `join` hand their work to the client thread (and
-// may wait for it, up to their timeoutMs), so serializing them would only stall the other clients.
+// `look`, `input`, `send`, `stack`, `timescale`, `join` and a `ui` snapshot (no "action") hand their
+// work to the client thread (and may wait for it, up to their timeoutMs), so serializing them would
+// only stall the other clients.
 bool concurrentOp(std::string const& line) {
 #ifdef LL_PLAT_S
     (void)line;
@@ -492,7 +497,7 @@ bool concurrentOp(std::string const& line) {
     if (!req.is_object()) return true;
     std::string op = req.value("op", "");
     return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
-        || op == "stack" || op == "timescale" || op == "join";
+        || op == "stack" || op == "timescale" || op == "join" || (op == "ui" && !req.contains("action"));
 }
 
 std::string handleClientLine(std::string const& line) {

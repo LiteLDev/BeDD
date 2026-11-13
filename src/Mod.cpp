@@ -1,4 +1,5 @@
 #include "BeDD.h"
+#include "UiTree.h"
 
 #include <array>
 #include <fstream>
@@ -80,6 +81,11 @@ void readOptions(std::filesystem::path const& file) {
         if (it->is_number() && it->get<double>() >= 0.05 && it->get<double>() <= 20) gOptions.timeScale = it->get<float>();
         else log().warn("timeScale: {} is not a number in 0.05..20; using 1", it->dump());
     }
+    gOptions.ui         = j.value("ui", gOptions.ui);
+    if (auto it = j.find("uiMaxNodes"); it != j.end()) {
+        if (it->is_number_integer() && it->get<int64_t>() >= 1 && it->get<int64_t>() <= 100000) gOptions.uiMaxNodes = it->get<int>();
+        else log().warn("uiMaxNodes: {} is not a number in 1..100000; using 1000", it->dump());
+    }
 }
 
 #ifndef LL_PLAT_S
@@ -125,6 +131,7 @@ bool Mod::enable() {
     if (gOptions.allowSend) installSend();
     if (gOptions.allowStack) installStack();
     installTimeScale();
+    startUi();
     log().info("BeDD enabled");
     return true;
 }
@@ -132,6 +139,7 @@ bool Mod::enable() {
 bool Mod::disable() {
     // First: wakes a pipe thread waiting for a look, so stopPipeServer can join it.
     stopLook();
+    stopUi(); // first: fails a ui read the pipe thread waits on, so stopPipeServer can join it
     stopGameState();
     uninstallGameActions(); // first: its tick listener drives the virtual mouse
     uninstallJoin(); // first: answers a join the pipe thread waits on, so stopPipeServer() can join it
