@@ -266,6 +266,17 @@ void resetState(bool local) {
     gLocal = local;
     gClientRate.reset();
     gServerRate.reset();
+    // Server jobs the last world's server never ran are dropped, not run on the next one. Since
+    // LeviLamina 26.60.4 the client's ServerInstance stays set until ItemRegistry::shutdown, so a
+    // set made while a local world closes is queued for a server that no longer updates. Their
+    // promises break outside the lock; a set still waiting answers "refused".
+    std::vector<std::function<void()>> stale;
+    {
+        std::lock_guard jobs(gJobsMutex);
+        stale.swap(gServerJobs);
+        gServerJobsDue = false;
+    }
+    stale.clear();
     std::lock_guard lock(gMutex);
     gInLevel    = false;
     gConfigDue  = false;

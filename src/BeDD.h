@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -22,13 +23,15 @@
 //   * Window.cpp subclasses the game window. It swallows the focus-loss messages (so the game never
 //     pauses or releases its "focus") and every *real* client-area input message (so the user's
 //     mouse and keys never reach the game), and it dispatches synthetic input posted by the control
-//     pipe straight into the game's own window procedure. The window is a tool window off screen.
+//     WebSocket clients straight into the game's own window procedure. The window is a tool window
+//     off screen.
 //   * ApiHooks.cpp hooks the user32 calls through which the game would otherwise grab or read the
 //     real devices (ClipCursor, SetCursorPos, GetCursorPos, GetAsyncKeyState, ...): they see the
 //     virtual state below instead.
-//   * Pipe.cpp serves a JSON-lines control protocol on \\.\pipe\BeDD.
-//   * Manager.cpp links the game to the session's manager window (client/BeDDManager.ps1),
-//     which shows every game and closes them all when it is closed. A game it cannot link closes.
+//   * Pipe.cpp serves the JSON control protocol over the WebSocket server of WsServer.cpp
+//     (127.0.0.1, token in run\<pid>.json: Discovery.cpp).
+//   * Manager.cpp: the manager (BeDD.exe's window) attaches over WebSocket and shows the game; with
+//     config manager on, a game it does not attach in time, or whose manager goes away, closes.
 namespace bedd {
 
 [[nodiscard]] ll::io::Logger& log();
@@ -39,12 +42,15 @@ struct Options {
     int clientHeight = 0;
     /// Log message and API-hook statistics every few seconds.
     bool trace = false;
-    /// Control pipe name (\\.\pipe\<name>); one per game instance when several run in parallel.
-#ifdef LL_PLAT_S
-    std::string pipeName = "BeDD-Server";
-#else
-    std::string pipeName = "BeDD";
-#endif
+    /// WebSocket port on 127.0.0.1; 0 = an ephemeral one (run\<pid>.json tells which).
+    int wsPort = 0;
+    /// WebSocket clients served at once.
+    int wsMaxClients = 8;
+    /// Origin headers a WebSocket request may carry (a web page); any other one gets HTTP 403.
+    std::vector<std::string> allowOrigins;
+    /// The game closes when no manager attached within 30 s of its window existing, or when the
+    /// attached manager's connection drops (3 s to attach again). Off: it stays (hidden) whatever happens.
+    bool manager = true;
     /// Keep the game on the PC: wildcard bind()s become loopback ones (no firewall prompts) and
     /// servers off the PC are not queried (no bogus "LAN worlds").
     bool loopbackOnly = true;
@@ -52,33 +58,32 @@ struct Options {
     /// the PC are queried, and UDP goes out on the PC's address towards them, to them only.
     std::vector<std::string> allowHosts;
     /// Where the world runs: "ClientOnly" (a local world), "ClientServer" (a BDS with BeDD on this
-    /// PC), "Remote" (a server without BeDD). Start-BeDDGame.ps1 -Mode writes it; `state` reports it.
+    /// PC), "Remote" (a server without BeDD). `BeDD.exe mod config --world-mode` writes it; `state` reports it.
     std::string mode = "ClientOnly";
-    /// BeDDManager.ps1, started (-Ensure) when no manager window runs; Install-BeDDMod writes it.
-    std::string managerScript;
     /// Mute the game (FMOD master channel group): headless games stay silent.
     /// Hook the client's own game systems for the world, look, input, slot, action and button ops.
     /// Off: those ops answer code:"disabled" and nothing is hooked.
-    bool gameHooks = false;
-    /// Serve \\.\pipe\<pipeName>-tap (Tap.cpp): the game packets the client receives and sends,
-    /// with a join journal (TapJournal.cpp) so a reader can attach in the middle of a session.
-    bool tap = false;
-    /// Control-pipe clients served at once (nMaxInstances); 1 = one client at a time.
-    int pipeInstances = 4;
+    bool gameHooks = true;
+    /// The tap (Tap.cpp, `{op:"tap", action:"subscribe"}`): the game packets the client receives and
+    /// sends, with a join journal (TapJournal.cpp) so a reader can attach in the middle of a session.
+    bool tap = true;
     /// With "tap": also tap singleplayer worlds and LAN worlds this client hosts (TapLoopback.cpp).
     /// Read as tap && tapLoopback, so it is off unless the tap is on.
     bool tapLoopback = true;
     /// Size cap of the tap's join journal (late attach); past it the replay reports complete:false.
     int tapJournalMiB = 128;
     /// Allow the `send` op: the local client sends serverbound packets a caller serialized (Send.cpp).
-    bool allowSend = false;
+    bool allowSend = true;
     /// Packet ids `send` may send (text, command_request). 1, 30, 144 and 147 are always refused.
     std::vector<int> sendAllow{9, 77};
     /// Allow the `stack` op: the local client sends item stack requests a caller serialized (Stack.cpp).
-    bool allowStack = false;
+    bool allowStack = true;
     /// Game speed, 0.05..20; 1 = normal. A client applies it on entering a world it hosts
     /// (TimeScale.cpp); a server once it has started, and broadcasts it to its players (LevelEvent 3007).
     float timeScale = 1.0f;
+    /// The `ui` op and `mouse` with a ref (UiTree.cpp); uiMaxNodes caps the nodes of a snapshot.
+    bool ui         = true;
+    int  uiMaxNodes = 1000;
 };
 
 /// Read once in load() from <mod>/config/config.json.
@@ -220,21 +225,32 @@ void startInputTrace();
 void stopInputTrace();
 
 // ---------------------------------------------------------------------------------------------
-// Pipe (Pipe.cpp)
+// Control protocol (Pipe.cpp) over the WebSocket server (WsServer.cpp), found through run\<pid>.json
+// (Discovery.cpp)
 // ---------------------------------------------------------------------------------------------
-void startPipeServer();
-void stopPipeServer();
-/// One request line of the control protocol -> one reply line (with the newline).
+namespace ws {
+class Connection;
+}
+/// Listens, then writes the discovery file.
+void startControlServer();
+/// Deletes the discovery file, closes the listener and every connection, and joins their threads.
+void stopControlServer();
+/// One request (a JSON object) of the control protocol -> one reply line (with the newline).
 [[nodiscard]] std::string handleControlLine(std::string const& line);
-/// The control-pipe client whose request the current thread handles (ids start at 1 and are never
-/// reused); 0 off a client thread (the manager link, the game thread). Tag per-client state with it.
-[[nodiscard]] uint64_t currentPipeClient();
-/// Control-pipe clients connected now.
-[[nodiscard]] int pipeClients();
-/// Called with the client's id once a control-pipe client has disconnected, after its keys and
-/// buttons are released: release what it owns. Runs on the departing client's thread with input
-/// ops serialized; not called at shutdown. Register once, e.g. in enable().
-void onPipeClientGone(std::function<void(uint64_t)> fn);
+/// The client (WebSocket connection) whose request the current thread handles (ids start at 1 and
+/// are never reused); 0 off a client thread (the game thread). Tag per-client state with it.
+[[nodiscard]] uint64_t currentClient();
+/// The connection of currentClient() (nullptr off a client thread), e.g. for the tap to send on.
+[[nodiscard]] std::shared_ptr<ws::Connection> currentConnection();
+/// Runs `fn` on the current client's thread once the reply of the request it handles is sent
+/// (the tap's first frame must follow its subscribe reply).
+void afterReply(std::function<void()> fn);
+/// Clients connected now.
+[[nodiscard]] int connectedClients();
+/// Called with the client's id once a client has disconnected, after its keys and buttons are
+/// released: release what it owns. Runs on the departing client's thread with input ops
+/// serialized; not called at shutdown. Register once, e.g. in enable().
+void onClientGone(std::function<void(uint64_t)> fn);
 
 // ---------------------------------------------------------------------------------------------
 // Tap join journal (TapJournal.cpp): compacted clientbound frames since start_game, replayed to
@@ -253,10 +269,13 @@ struct TapJournalStats {
 [[nodiscard]] TapJournalStats tapJournalStats();
 
 // ---------------------------------------------------------------------------------------------
-// Manager link (Manager.cpp): \\.\pipe\BeDD-Manager-<session id>
+// Manager (Manager.cpp): `{op:"manager", action:"attach"}` from BeDD.exe's window; config manager
 // ---------------------------------------------------------------------------------------------
 void startManagerLink();
 void stopManagerLink();
+/// The `manager` op (attach, or the status without an action) and the `close` op: whole replies.
+[[nodiscard]] nlohmann::json managerOp(nlohmann::json const& req);
+[[nodiscard]] nlohmann::json closeOp(nlohmann::json const& req);
 
 // ---------------------------------------------------------------------------------------------
 // Tick cadence (TickCadence.cpp): the measured client tick interval, so waits follow the game speed.
@@ -285,7 +304,7 @@ struct WorldPose {
 };
 /// The last client-tick snapshot (any thread).
 [[nodiscard]] WorldPose worldPose();
-/// Replies of the `world` and `look` ops (pipe thread).
+/// Replies of the `world` and `look` ops (client thread).
 [[nodiscard]] nlohmann::json worldOp(nlohmann::json const& req);
 [[nodiscard]] nlohmann::json lookOp(nlohmann::json const& req);
 /// {ok:false, code:"disabled"} naming the gameHooks key.
@@ -296,11 +315,13 @@ void stopLook();
 void lookLevelExited();
 
 // ---------------------------------------------------------------------------------------------
-// Tap (Tap.cpp, NetTap.cpp): \\.\pipe\<pipeName>-tap, only with config "tap"
+// Tap (Tap.cpp, NetTap.cpp): binary WebSocket messages to one subscriber, only with config "tap"
 // ---------------------------------------------------------------------------------------------
 void startTap();
 void stopTap();
-/// The "tap" op reply fields (JSON object).
+/// The `tap` op: the status, or `action:"subscribe"` (the whole reply).
+[[nodiscard]] nlohmann::json tapOp(nlohmann::json const& req);
+/// The "tap" op status fields (JSON object).
 [[nodiscard]] std::string tapInfo();
 /// {hook name: installed} of the tap's hooks (JSON object, for "state").
 [[nodiscard]] std::string tapHooks();
@@ -315,7 +336,7 @@ struct TapLoopbackStats {
     int      hooks   = 0;
     int      link    = 0; // tap::Link
     uint64_t clientbound{}, echo{}, bytes{};
-    uint64_t unpublished{}; // frames counted while no tap pipe took them
+    uint64_t unpublished{}; // frames counted while no tap subscriber took them
     uint64_t guest{};       // clientbound packets to LAN guests (never published)
 };
 [[nodiscard]] TapLoopbackStats tapLoopbackStats();
@@ -327,7 +348,7 @@ void installGameActions();
 void uninstallGameActions();
 /// Releases every button a `button` op holds (BeDD is unloading).
 void releaseGameButtons();
-/// Releases the buttons control-pipe client `client` pressed through `button` (it disconnected).
+/// Releases the buttons client `client` pressed through `button` (it disconnected).
 void releaseGameButtonsOf(uint64_t client);
 /// Reply of a `slot`, `action` or `button` request.
 [[nodiscard]] nlohmann::json gameActionOp(std::string const& op, nlohmann::json const& req);
@@ -340,7 +361,7 @@ void installMoveInputHooks();
 void uninstallMoveInputHooks();
 /// Drop the move override now ("release", a control client disconnecting).
 void clearMoveInput();
-/// Drop the move override if control-pipe client `client` set it (it disconnected).
+/// Drop the move override if client `client` set it (it disconnected).
 void clearMoveInputOf(uint64_t client);
 /// The "input" op: the reply object (ok:false with a code on refusal).
 [[nodiscard]] nlohmann::json moveInputOp(nlohmann::json const& request);
@@ -348,7 +369,7 @@ void clearMoveInputOf(uint64_t client);
 } // namespace bedd
 
 // ---------------------------------------------------------------------------------------------
-// Send (Send.cpp): allowlisted serverbound packets from the control pipe (allowSend).
+// Send (Send.cpp): allowlisted serverbound packets from a client (allowSend).
 // ---------------------------------------------------------------------------------------------
 #include <nlohmann/json_fwd.hpp>
 
@@ -363,7 +384,7 @@ void uninstallSend();
 } // namespace bedd
 
 // ---------------------------------------------------------------------------------------------
-// Stack (Stack.cpp): item stack requests from the control pipe (allowStack).
+// Stack (Stack.cpp): item stack requests from a client (allowStack).
 // ---------------------------------------------------------------------------------------------
 #include <nlohmann/json_fwd.hpp>
 

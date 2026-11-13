@@ -13,7 +13,7 @@ option("target_type")
     set_values("client", "server")
 option_end()
 
-add_requires("levilamina 26.60.2", {configs = {target_type = get_config("target_type")}})
+add_requires("levilamina 26.60.7", {configs = {target_type = get_config("target_type")}})
 add_requires("levibuildscript")
 add_requires("nlohmann_json v3.12.0")
 
@@ -46,21 +46,14 @@ target(is_config("target_type", "server") and "BeDD-server" or "BeDD")
         {tools = {"clang_cl"}}
     )
     add_packages("levilamina", "nlohmann_json")
-    add_syslinks("user32", "ws2_32", "ole32", "uuid")
+    add_syslinks("user32", "gdi32", "ws2_32", "ole32", "oleaut32", "uuid", "windowscodecs", "bcrypt")
     add_includedirs("src")
     add_headerfiles("src/**.h")
     if is_config("target_type", "server") then
-        -- No game window, input, audio, tap or manager on a server: the pipe, the loopback-only
+        -- No game window, input, audio, tap or manager on a server: the WebSocket server, the loopback-only
         -- network (no firewall prompts) and the server units only.
-        add_files("src/Mod.cpp", "src/Pipe.cpp", "src/MemoryOperators.cpp", "src/NetHooks.cpp", "src/ServerTimeScale.cpp")
+        add_files("src/Mod.cpp", "src/Pipe.cpp", "src/WsServer.cpp", "src/Discovery.cpp", "src/MemoryOperators.cpp", "src/NetHooks.cpp", "src/ServerTimeScale.cpp")
     else
         add_files("src/**.cpp")
         remove_files("src/ServerTimeScale.cpp")
     end
-    after_build(function (target)
-        if get_config("target_type") == "server" then return end -- the PowerShell client drives games only
-        -- The PowerShell client and harness shim ship next to the mod, so a harness only needs bin\BeDD.
-        local bindir = path.join(os.projectdir(), "bin", target:name())
-        os.mkdir(bindir)
-        os.cp(path.join(os.projectdir(), "client", "*"), bindir)
-    end)

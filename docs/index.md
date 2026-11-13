@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Be.D.D.
   text: Minecraft tests that run in the background
-  tagline: Your script presses keys, types and clicks inside Minecraft Bedrock, while your own mouse, keyboard and windows stay yours, and several games play at once.
+  tagline: Your script moves the player, opens menus, presses keys and clicks inside Minecraft Bedrock, while your own mouse, keyboard and windows stay yours, and several games play at once.
   image:
     src: /logo.png
     alt: Be.D.D.
@@ -23,21 +23,21 @@ features:
   - title: Keep using your PC
     details: The game never takes the foreground, the cursor or your keystrokes, and your clicks never land in it.
     link: /guide/introduction
+  - title: Three ways to drive it, cheapest first
+    details: Game-level ops for bedboo's mineflayer API, a UI tree of the menus to click by name, and simulated keyboard, mouse and screenshots only as the last resort.
+    link: /guide/operation-modes
   - title: Several games at once
-    details: Each game instance has its own pipe; a cheap clone of an instance takes a few seconds.
+    details: Each game has its own WebSocket; a cheap clone of an instance takes a few seconds.
     link: /guide/several-games
   - title: One window for all of them
     details: The games of every test run on the PC show up live in one manager window instead of popping up on your desktop; closing it closes them all.
     link: /guide/several-games#the-manager-window
-  - title: Plays like a player
-    details: Keys, chat, key bindings, menus, hover tooltips, clicks and the camera all work as with a real mouse and keyboard.
-    link: /guide/usage
   - title: Deterministic
-    details: Every call returns once the game has handled the input, so no guessing sleeps. Screenshots work while the window is covered.
+    details: Every request returns once the game has handled it, so no guessing sleeps. Screenshots work while the window is covered.
     link: /reference/how-it-works
-  - title: Drop-in for existing harnesses
-    details: One file replaces the usual Click, Press-Key and Focus-Game helpers of LeviLauncher harnesses; scenarios stay as they are.
-    link: /guide/harness
+  - title: Any language
+    details: One JSON message per request over a local WebSocket, described by an AsyncAPI spec. One app, BeDD.exe, clones, sets up and starts the games.
+    link: /guide/integrating
 ---
 
 ![Three headless Minecraft games react to a test script in the manager window](/showcase/desktop.webp)
@@ -46,16 +46,20 @@ Be.D.D. (Bedrock Deep Dive) is named after the H.D.D. of Zenless Zone Zero: a Pr
 Hollows from afar, your script guides Minecraft from the background.
 
 It is a testing toolkit for end-to-end tests of [LeviLamina](https://github.com/LiteLDev/LeviLamina) client mods,
-not a mod for players: a client-side LeviLamina module that your test harness puts into a game instance for a run,
-the PowerShell client that drives it, and the scripts that set up, clone and start the games.
+not a mod for players: a client-side LeviLamina mod that serves a WebSocket, and `BeDD.exe`, the app that clones,
+sets up and starts the games and shows them all in one window.
 
 ```powershell
-Import-Module .\mods\BeDD\BeDD.psm1
-Connect-BeDD                               # waits until the game is up
-Send-BeDDKey E                             # open the inventory
-Send-BeDDMouse click -RX 0.5 -RY 0.474     # click at a fraction of the window
-Send-BeDDKey T; Send-BeDDText '/give @s apple 3'; Send-BeDDKey ENTER
-Save-BeDDScreenshot C:\temp\shot.png       # works while the window is covered
+BeDD.exe launch --slot 1 --detach --json   # {"pid":…,"url":"ws://127.0.0.1:53021/v1","token":"…"}
+```
+
+```js
+const ws = new WebSocket(`${url}?token=${token}`);                       // Node 24; any language works
+ws.onopen = () => {
+  ws.send(JSON.stringify({ id: 1, op: 'ui' }));                          // the menu as named nodes
+  ws.send(JSON.stringify({ id: 2, op: 'input', move: { x: 0, z: 1 } })); // walk forward, in a world
+};
+ws.onmessage = (e) => console.log(e.data);
 ```
 
 ::: tip Start here

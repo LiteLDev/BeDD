@@ -7,9 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+This will be **2.0.0**, a breaking release: Be.D.D. becomes one app, `BeDD.exe`, and the game speaks WebSocket only. The PowerShell client, the named pipes and the setup scripts are gone.
+
+### Breaking
+
+- **The transport is a WebSocket, and the only one.** The mod serves `ws://127.0.0.1:<port>/v1` instead of `\\.\pipe\<pipeName>`, `\\.\pipe\<pipeName>-tap` and the manager pipe. A client needs the token from the game's discovery file. Requests, replies and op names are the same JSON as before, one message each instead of one line each.
+- **No PowerShell left.** `BeDD.psm1`, `harness-shim.ps1`, `Start-BeDDGame.ps1`, `BeDDManager.ps1`, `BeDDSetup.psm1`, `Initialize-BeDD.ps1`, `clone-instance.ps1`, `Start-BeDDServer.ps1`, `tools/build.ps1`, `tools/dev.ps1` and the showcase scripts are removed; `BeDD.exe` and Node scripts replace them.
+- **Clones live under `%LOCALAPPDATA%\BeDD\instances\<gameVersion>-<slot>`**, slot 1 included, and the LeviLauncher instance is never written to. Clones next to the instance (`versions\<base>-hi<N>`) are no longer made or used.
+- **Release asset `bedd-windows-x64.zip`** (`BeDD/BeDD.exe`, `BeDD/mod/BeDD/`, `BeDD/mod/BeDD-server/`, `BeDD/spec/`) replaces `bedd-client-windows-x64.zip` and `bedd-server-windows-x64.zip`.
+- **Needs LeviLauncher 1.1 or newer**, whose command line BeDD uses to find the instance.
+- Config keys `pipeName`, `pipeInstances` and `managerScript` are gone (ignored if present); the feature keys `gameHooks`, `tap`, `allowSend` and `allowStack` now default to `true`.
+
+**Migrating from the PowerShell API.** Launch and set up with `BeDD.exe`, then send the same ops over the WebSocket:
+
+| Before | Now |
+|---|---|
+| `Initialize-BeDD.ps1 -Slot 2`, `clone-instance.ps1 -Slot 2` | `BeDD.exe instance clone --slot 2` (or let `launch` do it) |
+| `Start-BeDDGame.ps1 -Slot 2 -Label x` | `BeDD.exe launch --slot 2 --label x --json` (prints `url` and `token`) |
+| `Install-BeDDMod` / `Uninstall-BeDDMod` | `BeDD.exe mod install` / `mod uninstall`, `mod config` for the keys |
+| `Set-WorldSinglePlayer <dir>` | `BeDD.exe world singleplayer <dir>` |
+| `Connect-BeDD -PipeName p` | open `url` with the `token` (`BeDD.exe ps --json`, or `%LOCALAPPDATA%\BeDD\run\<pid>.json`) |
+| `Send-BeDDKey E`, `Get-BeDDWorld`, … | `{"id":1,"op":"key","key":"E"}`, `{"id":2,"op":"world"}`, …: the ops the cmdlets sent |
+| `Save-BeDDScreenshot` | the `screenshot` op (base64 PNG or JPEG) |
+| `BeDDManager.ps1 -List` / `-Shutdown` | `BeDD.exe ps` / `BeDD.exe manager stop` |
+| `Initialize-BeDDServer`, `Start-BeDDServer.ps1 [-Stop]` | `BeDD.exe server init`, `server start`, `server stop` |
+| `tools/build.ps1`, `tools/dev.ps1` | `xmake` and `dotnet publish` ([building](https://docs.levimc.org/BeDD/reference/building)), `BeDD.exe dev` |
+| `Register-BeDDNative` (harness C# input classes) | none: drive the game over the WebSocket from the harness |
+
+The entries below that name PowerShell scripts or pipes describe changes made before the switch; their scripts are replaced as in this table.
+
 ### Changed
 
-- **Minecraft 1.26.60 and LeviLamina 26.60.2** (client 1.26.60.05, BDS 1.26.60.06); 1.26.51 is no longer supported. The setup scripts look for and install those versions, and the tap's `HELLO` reports `game:"1.26.60.05"` and protocol 2225. The game no longer exports several functions BeDD used, so:
+- **LeviLamina 26.60.7.**
+- `gameHooks`, `tap`, `allowSend`, `allowStack` and the new `ui` default to `true`: every mode works out of the box, and the token is the boundary. A key set to `false` still answers `code:"disabled"`.
+- The manager window is part of `BeDD.exe` instead of a PowerShell script, and finds games through their discovery files. A game waits 30 s for it (90 s before).
+- The showcase recording and encoding scripts are Node scripts.
+- **Minecraft 1.26.60 and LeviLamina 26.60** (client 1.26.60.05, BDS 1.26.60.06); 1.26.51 is no longer supported. The setup scripts look for and install those versions, and the tap's `HELLO` reports `game:"1.26.60.05"` and protocol 2225. The game no longer exports several functions BeDD used, so:
   - `slot` and `action` press the keys of the default key map (hotbar `1`..`9`; drop Q, dropAll Ctrl+Q, inventory E, pause Escape) instead of calling `ClientInputCallbacks::handle*`; `perspective` still calls its callback. `slot` replies `via` keys or none (already held), and `action pause` is refused with `busy` while a screen is open, like the other actions (Escape would close the screen).
   - A failed `join` no longer replies `reason`.
   - The game joins servers over NetherNet only (a RakNet server fails with "Terracotta"), so `Initialize-BeDDServer -Transport` defaults to `nethernet`, and a server kept on loopback publishes `127.0.0.1:<port>` as its UDP address (`server-udp-ports`). With `loopbackOnly`, the game now also binds its sockets for an interface's own address to loopback (NetherNet binds one per interface; not with `allowHosts`), and a dual-stack socket goes to `::ffff:127.0.0.1` rather than `::1`, which reached no IPv4 server. Joins to a BDS on the PC work again.
@@ -24,6 +57,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`BeDD.exe`**, one NativeAOT app (C#, .NET 10, no runtime to install). Double-clicked, it is the manager window; with arguments, a command line in LeviLauncher's style, `BeDD.exe <noun> <verb> [--json]`: `instance list|show|clone|refresh|remove|path`, `mod install|uninstall|config`, `world singleplayer`, `launch`, `ps`, `stop`, `server init|start|stop|list|remove`, `manager status|stop`, `dev` and `version`. stdout carries only the result, `--json` prints one JSON document, and errors come with an exit code and a runnable hint.
+- **WebSocket transport.** 127.0.0.1 only, port from config `wsPort` (default 0: any free port), path `/v1`; a random token per start (`Authorization: Bearer` or `?token=`); requests with an `Origin` header refused unless config `allowOrigins` lists it; up to `wsMaxClients` connections (default 8), each one's held keys, buttons and `input` override released when it goes. The mod announces itself in `%LOCALAPPDATA%\BeDD\run\<pid>.json` (`url`, `token`, `instance`, `label`, …; `BEDD_HOME` moves the folder). Specified in `spec/bedd.asyncapi.yaml` (AsyncAPI 3.0), documented on the [WebSocket reference](https://docs.levimc.org/BeDD/reference/websocket).
+- **Three operation modes, all on at once.** `ping` reports `protocol: 2`, `defaultMode: "bedboo"` and the ops of each mode: `bedboo` (semantic ops, the default for scripts and agents), `ui` and `input` (simulated keyboard and mouse, the last resort).
+- **UI tree** (`ui` op, config `ui`; [#21](https://github.com/LiteLDev/BeDD/issues/21)): a snapshot of the screens as an accessibility-style tree (`role`, `name`, `text`, `value`, `state`, `bounds`, `actions`), and `click`, `setText` and `scroll` on a node by its `ref`; `mouse` takes a `ref` too. JSON UI screens are read in full; an Ore UI screen is one opaque node for now. Codes `stale_ref`, `stale_snapshot`, `occluded`, `not_ready`, `unsupported`.
+- **`screenshot` op**: the game's picture as base64 PNG or JPEG, scaled to `maxWidth` (960 by default), optionally a region, while the window is covered.
+- **`tap subscribe`**: the tap is a stream of binary WebSocket messages on the game's socket, one frame each, same framing and markers as before.
+- **`manager` and `close` ops**: the manager window attaches to each game over its WebSocket. Config `manager` (default `true`): a game that no manager attaches within 30 s, or that loses it, closes itself; `false` keeps the game hidden and running without one (CI).
+- Hardlinked clones per slot under `%LOCALAPPDATA%\BeDD\instances` (copies across volumes), refreshed when the LeviLauncher instance changes, found through `LeviLauncher.exe instance list --json` (`BEDD_LEVILAUNCHER`). Games start without taking the focus (`CreateProcessW`, `SW_SHOWNOACTIVATE`).
+- bedboo's `transport: 'bedd'` connects over the WebSocket.
 - **Server target** for the client+server debug mode: `--target_type=server` (`tools/build.ps1 -TargetType server`) builds `bin\BeDD-server\`, a mod for a Bedrock Dedicated Server with LeviLamina (release asset `bedd-server-windows-x64.zip`; the client zip is unchanged). It serves `\\.\pipe\BeDD-Server` (config `pipeName`) with `ping`, `state`, `server` (tick, measured TPS, players, port), `timescale` (probe; `scale` 0.05..20 and/or `paused`, run on the server thread and broadcast to every player as LevelEvent 3007, 0 while paused, and to each player who joins; BeDD on the client follows the speed and the pause) and `command` (runs a command as the console, returns its output). Config `timeScale` sets the speed once the server has started. Its `loopbackOnly` (default on) keeps the server on loopback, IPv4 and IPv6 ports, LAN discovery and NetherNet included, so it raises no Windows Firewall prompt.
 - **Debug modes**, about where the world runs (config `mode`; `Start-BeDDGame.ps1 -Mode`, `Install-BeDDMod -Mode`, `Set-BeDDMode`; reported by `state` and `join`): `ClientOnly` (default, a local world, as before), `ClientServer` (a dedicated server with BeDD on this PC, joined over loopback) and `Remote` (a server without BeDD at `-ServerHost`, possibly off the PC). Remote mode writes the server into the new config key `allowHosts`: `loopbackOnly` then lets the game query that host and reach it over UDP from an implicitly bound socket (no firewall prompt), keeps listeners on loopback and refuses datagrams to any other host off the PC (`state` `stats.sendsRefused`). Without `allowHosts` the network hooks behave as before.
 - **`join` op** (`Join-BeDDServer -Host -Port [-Wait] [-TimeoutMs]`): the client joins a server by address through the game's own external-server join, from the title screen or from inside a world (left first); it replies once the connection started, or with `wait` once the client is in the level, failed (`join_failed`) or timed out. Without `host` it reports the current connection (none, local world, remote host:port).
@@ -43,7 +85,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Background mode as a switch, and every way to run a BeDD game with its own window: config `background`, `placement` and `manager`; `Start-BeDDGame.ps1 -NoManager` and `BEDD_MANAGER`; `Install-BeDDMod -Placement` and `-NoManager`; `Set-BeDDBackground` and the pipe op `background`; `Set-BeDDWindow -Placement` and the `placement` field of the `window` op; Ctrl+Shift+F12; `tools/dev.ps1 -Placement` and `-NoBackground`.
+- The PowerShell client and every script (see *Breaking*), the control pipe, the tap pipe and the manager pipe, `BEDD_MANAGER_PIPE`, and the config keys `pipeName`, `pipeInstances` and `managerScript`.
+- The `bedd-client-windows-x64.zip` and `bedd-server-windows-x64.zip` release assets.
+- Background mode as a switch, and every way to run a BeDD game with its own window: config `background`, `placement` and `manager` (2.0 brings back a `manager` key with another meaning, under *Added*); `Start-BeDDGame.ps1 -NoManager` and `BEDD_MANAGER`; `Install-BeDDMod -Placement` and `-NoManager`; `Set-BeDDBackground` and the pipe op `background`; `Set-BeDDWindow -Placement` and the `placement` field of the `window` op; Ctrl+Shift+F12; `tools/dev.ps1 -Placement` and `-NoBackground`.
 - Taking a game over from the manager window: the "take over with my mouse and keyboard" and "hand back" menu items, `BeDDManager.ps1 -Game <pid> -Action show|hide` (only `close` is left) and the manager link ops `show` and `hide`. `ping`/`state` no longer report `background` and `takenOver`, nor the manager's `hello` and `list`.
 
 ### Fixed

@@ -57,7 +57,7 @@ struct Override {
     bool              byTicks = false; // ttlTicks: live while the tick count is <= untilTick
     uint64_t          untilTick = 0;
     bool              active = false;
-    uint64_t          owner  = 0; // the control-pipe client that set it (currentPipeClient(); 0 = manager)
+    uint64_t          owner  = 0; // the client that set it (currentClient(); 0 = none)
 };
 
 std::mutex gMutex;
@@ -343,7 +343,7 @@ void clearMoveInputOf(uint64_t client) {
         std::lock_guard lock(gMutex);
         if (!gOverride.active || gOverride.owner != client) return;
     }
-    if (options().trace) log().info("input: control pipe client {} left: its move override is cleared", client);
+    if (options().trace) log().info("input: client {} left: its move override is cleared", client);
     clearMoveInput();
 }
 
@@ -399,7 +399,7 @@ json moveInputOp(json const& j) {
             o.active   = ttl > 0;
             o.deadline = Clock::now() + std::chrono::milliseconds(ttl);
         }
-        o.owner    = currentPipeClient();
+        o.owner    = currentClient();
     } catch (json::exception const& e) {
         return badArgs(e.what());
     }

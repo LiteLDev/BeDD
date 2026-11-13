@@ -1,4 +1,5 @@
 #include "BeDD.h"
+#include "UiTree.h"
 
 #include <array>
 #include <fstream>
@@ -37,7 +38,7 @@ Options gOptions;
 void readOptions(std::filesystem::path const& file) {
     std::ifstream in(file);
     if (!in) {
-        log().warn("No {} (Install-BeDDMod writes it): defaults, and no manager script to start", file.string());
+        log().warn("No {}: using the defaults", file.string());
         return;
     }
     auto j = nlohmann::json::parse(in, nullptr, false, true);
@@ -48,7 +49,20 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.clientWidth  = j.value("clientWidth", gOptions.clientWidth);
     gOptions.clientHeight = j.value("clientHeight", gOptions.clientHeight);
     gOptions.trace        = j.value("trace", gOptions.trace);
-    gOptions.pipeName     = j.value("pipeName", gOptions.pipeName);
+    gOptions.wsPort       = j.value("wsPort", gOptions.wsPort);
+    if (gOptions.wsPort < 0 || gOptions.wsPort > 65535) {
+        log().warn("wsPort: {} is not a port (0..65535); using 0 (an ephemeral port)", gOptions.wsPort);
+        gOptions.wsPort = 0;
+    }
+    gOptions.wsMaxClients = j.value("wsMaxClients", gOptions.wsMaxClients);
+    if (auto it = j.find("allowOrigins"); it != j.end() && it->is_array()) {
+        for (auto const& o : *it)
+            if (o.is_string() && !o.get<std::string>().empty()) gOptions.allowOrigins.push_back(o.get<std::string>());
+            else log().warn("allowOrigins: {} is not an origin; ignored", o.dump());
+    }
+    gOptions.manager      = j.value("manager", gOptions.manager);
+    for (char const* gone : {"pipeName", "pipeInstances", "managerScript"})
+        if (j.contains(gone)) log().warn("{} is gone (BeDD talks WebSocket now); ignored", gone);
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
     if (auto it = j.find("allowHosts"); it != j.end() && it->is_array()) {
         for (auto const& h : *it)
@@ -60,12 +74,10 @@ void readOptions(std::filesystem::path const& file) {
         log().warn("mode: '{}' is not ClientOnly, ClientServer or Remote; using ClientOnly", gOptions.mode);
         gOptions.mode = "ClientOnly";
     }
-    gOptions.managerScript = j.value("managerScript", gOptions.managerScript);
     // A BeDD game is headless: nobody can hear it on purpose, so it is always silent.
     if (j.value("mute", true) == false) log().warn("mute: false is ignored: a BeDD game is always silent");
     gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
     gOptions.tap          = j.value("tap", gOptions.tap);
-    gOptions.pipeInstances = j.value("pipeInstances", gOptions.pipeInstances);
     gOptions.tapLoopback  = gOptions.tap && j.value("tapLoopback", gOptions.tapLoopback);
     gOptions.tapJournalMiB = j.value("tapJournalMiB", gOptions.tapJournalMiB);
     gOptions.allowSend    = j.value("allowSend", gOptions.allowSend);
@@ -79,6 +91,11 @@ void readOptions(std::filesystem::path const& file) {
     if (auto it = j.find("timeScale"); it != j.end()) {
         if (it->is_number() && it->get<double>() >= 0.05 && it->get<double>() <= 20) gOptions.timeScale = it->get<float>();
         else log().warn("timeScale: {} is not a number in 0.05..20; using 1", it->dump());
+    }
+    gOptions.ui         = j.value("ui", gOptions.ui);
+    if (auto it = j.find("uiMaxNodes"); it != j.end()) {
+        if (it->is_number_integer() && it->get<int64_t>() >= 1 && it->get<int64_t>() <= 100000) gOptions.uiMaxNodes = it->get<int>();
+        else log().warn("uiMaxNodes: {} is not a number in 1..100000; using 1000", it->dump());
     }
 }
 
@@ -96,12 +113,12 @@ bool Mod::load() {
     // Before the game sets up its audio: not a sound, not even while it loads.
     installAudioHooks();
     log().info(
-        "BeDD loaded: client={}x{} trace={} pipe={} manager={}",
+        "BeDD loaded: client={}x{} trace={} wsPort={} manager={}",
         gOptions.clientWidth,
         gOptions.clientHeight,
         gOptions.trace,
-        gOptions.pipeName,
-        gOptions.managerScript
+        gOptions.wsPort,
+        gOptions.manager
     );
     return true;
 }
@@ -110,14 +127,14 @@ bool Mod::enable() {
     installApiHooks();
     installGameInputHooks();
     startWindowWatcher();
-    installMoveInputHooks(); // before the pipe: an early "input" must not take the key fallback
-    // Before the pipe: the ops that wait for a tick read its cadence.
+    installMoveInputHooks(); // before the server: an early "input" must not take the key fallback
+    // Before the server: the ops that wait for a tick read its cadence.
     if (gOptions.gameHooks || gOptions.allowSend || gOptions.allowStack) startTickCadence();
-    startPipeServer();
+    startTap(); // before the server: a client may subscribe as soon as it can connect
+    startControlServer();
     startInputTrace();
     startGameState();
     startLook();
-    startTap();
     if (gOptions.tapLoopback) installTapLoopback();
     if (gOptions.tap) installTapJournal();
     installGameActions();
@@ -125,22 +142,24 @@ bool Mod::enable() {
     if (gOptions.allowSend) installSend();
     if (gOptions.allowStack) installStack();
     installTimeScale();
+    startUi();
     log().info("BeDD enabled");
     return true;
 }
 
 bool Mod::disable() {
-    // First: wakes a pipe thread waiting for a look, so stopPipeServer can join it.
+    // First: wakes a client thread waiting for a look, so stopControlServer can join it.
     stopLook();
+    stopUi(); // first: fails a ui read the pipe thread waits on, so stopPipeServer can join it
     stopGameState();
     uninstallGameActions(); // first: its tick listener drives the virtual mouse
-    uninstallJoin(); // first: answers a join the pipe thread waits on, so stopPipeServer() can join it
-    uninstallSend(); // first: answers a send the pipe thread waits on, so stopPipeServer() can join it
+    uninstallJoin(); // first: answers a join the client thread waits on, so stopControlServer() can join it
+    uninstallSend(); // first: answers a send the client thread waits on, so stopControlServer() can join it
     uninstallStack(); // likewise for a waiting stack request
     uninstallTimeScale(); // its set waits on the game threads with a timeout (it cannot hang the join)
     stopInputTrace();
     stopManagerLink();
-    stopPipeServer();
+    stopControlServer(); // also deletes the discovery file
     stopWindowWatcher();
     uninstallGameInputHooks();
     uninstallApiHooks();
@@ -157,7 +176,7 @@ bool Mod::disable() {
 #else // LL_PLAT_S
 
 // In a Bedrock Dedicated Server there is no window, input, audio or manager window to take over:
-// the loopback-only network, the control pipe and the server units only (xmake.lua builds no
+// the loopback-only network, the WebSocket server and the server units only (xmake.lua builds no
 // other source file).
 bool Mod::load() {
     getSelf().getLogger().setFlushLevel(ll::io::LogLevel::Trace);
@@ -165,9 +184,9 @@ bool Mod::load() {
     // Before the server opens its ports (load() runs before it starts): no firewall prompts.
     if (gOptions.loopbackOnly) installNetHooks();
     log().info(
-        "BeDD loaded (server): trace={} pipe={} loopbackOnly={} timeScale={}",
+        "BeDD loaded (server): trace={} wsPort={} loopbackOnly={} timeScale={}",
         gOptions.trace,
-        gOptions.pipeName,
+        gOptions.wsPort,
         gOptions.loopbackOnly,
         gOptions.timeScale
     );
@@ -175,14 +194,14 @@ bool Mod::load() {
 }
 
 bool Mod::enable() {
-    startServerTimeScale(); // before the pipe: the tick counter runs before the first `server` op
-    startPipeServer();
+    startServerTimeScale(); // before the server: the tick counter runs before the first `server` op
+    startControlServer();
     log().info("BeDD enabled (server)");
     return true;
 }
 
 bool Mod::disable() {
-    stopPipeServer(); // first: an op waiting on the server thread times out, then its client thread is joined
+    stopControlServer(); // first: an op waiting on the server thread times out, then its client thread is joined
     stopServerTimeScale();
     uninstallNetHooks();
     return true;

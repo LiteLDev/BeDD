@@ -61,7 +61,7 @@ struct Held {
     bool        onBlockChange = false;
     BlockPos    pos{};
     Block const* block = nullptr;
-    uint64_t    owner = 0; // the control-pipe client that pressed it (currentPipeClient(); 0 = manager)
+    uint64_t    owner = 0; // the client that pressed it (currentClient(); 0 = none)
 };
 
 // One queued op, applied by the tick listener.
@@ -73,7 +73,7 @@ struct Command {
     json        reply;
     int         waitSlot  = -1; // slot: replied once the player holds it (hotbar key fallback)
     int64_t     waitUntil = 0;
-    uint64_t    owner     = 0; // currentPipeClient() of the request
+    uint64_t    owner     = 0; // currentClient() of the request
 };
 
 std::mutex                            gMutex; // everything below
@@ -271,7 +271,7 @@ json run(std::string const& op, json const& req) {
     auto timeout = req.contains("timeoutMs") ? std::chrono::milliseconds(std::clamp(req["timeoutMs"].get<int>(), 50, 60000))
                                              : tickScaled(1000ms, 60000ms);
     auto c       = std::make_shared<Command>(Command{op, req});
-    c->owner     = currentPipeClient();
+    c->owner     = currentClient();
     std::unique_lock lock(gMutex);
     if (!inLevel()) return fail("not_in_level", "not in a world");
     gQueue.push_back(c);
@@ -302,7 +302,7 @@ void releaseGameButtonsOf(uint64_t client) {
     std::lock_guard lock(gMutex);
     for (size_t b = 0; b < kButtons.size(); ++b) {
         if (!gHeld[b].down || gHeld[b].owner != client) continue;
-        log().info("control pipe client {} left holding button {}: released", client, kButtons[b].name);
+        log().info("client {} left holding button {}: released", client, kButtons[b].name);
         releaseHeld(b);
     }
 }

@@ -16,6 +16,14 @@ jobs:
         with:
           fetch-depth: 0 # levibuildscript derives the mod version from the latest tag
 
+      # Before any build: BeDD.exe states its version in the project file.
+      - name: Check BeDD.exe version
+        shell: bash
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+          app=$(grep -oP '<Version>\K[^<]+' app/BeDD/BeDD.csproj)
+          [ "$app" = "$expected" ] || { echo "::error file=app/BeDD/BeDD.csproj::BeDD.exe version $app does not match tag $expected"; exit 1; }
+
       - uses: xmake-io/github-action-setup-xmake@v1
 
       - uses: actions/cache@v6
@@ -46,40 +54,71 @@ jobs:
 
       - run: xmake -v -y
 
-      - name: Check version
-        shell: pwsh
-        run: |
-          $expected = "${{ github.ref_name }}".TrimStart('v')
-          foreach ($mod in 'BeDD', 'BeDD-server') {
-            $actual = (Get-Content bin/$mod/manifest.json | ConvertFrom-Json).version
-            if ($actual -ne $expected) { throw "$mod manifest version $actual does not match tag $expected" }
-          }
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
 
-      - name: Package
-        shell: pwsh
+      # NativeAOT links with the MSVC tools, which the SDK finds through vswhere.
+      - name: Put vswhere on PATH
+        shell: bash
+        run: echo 'C:\Program Files (x86)\Microsoft Visual Studio\Installer' >> "$GITHUB_PATH"
+
+      - run: dotnet test app/BeDD.slnx -c Release
+
+      - run: dotnet publish app/BeDD/BeDD.csproj -c Release -o bin/app
+
+      - name: Check mod versions
+        shell: bash
         run: |
-          Copy-Item COPYING, COPYING.LESSER, README.md, README.zh-CN.md -Destination bin/BeDD/
-          Remove-Item bin/BeDD/*.pdb -ErrorAction SilentlyContinue
-          Compress-Archive -Path bin/BeDD -DestinationPath bedd-client-windows-x64.zip
-          Copy-Item COPYING, COPYING.LESSER, README.md, README.zh-CN.md -Destination bin/BeDD-server/
-          Remove-Item bin/BeDD-server/*.pdb -ErrorAction SilentlyContinue
-          Compress-Archive -Path bin/BeDD-server -DestinationPath bedd-server-windows-x64.zip
+          expected="${GITHUB_REF_NAME#v}"
+          for mod in BeDD BeDD-server; do
+            actual=$(jq -r .version "bin/$mod/manifest.json")
+            [ "$actual" = "$expected" ] || { echo "::error::$mod manifest version $actual does not match tag $expected"; exit 1; }
+          done
+
+      # One zip: BeDD.exe, the two mods it installs into games and servers, the protocol spec and the licences.
+      - name: Package
+        shell: bash
+        run: |
+          stage=bin/release/BeDD
+          rm -rf bin/release
+          mkdir -p "$stage/mod"
+          cp bin/app/BeDD.exe "$stage/"
+          for mod in BeDD BeDD-server; do
+            mkdir -p "$stage/mod/$mod"
+            cp -r "bin/$mod/." "$stage/mod/$mod/"
+          done
+          if [ -f spec/bedd.asyncapi.yaml ]; then
+            mkdir -p "$stage/spec"
+            cp spec/bedd.asyncapi.yaml "$stage/spec/"
+          fi
+          cp COPYING* README*.md "$stage/"
+          find "$stage" -name '*.pdb' -delete
+          rm -f bedd-windows-x64.zip
+          # Windows' own bsdtar writes zip files; Git Bash's GNU tar does not.
+          /c/Windows/System32/tar.exe -a -c -f bedd-windows-x64.zip -C bin/release BeDD
+          /c/Windows/System32/tar.exe -t -f bedd-windows-x64.zip
 
       - name: Release notes
-        shell: pwsh
+        shell: bash
         run: |
-          $version = "${{ github.ref_name }}".TrimStart('v')
-          $lines = Get-Content CHANGELOG.md
-          $start = ($lines | Select-String -Pattern "^## \[$([regex]::Escape($version))\]").LineNumber
-          if (-not $start) { throw "CHANGELOG.md has no section for $version" }
-          $rest = $lines[$start..($lines.Count - 1)]
-          $end = ($rest | Select-String -Pattern '^## \[|^\[[^\]]+\]: ' | Select-Object -First 1).LineNumber
-          $body = if ($end) { $rest[0..($end - 2)] } else { $rest }
-          ($body -join "`n").Trim() | Set-Content RELEASE_NOTES.md -Encoding utf8
+          version="${GITHUB_REF_NAME#v}"
+          # The version's section up to the next version heading or the link references, without blank edges.
+          awk -v head="## [$version]" '
+            index($0, head) == 1 { found = 1; next }
+            found && (/^## \[/ || /^\[[^]]+\]: /) { exit }
+            found { lines[++n] = $0 }
+            END {
+              if (!found) exit 1
+              first = 1; while (first <= n && lines[first] ~ /^[ \t\r]*$/) first++
+              last = n; while (last >= first && lines[last] ~ /^[ \t\r]*$/) last--
+              for (i = first; i <= last; i++) print lines[i]
+            }
+          ' CHANGELOG.md > RELEASE_NOTES.md || { echo "::error file=CHANGELOG.md::CHANGELOG.md has no section for $version"; exit 1; }
+          cat RELEASE_NOTES.md
 
       - uses: softprops/action-gh-release@v3
         with:
           files: |
-            bedd-client-windows-x64.zip
-            bedd-server-windows-x64.zip
+            bedd-windows-x64.zip
           body_path: RELEASE_NOTES.md

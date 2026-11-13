@@ -1,29 +1,29 @@
 # Introduction
 
 Be.D.D. runs end-to-end tests of your [LeviLamina](https://github.com/LiteLDev/LeviLamina) client mods
-**in the background**. Your script presses keys, types and clicks inside Minecraft Bedrock, while your own mouse,
-keyboard and windows stay yours, and several games can play at once.
+**in the background**. Your script moves the player, opens menus, presses keys and clicks inside Minecraft Bedrock,
+while your own mouse, keyboard and windows stay yours, and several games can play at once.
 
-![Your input goes to your apps; the script drives three background games over one pipe each](/showcase/how-it-feels.svg)
+![Your input goes to your apps; the script drives three background games over one WebSocket each](/showcase/how-it-feels.svg)
 
 ::: warning A testing tool
 A game with Be.D.D. in its `mods\` folder ignores your real mouse and keyboard and shows up only in the manager
-window. Do not leave Be.D.D. in a game you play.
+window. Be.D.D. puts itself only into its own clones of your game instance, never into the instance you play.
 :::
 
 ## What is in it
 
-Be.D.D. is a testing toolkit, not a mod for players. A release (`bedd-client-windows-x64.zip`) holds:
+Be.D.D. is a testing toolkit, not a mod for players. A release (`bedd-windows-x64.zip`) holds:
 
 | Part | |
 |---|---|
-| `BeDD.dll`, `manifest.json` | the client-side LeviLamina module your harness puts into the game instance for a run |
-| `BeDD.psm1` | the PowerShell client: `Connect-BeDD`, `Send-BeDDKey`, `Send-BeDDMouse`, `Save-BeDDScreenshot`, … ([Driving the game](/guide/usage)) |
-| `harness-shim.ps1` | drop-in replacements for the input helpers of LeviLauncher harnesses ([Plugging into a harness](/guide/harness)) |
-| `Start-BeDDGame.ps1` | starts a game instance without bringing it forward |
-| `BeDDManager.ps1` | the manager window that shows every game, the only place a game shows up ([Several games at once](/guide/several-games#the-manager-window)) |
-| `clone-instance.ps1` | makes a cheap clone of an instance for a parallel run |
-| `BeDDSetup.psm1`, `Initialize-BeDD.ps1` | find the game instance and set up whatever the PC lacks ([Setting up a new PC](/guide/new-pc)) |
+| `BeDD.exe` | one app for everything: double-click it for the [manager window](/guide/several-games#the-manager-window), or run it with arguments as the command line that clones, sets up and starts the games ([Driving the game](/guide/usage)) |
+| `mod\BeDD\` | the client-side LeviLamina mod that `BeDD.exe mod install` puts into a game instance |
+| `mod\BeDD-server\` | the same for a Bedrock Dedicated Server, for [client + server runs](/guide/modes) |
+| `spec\bedd.asyncapi.yaml` | the AsyncAPI description of the WebSocket protocol, to generate a client from ([WebSocket protocol](/reference/websocket)) |
+
+Your tests talk to each game over a **WebSocket** on `127.0.0.1`, from any language: Node, Python, C#, PowerShell,
+or [bedboo](https://github.com/LiteLDev/bedboo)'s mineflayer API.
 
 Only the test PC's game needs it; servers and players do not. Be.D.D. is not a lip package and is not listed on
 LeviMC Mods: you download it from the [releases](https://github.com/LiteLDev/BeDD/releases).
@@ -32,24 +32,25 @@ LeviMC Mods: you download it from the [releases](https://github.com/LiteLDev/BeD
 
 - **Keep using your PC.** The game never takes the foreground, the cursor or your keystrokes, and your clicks never
   land in it.
-- **Several games at once.** Each game instance has its own pipe; a cheap clone of an instance takes a few seconds.
+- **Three ways to drive it, cheapest first.** Game-level ops for [bedboo](https://github.com/LiteLDev/bedboo) (walk,
+  look, dig, use, chat), a UI tree of the menus to click by name, and simulated keyboard, mouse and screenshots as
+  the last resort ([Operation modes](/guide/operation-modes)).
+- **Any language.** One JSON message per request over a local WebSocket, described by an AsyncAPI spec.
+- **Several games at once.** Each game has its own WebSocket; a cheap clone of an instance takes a few seconds.
 - **One window for all of them.** The games of every test run on the PC show up live in one manager window instead
   of popping up on your desktop; closing it closes them all.
 - **Plays like a player.** Keys, chat, key bindings, menus, hover tooltips, clicks and the camera all work as with
   a real mouse and keyboard.
-- **Deterministic.** Every call returns once the game has handled the input, so no guessing sleeps.
-- **Screenshots of covered windows.** The manager window can sit behind your other windows.
-- **Drop-in for existing harnesses.** One file replaces the usual `Click`, `Press-Key`, `Focus-Game` helpers of
-  LeviLauncher harnesses; scenarios stay as they are.
+- **Deterministic.** Every request returns once the game has handled it, so no guessing sleeps.
+- **Your instance stays as it is.** Be.D.D. reads LeviLauncher's instances and never writes into them.
 
 ## Requirements
 
-- Windows x64 and PowerShell 7 (`pwsh`) for the manager window.
-- Minecraft Bedrock Edition **1.26.60** (GDK) with LeviLamina **26.60.x** (client), in a game instance installed
-  with [LeviLauncher](https://docs.levimc.org/LeviLauncher/). Tests start that instance with
-  `Start-BeDDGame.ps1` rather than through the launcher.
+- Windows 10 or 11, x64.
+- [LeviLauncher](https://docs.levimc.org/LeviLauncher/) **1.1** or newer, with a Minecraft Bedrock Edition
+  **1.26.60** (GDK, release) instance that has LeviLamina **26.60.x**.
 
-On a PC that has none of this yet, the scripts set up everything except the game itself: see
+Nothing else: no PowerShell, no lip and no .NET runtime for clients. On a PC that has none of this yet, see
 [Setting up a new PC](/guide/new-pc).
 
 ## The name

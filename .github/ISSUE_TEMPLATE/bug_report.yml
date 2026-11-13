@@ -6,7 +6,7 @@ body:
     id: what
     attributes:
       label: What happened?
-      description: What did the script send (JSON request or PowerShell call), what did you expect, and what did the game do instead?
+      description: What did the script send (WebSocket message or BeDD.exe command), what did you expect, and what did the game do instead?
     validations:
       required: true
   - type: textarea
@@ -15,7 +15,7 @@ body:
       label: Steps to reproduce
       placeholder: |
         1. Start the game with background mode on
-        2. Send-BeDDKey E
+        2. {"op":"key","key":"E"} over the WebSocket
         3. ...
     validations:
       required: true
@@ -30,7 +30,7 @@ body:
     id: levilamina
     attributes:
       label: LeviLamina and Minecraft versions
-      placeholder: LeviLamina 26.60.2, Minecraft 1.26.60.05
+      placeholder: LeviLamina 26.60.7, Minecraft 1.26.60.05
     validations:
       required: true
   - type: textarea

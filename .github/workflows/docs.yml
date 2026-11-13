@@ -5,10 +5,12 @@ on:
     paths:
       - .github/workflows/docs.yml
       - docs/**
+      - spec/**
   push:
     paths:
       - .github/workflows/docs.yml
       - docs/**
+      - spec/**
   # levimc-kit (the LeviMC bar, footer and docs engine) is published by levimc.org and fetched by the package
   # install: levimc.org triggers this workflow when it publishes a new kit, and the hourly check below catches up.
   schedule:
