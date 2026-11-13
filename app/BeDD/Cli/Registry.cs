@@ -19,6 +19,7 @@ public static class Registry
     private static readonly Dictionary<string, string> TopAliases = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ps"] = "process list",
+        ["stop"] = "process stop",
     };
 
     public static void Register(Command command)

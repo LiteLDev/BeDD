@@ -14,3 +14,16 @@ FSCTL_SET_REPARSE_POINT
 QueryFullProcessImageName
 SetFileInformationByHandle
 FILE_DISPOSITION_INFO_EX
+CreateProcessW
+InitializeProcThreadAttributeList
+UpdateProcThreadAttribute
+DeleteProcThreadAttributeList
+STARTUPINFOEXW
+GetForegroundWindow
+OpenMutexW
+SetHandleInformation
+TerminateProcess
+WaitForSingleObject
+CloseHandle
+DuplicateHandle
+ResumeThread
