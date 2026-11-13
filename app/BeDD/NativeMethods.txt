@@ -7,3 +7,10 @@ SetConsoleOutputCP
 SetConsoleCP
 OpenProcess
 GetExitCodeProcess
+CreateHardLink
+CreateFile
+DeviceIoControl
+FSCTL_SET_REPARSE_POINT
+QueryFullProcessImageName
+SetFileInformationByHandle
+FILE_DISPOSITION_INFO_EX
