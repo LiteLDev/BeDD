@@ -1,7 +1,7 @@
 # Tap 协议
 
 tap 是一个只读的二进制流，包含客户端收发的游戏数据包，供 [bedboo](https://github.com/LiteLDev/bedboo) 的 `bedd` 传输使用。
-配置打开 `tap` 之前它是关闭的（[配置](/zh/guide/configuration#给-bedboo-用的配置项)）。
+配置打开 `tap` 之前它是关闭的（[配置](/zh/guide/configuration#功能开关)）。
 
 ## 管道与帧
 
