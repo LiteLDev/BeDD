@@ -57,10 +57,3 @@ target(is_config("target_type", "server") and "BeDD-server" or "BeDD")
         add_files("src/**.cpp")
         remove_files("src/ServerTimeScale.cpp")
     end
-    after_build(function (target)
-        if get_config("target_type") == "server" then return end -- the PowerShell client drives games only
-        -- The PowerShell client and harness shim ship next to the mod, so a harness only needs bin\BeDD.
-        local bindir = path.join(os.projectdir(), "bin", target:name())
-        os.mkdir(bindir)
-        os.cp(path.join(os.projectdir(), "client", "*"), bindir)
-    end)
