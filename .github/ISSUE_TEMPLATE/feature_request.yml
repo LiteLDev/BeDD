@@ -13,4 +13,4 @@ body:
     id: how
     attributes:
       label: Ideas
-      description: How it could work (protocol, PowerShell call), if you have one.
+      description: How it could work (protocol message, BeDD.exe command), if you have one.

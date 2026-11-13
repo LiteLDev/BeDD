@@ -6,7 +6,7 @@ body:
     id: what
     attributes:
       label: What happened?
-      description: What did the script send (JSON request or PowerShell call), what did you expect, and what did the game do instead?
+      description: What did the script send (WebSocket message or BeDD.exe command), what did you expect, and what did the game do instead?
     validations:
       required: true
   - type: textarea
