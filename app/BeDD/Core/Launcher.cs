@@ -37,8 +37,8 @@ public sealed record GameProcess(int Pid, string Exe, int SessionId = -1);
 // its environment only, and holding the signaling lock through an inherited handle.
 public static class Launcher
 {
-    // Held by the manager window while it runs (one per logon session).
-    public const string ManagerMutex = @"Local\BeDD.Manager";
+    // Held by the manager window while it runs (one per logon session and BeDD home).
+    public static string ManagerMutex => Gui.ManagerInstance.MutexName;
 
     // Always this exact name: LeviLauncher.dll's data isolation keys on it (under another name the
     // game would use the default %APPDATA%\Minecraft Bedrock profile instead of the instance's data).
@@ -192,11 +192,7 @@ public static class Launcher
 
     // --- the manager window ---------------------------------------------------------------------
 
-    public static bool ManagerRunning()
-    {
-        using var h = PInvoke.OpenMutex((SYNCHRONIZATION_ACCESS_RIGHTS)0x00100000 /* SYNCHRONIZE */, false, ManagerMutex);
-        return !h.IsInvalid;
-    }
+    public static bool ManagerRunning() => Gui.ManagerInstance.IsRunning();
 
     // Starts BeDD.exe without arguments (the manager window) unless it runs, detached from this
     // console and job, and waits for its mutex.

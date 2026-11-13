@@ -63,16 +63,7 @@ internal static class LaunchCommands
         }
         else
         {
-            InstanceInfo info;
-            try
-            {
-                info = InstanceStore.EnsureClone(name, slot, ctx.Notice);
-            }
-            catch (NotImplementedException)
-            {
-                throw CliError.Failure("ERR_NOT_IMPLEMENTED", "this build cannot make instances yet; name the folder with --dir",
-                    $"{Dispatcher.ProgramName} launch --dir <instance folder>");
-            }
+            InstanceInfo info = InstanceStore.EnsureClone(name, slot, ctx.Notice);
             dir = info.Dir;
             instance = info.Name;
         }

@@ -135,13 +135,13 @@ public sealed class CloneTests : IDisposable
         Write(".levilauncher/instance.json", """{ "name": "My instance", "gameVersion": "1.26.60.05", "enableIsolation": false }""");
         Write(".lip/state.json", "{}");
         Write("mods/LeviLamina/LeviLamina.dll", "ll");
-        Write("mods/LeviLamina/manifest.json", """{ "name": "LeviLamina", "version": "26.60.5" }""");
+        Write("mods/LeviLamina/manifest.json", """{ "name": "LeviLamina", "version": "26.60.98" }""");
         Write("mods/LeviLamina/config/Config.json", """{ "modules": { "crashLogger": { "enabled": true, "builtin": false } } }""");
         Write("mods/SomeoneElse/x.dll", "x");
         Write("logs/old.log", "log");
         _launcher = new FakeLauncher(new LeviLauncherInstance
         {
-            Name = "My instance", GameVersion = "1.26.60.05", Channel = "release", Type = "gdk", LoaderVersion = "26.60.5",
+            Name = "My instance", GameVersion = "1.26.60.05", Channel = "release", Type = "gdk", LoaderVersion = "26.60.98",
             Path = _base, IsDefault = true,
         });
     }
@@ -178,7 +178,7 @@ public sealed class CloneTests : IDisposable
         Assert.Equal("1.26.60.05-3", i.Name);
         Assert.Equal(3, i.Slot);
         Assert.Equal("My instance", i.Base);
-        Assert.Equal("26.60.5", i.LoaderVersion);
+        Assert.Equal("26.60.98", i.LoaderVersion);
         Assert.Equal(["mod-missing"], i.Problems);
 
         // Root files linked, json copied, LeviLauncher's exe backups left out.
@@ -254,7 +254,7 @@ public sealed class CloneTests : IDisposable
         File.Delete(exe);
         File.WriteAllText(exe, "game v2");
         File.WriteAllText(Path.Combine(_base, "new.dll"), "new");
-        Write("mods/LeviLamina/manifest.json", """{ "name": "LeviLamina", "version": "26.60.6" }""");
+        Write("mods/LeviLamina/manifest.json", """{ "name": "LeviLamina", "version": "26.60.99" }""");
         File.SetLastWriteTimeUtc(Path.Combine(_base, ".levilauncher", "instance.json"), DateTime.UtcNow.AddMinutes(1));
         // The clone's data junction is lost.
         FileLinks.RemoveLink(Path.Combine(i.Dir, "data"));
@@ -272,7 +272,7 @@ public sealed class CloneTests : IDisposable
         Assert.Empty(changed.Removed);
         Assert.Equal(["mod-missing"], after.Problems);
         Assert.Equal("game v2", File.ReadAllText(Path.Combine(i.Dir, "Minecraft.Windows.exe")));
-        Assert.Equal("26.60.6", after.LoaderVersion);
+        Assert.Equal("26.60.99", after.LoaderVersion);
         Assert.True((bool)JsonNode.Parse(File.ReadAllText(Path.Combine(i.Dir, ".levilauncher", "instance.json")))!["enableIsolation"]!);
         Assert.Equal(Path.Combine(_base, "data"), FileLinks.LinkTarget(Path.Combine(i.Dir, "data")));
 
