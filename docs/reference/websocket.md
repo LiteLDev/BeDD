@@ -25,7 +25,7 @@ While its WebSocket server listens, a game writes a discovery file `%LOCALAPPDAT
   "instance": "MyInstance-2",
   "instanceDir": "C:\\Users\\me\\AppData\\Local\\BeDD\\instances\\MyInstance-2",
   "label": "smoke test",
-  "modVersion": "2.0.0",
+  "modVersion": "0.4.0",
   "startedAt": "2026-11-13T09:41:07Z"
 }
 ```

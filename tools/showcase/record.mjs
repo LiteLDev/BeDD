@@ -2,7 +2,7 @@
 // Records the showcase video: three headless games driven from a script, as the manager window
 // shows them.
 //
-// Everything goes through BeDD v2: the app CLI (BeDD.exe) clones the instances, installs the mod,
+// Everything goes through BeDD 0.4: the app CLI (BeDD.exe) clones the instances, installs the mod,
 // makes the world single-player, launches and stops the games (it also holds the slot locks); every
 // in-game action is a request on the game's WebSocket (lib/bedd.mjs). bedboo ops first (`look`,
 // `input`, `send` for commands, `world` to know where the game is), the `ui` tree to find buttons by

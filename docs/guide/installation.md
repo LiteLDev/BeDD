@@ -77,7 +77,7 @@ curl.exe -L -o "$env:TEMP\bedd.zip" https://github.com/LiteLDev/BeDD/releases/la
 mkdir "$env:LOCALAPPDATA\BeDD\app" -Force; tar.exe -xf "$env:TEMP\bedd.zip" -C "$env:LOCALAPPDATA\BeDD\app"
 ```
 
-Pin a version in CI (`releases/download/v2.0.0/...`) so a new release does not change a run under you.
+Pin a version in CI (`releases/download/v0.4.0/...`) so a new release does not change a run under you.
 
 ## Build it yourself
 

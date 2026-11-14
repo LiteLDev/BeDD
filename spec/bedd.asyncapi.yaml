@@ -3,7 +3,7 @@ id: 'urn:levimc:bedd:websocket'
 
 info:
   title: Be.D.D. WebSocket API
-  version: 2.0.0
+  version: 0.4.0
   description: |
     The control API of a Minecraft Bedrock game (or a Bedrock Dedicated Server) that runs the BeDD
     LeviLamina mod. Test scripts, agents, bedboo and the BeDD manager all talk to a game this way.
