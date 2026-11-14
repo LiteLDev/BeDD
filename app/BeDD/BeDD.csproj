@@ -14,7 +14,7 @@
     <PublishAot>true</PublishAot>
     <IsAotCompatible>true</IsAotCompatible>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>2.0.0</Version>
+    <Version>0.4.0</Version>
     <Product>Be.D.D.</Product>
     <Description>Run end-to-end tests of LeviLamina client mods in background Minecraft games.</Description>
     <ApplicationIcon>BeDD.ico</ApplicationIcon>

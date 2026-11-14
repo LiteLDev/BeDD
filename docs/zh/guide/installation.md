@@ -71,7 +71,7 @@ curl.exe -L -o "$env:TEMP\bedd.zip" https://github.com/LiteLDev/BeDD/releases/la
 mkdir "$env:LOCALAPPDATA\BeDD\app" -Force; tar.exe -xf "$env:TEMP\bedd.zip" -C "$env:LOCALAPPDATA\BeDD\app"
 ```
 
-CI 里请固定版本（`releases/download/v2.0.0/...`），免得新发行版在运行中途改变行为。
+CI 里请固定版本（`releases/download/v0.4.0/...`），免得新发行版在运行中途改变行为。
 
 ## 自己构建
 

@@ -61,7 +61,7 @@ exits:
 ```json
 { "protocol": 2, "kind": "client", "pid": 12345, "url": "ws://127.0.0.1:53021/v1", "token": "9f3c…",
   "instance": "1.26.60.05-2", "instanceDir": "C:\\Users\\me\\AppData\\Local\\BeDD\\instances\\1.26.60.05-2",
-  "label": "my-mod e2e", "modVersion": "2.0.0", "startedAt": "2026-11-13T09:30:00Z" }
+  "label": "my-mod e2e", "modVersion": "0.4.0", "startedAt": "2026-11-13T09:30:00Z" }
 ```
 
 Read it from the pid `launch` printed, or ask `BeDD.exe ps --json`, which lists them all (and ignores files whose

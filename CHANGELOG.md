@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-This will be **2.0.0**, a breaking release: Be.D.D. becomes one app, `BeDD.exe`, and the game speaks WebSocket only. The PowerShell client, the named pipes and the setup scripts are gone.
+This will be **0.4.0**, a breaking release: Be.D.D. becomes one app, `BeDD.exe`, and the game speaks WebSocket only. The PowerShell client, the named pipes and the setup scripts are gone.
 
 ### Breaking
 
@@ -90,7 +90,7 @@ The entries below that name PowerShell scripts or pipes describe changes made be
 
 - The PowerShell client and every script (see *Breaking*), the control pipe, the tap pipe and the manager pipe, `BEDD_MANAGER_PIPE`, and the config keys `pipeName`, `pipeInstances` and `managerScript`.
 - The `bedd-client-windows-x64.zip` and `bedd-server-windows-x64.zip` release assets.
-- Background mode as a switch, and every way to run a BeDD game with its own window: config `background`, `placement` and `manager` (2.0 brings back a `manager` key with another meaning, under *Added*); `Start-BeDDGame.ps1 -NoManager` and `BEDD_MANAGER`; `Install-BeDDMod -Placement` and `-NoManager`; `Set-BeDDBackground` and the pipe op `background`; `Set-BeDDWindow -Placement` and the `placement` field of the `window` op; Ctrl+Shift+F12; `tools/dev.ps1 -Placement` and `-NoBackground`.
+- Background mode as a switch, and every way to run a BeDD game with its own window: config `background`, `placement` and `manager` (0.4.0 brings back a `manager` key with another meaning, under *Added*); `Start-BeDDGame.ps1 -NoManager` and `BEDD_MANAGER`; `Install-BeDDMod -Placement` and `-NoManager`; `Set-BeDDBackground` and the pipe op `background`; `Set-BeDDWindow -Placement` and the `placement` field of the `window` op; Ctrl+Shift+F12; `tools/dev.ps1 -Placement` and `-NoBackground`.
 - Taking a game over from the manager window: the "take over with my mouse and keyboard" and "hand back" menu items, `BeDDManager.ps1 -Game <pid> -Action show|hide` (only `close` is left) and the manager link ops `show` and `hide`. `ping`/`state` no longer report `background` and `takenOver`, nor the manager's `hello` and `list`.
 
 ### Fixed

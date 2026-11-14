@@ -57,7 +57,7 @@ BeDD.exe launch --slot 2 --label "my-mod e2e" --detach
 ```json
 { "protocol": 2, "kind": "client", "pid": 12345, "url": "ws://127.0.0.1:53021/v1", "token": "9f3c…",
   "instance": "1.26.60.05-2", "instanceDir": "C:\\Users\\me\\AppData\\Local\\BeDD\\instances\\1.26.60.05-2",
-  "label": "my-mod e2e", "modVersion": "2.0.0", "startedAt": "2026-11-13T09:30:00Z" }
+  "label": "my-mod e2e", "modVersion": "0.4.0", "startedAt": "2026-11-13T09:30:00Z" }
 ```
 
 按 `launch` 输出的 pid 读取它，或者用 `BeDD.exe ps --json` 列出全部（游戏已经退出的文件会被忽略）。按**实例**找自己的游戏，
