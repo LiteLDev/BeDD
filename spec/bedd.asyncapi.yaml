@@ -23,8 +23,8 @@ info:
     with `defaultMode` and `modes`.
 
     1. **bedboo** (the default and the first choice): semantic game ops on the client's own input
-       pipeline and network session: `world`, `look`, `input`, `slot`, `action`, `button`, `send`,
-       `stack`, `timescale`, `join`, `tap`. Small JSON in, small JSON out; this is what
+       pipeline and network session: `world`, `look`, `input`, `slot`, `action`, `button`,
+       `settings`, `send`, `stack`, `timescale`, `join`, `tap`. Small JSON in, small JSON out; this is what
        [bedboo](https://github.com/LiteLDev/bedboo)'s transport `bedd` uses.
     2. **ui**: the game's UI as an accessibility-style tree (`ui`): read a snapshot of the screens,
        then act on a node by its `ref` (click, set text, scroll). Use it for menus and screens that
@@ -118,6 +118,8 @@ channels:
       actionReply: { $ref: '#/components/messages/actionReply' }
       buttonRequest: { $ref: '#/components/messages/buttonRequest' }
       buttonReply: { $ref: '#/components/messages/buttonReply' }
+      settingsRequest: { $ref: '#/components/messages/settingsRequest' }
+      settingsReply: { $ref: '#/components/messages/settingsReply' }
       sendRequest: { $ref: '#/components/messages/sendRequest' }
       sendReply: { $ref: '#/components/messages/sendReply' }
       stackRequest: { $ref: '#/components/messages/stackRequest' }
@@ -260,7 +262,7 @@ operations:
     action: send
     channel: { $ref: '#/channels/v1' }
     title: action
-    summary: Drop, drop all, inventory, perspective, pause.
+    summary: Drop, drop all, inventory, perspective, pause, an arm swing.
     tags: [{ $ref: '#/components/tags/bedboo' }]
     messages: [{ $ref: '#/channels/v1/messages/actionRequest' }]
     reply:
@@ -279,6 +281,18 @@ operations:
       channel: { $ref: '#/channels/v1' }
       messages:
         - { $ref: '#/channels/v1/messages/buttonReply' }
+        - { $ref: '#/channels/v1/messages/errorReply' }
+  settings:
+    action: send
+    channel: { $ref: '#/channels/v1' }
+    title: settings
+    summary: Reads or sets the client's render distance; the client then requests that chunk radius itself.
+    tags: [{ $ref: '#/components/tags/bedboo' }]
+    messages: [{ $ref: '#/channels/v1/messages/settingsRequest' }]
+    reply:
+      channel: { $ref: '#/channels/v1' }
+      messages:
+        - { $ref: '#/channels/v1/messages/settingsReply' }
         - { $ref: '#/channels/v1/messages/errorReply' }
   send:
     action: send
@@ -321,7 +335,7 @@ operations:
     action: send
     channel: { $ref: '#/channels/v1' }
     title: join
-    summary: Joins a server by address, or reports where the client plays.
+    summary: Joins a server by address, leaves the world (host null), or reports where the client plays.
     tags: [{ $ref: '#/components/tags/bedboo' }]
     messages: [{ $ref: '#/channels/v1/messages/joinRequest' }]
     reply:
@@ -1074,7 +1088,10 @@ components:
     actionRequest:
       name: action
       title: action request
-      description: Config key `gameHooks`. Without `name`, a probe listing the names.
+      description: |
+        Config key `gameHooks`. Without `name`, a probe listing the names. `swing` swings the arm with
+        no attack (LocalPlayer::swing; the client sends the animate packet itself) and works with a
+        screen open; the others need the world in front (`busy` otherwise).
       tags: [{ $ref: '#/components/tags/bedboo' }]
       payload:
         type: object
@@ -1082,7 +1099,12 @@ components:
         properties:
           id: { $ref: '#/components/schemas/Id' }
           op: { const: action }
-          name: { type: string, enum: [drop, dropAll, inventory, perspective, pause] }
+          name: { type: string, enum: [drop, dropAll, inventory, perspective, pause, swing] }
+          hand:
+            type: string
+            enum: [main, off]
+            default: main
+            description: 'swing only: the arm that swings (animate carries no hand: the off hand shows on this client only).'
           timeoutMs:
             allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
             default: 1000
@@ -1099,6 +1121,8 @@ components:
           - type: object
             properties:
               names: { type: array, items: { type: string } }
+              name: { type: string }
+              hand: { type: string, enum: [main, off], description: 'swing: the arm that swung.' }
               tick: { type: integer }
     buttonRequest:
       name: button
@@ -1133,13 +1157,50 @@ components:
               held: { type: array, items: { type: string } }
               block: { $ref: '#/components/schemas/Vec3' }
               tick: { type: integer }
+    settingsRequest:
+      name: settings
+      title: settings request
+      description: |
+        Config key `gameHooks`. Without `renderDistance`, a probe. `renderDistance` (chunks) sets the
+        video option "Render Distance" of every renderer (normal, Vibrant Visuals, ray tracing), each
+        kept to its own values by the game and not saved to options.txt, then the client sends
+        request_chunk_radius itself; the server answers with the radius it grants (chunk_radius_update,
+        on the tap). Works in a world only (`not_in_level`).
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        type: object
+        required: [op]
+        properties:
+          id: { $ref: '#/components/schemas/Id' }
+          op: { const: settings }
+          renderDistance: { type: integer, minimum: 1, maximum: 255, description: 'Chunks.' }
+          timeoutMs:
+            allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
+            default: 1000
+      examples:
+        - name: render 8 chunks
+          payload: { id: 9, op: settings, renderDistance: 8 }
+    settingsReply:
+      name: settings
+      title: settings reply
+      tags: [{ $ref: '#/components/tags/bedboo' }]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Reply'
+          - type: object
+            properties:
+              renderDistance: { type: [integer, 'null'], description: 'Chunks the client renders now (probe: null before the first world).' }
+              requested: { type: integer }
+              inLevel: { type: boolean, description: 'Probe only.' }
+              tick: { type: integer }
     sendRequest:
       name: send
       title: send request
       description: |
         Config key `allowSend`. Without `buf`, a probe. `buf` is the base64 of one serverbound packet
         (varint header + body, as bedrock-protocol serializes it), sent through the local player. Ids
-        outside `sendAllow` are `refused`; 1, 30, 144 and 147 are always refused.
+        outside `sendAllow` (default 9 text, 77 command_request, 78 command_block_update, 97 book_edit)
+        are `refused`; 1, 30, 144 and 147 are always refused.
       tags: [{ $ref: '#/components/tags/bedboo' }]
       payload:
         type: object
@@ -1287,7 +1348,11 @@ components:
       description: |
         Without `host`: where the client plays. With `host`, the client joins that server through the
         game's own external-server join, from the title screen or from a world (which it leaves first),
-        answering the "not rated" and "Trust this server?" prompts.
+        answering the "not rated" and "Trust this server?" prompts. With `host: null`, the client only
+        leaves the world it is in (Save & Quit / Disconnect) and goes back to its menus: `left:true`
+        (`started:true` without `wait`; with `wait`, once the world is saved and no progress screen
+        shows), or `left:false` when it was in no world. Codes: `busy` (a join or leave is in progress),
+        `timeout`, `stopped`, `no_client`, `unavailable`.
       tags: [{ $ref: '#/components/tags/bedboo' }]
       payload:
         type: object
@@ -1295,15 +1360,17 @@ components:
         properties:
           id: { $ref: '#/components/schemas/Id' }
           op: { const: join }
-          host: { type: string }
+          host: { type: [string, 'null'], description: 'The server; null: leave the world.' }
           port: { type: integer, default: 19132 }
-          wait: { type: boolean, description: 'Reply once in the level (joined:true), not once connecting.' }
+          wait: { type: boolean, description: 'Reply once in the level (joined:true) or, with host null, back in the menus.' }
           timeoutMs:
             allOf: [{ $ref: '#/components/schemas/TimeoutMs' }]
             default: 60000
       examples:
         - name: join a local BDS
           payload: { id: 12, op: join, host: 127.0.0.1, port: 19132, wait: true }
+        - name: leave the world
+          payload: { id: 13, op: join, host: null, wait: true }
     joinReply:
       name: join
       title: join reply
@@ -1318,8 +1385,9 @@ components:
               left: { type: boolean, description: 'A world was left first.' }
               mode: { type: string }
               connection: { type: string, enum: [none, local, remote] }
-              host: { type: string }
+              host: { type: [string, 'null'] }
               port: { type: integer }
+              screen: { type: string, description: 'The top screen when the attempt ended.' }
               inLevel: { type: boolean }
               joining: { description: 'The attempt in progress.' }
               last: { description: 'How the last attempt ended.' }

@@ -233,7 +233,7 @@ you add or change an op, change the spec in the same pull request. The essential
   `disabled` op). Input ops reply after the game thread has dispatched the input (`timeoutMs`,
   default 5000). Binary messages carry only the tap.
 - **Modes.** `ping` reports `protocol: 2`, `defaultMode: "bedboo"` and `modes`, the ops of each mode:
-  `bedboo` (`world`, `look`, `input`, `slot`, `action`, `button`, `send`, `stack`, `timescale`,
+  `bedboo` (`world`, `look`, `input`, `slot`, `action`, `button`, `settings`, `send`, `stack`, `timescale`,
   `join`, `tap`), `input` (`key`, `text`, `mouse`, `raw`, `release`, `flush`, `focus`, `window`,
   `screenshot`) and `ui` (`ui`). All three are on; a client should prefer bedboo, then the UI tree,
   and use input last.
@@ -254,14 +254,14 @@ you add or change an op, change the spec in the same pull request. The essential
 | `ui` | read: `depth`, `scope`, `includeInvisible`, `maxNodes`; act: `snapshot`, `action` click\|setText\|scroll, `ref`, ... | read: `snapshot`, `screens`, `active`, `roots`, `nodes{ref: {role, name, text, value, state, bounds, boundsNorm, actions, children, source, hash}}`, `truncated`. JSON UI screens in full; an Ore UI screen is one opaque node (`source.kind:"oreui"`). Codes: `stale_ref`, `stale_snapshot`, `occluded`, `not_ready`, `unsupported` |
 | `manager` | `action` attach | the manager window attaches to the game; see [The manager](#the-manager) |
 | `close` | | closes the game (`WM_CLOSE` to its window) |
-| `join` | `host`, `port` (19132), `wait`, `timeoutMs` (60000) | the client joins a server by address through the game's own external-server join (`ClientInstance::connectToThirdPartyServer`), from the title screen or from inside a world, which it leaves first. Since 1.26.60 it answers the two prompts in the way, as a player would with the keyboard: "Online play is not rated" (Proceed, then it connects again) and "Trust this server?" for the server it joins (Trust and Join). Replies `started:true` once it connects, with `wait:true` `joined:true` once it is in the level; `left`: a world was left first. Codes: `join_failed` (the client gave up and shows why), `timeout` (`screen`: the game may still be connecting), `busy` (a join is in progress), `not_allowed` (a host off the PC that `loopbackOnly` keeps the game from: not in `allowHosts`), `bad_args`. Without `host`: `mode`, `connection` none\|local\|remote, `host`, `port`, `inLevel`, `joining` (the attempt in progress), `last` (how the last one ended). A server off the PC needs Remote mode (config `allowHosts`) |
+| `join` | `host` (null: leave the world), `port` (19132), `wait`, `timeoutMs` (60000) | the client joins a server by address through the game's own external-server join (`ClientInstance::connectToThirdPartyServer`), from the title screen or from inside a world, which it leaves first. Since 1.26.60 it answers the two prompts in the way, as a player would with the keyboard: "Online play is not rated" (Proceed, then it connects again) and "Trust this server?" for the server it joins (Trust and Join). Replies `started:true` once it connects, with `wait:true` `joined:true` once it is in the level; `left`: a world was left first. Codes: `join_failed` (the client gave up and shows why), `timeout` (`screen`: the game may still be connecting), `busy` (a join is in progress), `not_allowed` (a host off the PC that `loopbackOnly` keeps the game from: not in `allowHosts`), `bad_args`. `host: null` only leaves the world (Save & Quit / Disconnect) and replies `left:true` once back in the menus (`started:true` without `wait`), `left:false` in no world. Without `host`: `mode`, `connection` none\|local\|remote, `host`, `port`, `inLevel`, `joining` (the attempt in progress), `last` (how the last one ended). A server off the PC needs Remote mode (config `allowHosts`) |
 
 #### Several connections
 
 Several clients can be connected at once (config `wsMaxClients`, default 8), each served by its own
 thread, in order. Ops that post window input are serialized, so two clients never interleave a
-press or a typed text; `ping`, `state`, `tap`, `world`, `look`, `input`, `send`, `stack`,
-`timescale`, `join` and the `ui` read run without that lock (they only read, or hand their work to
+press or a typed text; `ping`, `state`, `tap`, `world`, `look`, `input`, `settings`, `send`,
+`stack`, `timescale`, `join` and the `ui` read run without that lock (they only read, or hand their work to
 the game threads). What a client holds is released when it disconnects (or its process dies), and
 nothing another client holds: its keys and mouse buttons, the `button` holds it made and the
 `input` override it set.
@@ -288,8 +288,9 @@ of every op is read-only.
 | `look` | `gameHooks` | `{inLevel, yaw, pitch, tick}` | `yaw`, `pitch`, `timeoutMs` (1000\*, at most 60000) |
 | `input` | `gameHooks` | `active`, `via` hooks\|keys, `hooks{raw,state}`, `tick`, `applied`, `ticksLeft` (a `ttlTicks` override) | `move{x,z}`, `jump`, `sneak`, `sprint`, `ttlMs` (300) or `ttlTicks` |
 | `slot` | `gameHooks` | `{slot}` (null outside a world) | `slot` 0..8 |
-| `action` | `gameHooks` | `{names}` | `name` drop\|dropAll\|inventory\|perspective\|pause |
+| `action` | `gameHooks` | `{names}` | `name` drop\|dropAll\|inventory\|perspective\|pause\|swing; `hand` main\|off (swing) |
 | `button` | `gameHooks` | `{held}` | `button` attack\|use\|pick; `action` down\|up\|click; `holdTicks`; `releaseOn` blockChange |
+| `settings` | `gameHooks` | `{renderDistance, inLevel}` (chunks; null before the first world) | `renderDistance` (chunks, 1..255) |
 | `send` | `allowSend` | `{allow}` (the ids in `sendAllow`) | `buf`, `timeoutMs` (2000\*, at most 10000) |
 | `stack` | `allowStack` | `{enabled, via:"raw", stats{sent, answered, rejected, failed, resyncs}}` | `buf`, `timeoutMs` (2000\*); or `view:true` |
 
@@ -340,11 +341,20 @@ maximum); a `timeoutMs` the caller passes is used as given. Likewise "the client
   - `action`: the key of the default key map, released on the next tick: drop Q, dropAll Ctrl+Q,
     inventory E, pause Escape; perspective calls `ClientInputCallbacks::handleTogglePerspectiveButtonPress`
     (since 1.26.60 the game exports none of the other `handle*ButtonPress`). A rebound key breaks them.
+    `swing` calls `LocalPlayer::swing`: the arm swings with no attack and the client sends the animate
+    packet itself; it works with a screen open too. `hand:"off"` swings the off hand on this client
+    only (animate carries no hand). Replies `name`, `hand`.
   - `button`: left/right/middle on the virtual GameInput mouse, released
     by the tick listener after `holdTicks` (click: default 2) or, with `releaseOn:"blockChange"`,
     once the block the client's hit result pointed at when it went down changes, turns to air or is
     no longer targeted (`refused` when no block is targeted). `up` applies at once. Never blocks
     the connection. Replies `held`, and `block{x,y,z}`.
+- **`settings`**: `renderDistance` (chunks) sets the video option "Render Distance" of every renderer
+  (`ViewDistance`, `DeferredViewDistance` for Vibrant Visuals, `RayTracingViewDistance`), each kept to its own
+  values by the game and not saved to options.txt, on the next client tick, then calls
+  `ClientInstance::updateChunkRadius`: the client sends request_chunk_radius itself and the server answers with the
+  radius it grants (chunk_radius_update on the tap, which may be larger than asked). Replies `renderDistance` (what
+  the client renders now), `requested`, `tick`. Codes: `not_in_level`, `timeout`, `bad_args`, `unavailable`.
 - **`send`**: `buf` is the base64 of one serverbound packet (varint header + body, as
   bedrock-protocol serializes it). It is rebuilt on the client thread
   (`MinecraftPackets::createPacket` + `Packet::read` with the client NetworkSystem's
@@ -360,8 +370,8 @@ server the client is on (`stack`), and read the player's whole session (`tap`). 
 random per game start, written only to the discovery file under the user's `%LOCALAPPDATA%`, and
 compared in constant time; the server listens on loopback only and refuses browser origins that
 `allowOrigins` does not list, so other users, other machines and web pages cannot reach it. `send`
-stays limited to `sendAllow` (default text 9 and command_request 77: chat and commands, as the
-player could type them). Ids 1 (login), 30 (inventory_transaction), 144 (player_auth_input) and 147
+stays limited to `sendAllow` (default text 9, command_request 77, command_block_update 78 and book_edit 97:
+chat, commands, command blocks and books, as the player could type or write them in the game's own screens). Ids 1 (login), 30 (inventory_transaction), 144 (player_auth_input) and 147
 (item_stack_request) are always refused, even when listed: the client owns them, and forged ones
 would fight its prediction and bookkeeping. Widen `sendAllow` only for a server you control. Set
 `allowSend`, `allowStack`, `tap`, `gameHooks` or `ui` to `false` to take their ops away.
@@ -443,12 +453,15 @@ This table is the same as bedboo's `lib/bedd/authority.js`.
 
 | Class | Packets | Handling |
 |---|---|---|
-| clientOwned | login, client_to_server_handshake, request_network_settings, resource_pack_client_response, client_cache_status, client_cache_blob_status, request_chunk_radius, subchunk_request, serverbound_loading_screen, set_local_player_as_initialized, network_stack_latency, tick_sync, player_skin, emote_list, respawn, player_action (respawn / dimension_change_ack / start_item_use_on / stop_item_use_on), animate, interact mouse_over_entity | bedboo drops them (counted): the client sends its own. A respawn is the user clicking Respawn on the client |
-| translated | player_auth_input (move_vector + flags to `input`; yaw/pitch to `look`; block_actions start_break/abort_break/stop_break to `button attack`), mob_equipment (`slot`), inventory_transaction (item_use click_block/click_air, item_release, item_use_on_entity: `look`, then `button use`/`attack`), interact open_inventory (`action inventory`), container_close (key ESC), item_stack_request (`stack`) | bedboo's router turns them into ops |
+| clientOwned | login, client_to_server_handshake, request_network_settings, resource_pack_client_response, client_cache_status, client_cache_blob_status, subchunk_request, serverbound_loading_screen, set_local_player_as_initialized, network_stack_latency, tick_sync, player_skin, emote_list, respawn, show_credits, player_action (respawn / dimension_change_ack / start_item_use_on / stop_item_use_on), animate, interact mouse_over_entity | bedboo drops them (counted): the client sends its own. What bedboo wants from them goes through an op: `bot.swingArm` is `action swing` (animate), Respawn is clicked through `ui`, and the End credits are left with ESC (the client then sends show_credits) |
+| translated | player_auth_input (move_vector + flags to `input`; yaw/pitch to `look`; block_actions start_break/abort_break/stop_break to `button attack`), mob_equipment (`slot`), inventory_transaction (item_use click_block/click_air, item_release, item_use_on_entity: `look`, then `button use`/`attack`), interact open_inventory (`action inventory`), container_close (key ESC), item_stack_request (`stack`), block_pick_request (`look`, then `button pick`), request_chunk_radius (`settings renderDistance`), interact leave_vehicle (a tap of `input sneak`) | bedboo's router turns them into ops |
 | shared | text, command_request | sent through `send`; fallback: T or SLASH, then `text`, then ENTER |
-| unsupported | book_edit, block_pick_request, crafting_event, set_default_game_type, everything else | bedboo throws BeddUnsupportedError (ERR_BEDD_UNSUPPORTED) |
+| screens | player_action stop_sleeping (Leave Bed), a sign's block_entity_data (the sign editor) | bedboo works the client's own screen through `ui` |
+| allowlisted | any other packet whose id the `send` probe lists in `allow` (config `sendAllow`; by default book_edit 97 and command_block_update 78, which the client sends from its book and command block screens) | sent as is through `send` |
+| unsupported | everything else (crafting_event, set_default_game_type, ...) | bedboo throws BeddUnsupportedError (ERR_BEDD_UNSUPPORTED) |
 
-item_stack_request is unsupported only when the `stack` probe does not answer `ok`.
+item_stack_request is unsupported only when the `stack` probe does not answer `ok`. `bot.quit()` leaves the world with
+`join {host: null}`; `createBot({host, port})` joins with `join`.
 
 ### Tap protocol
 

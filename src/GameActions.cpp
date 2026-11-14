@@ -1,5 +1,6 @@
-// `slot`, `action` and `button` control-pipe ops (config `gameHooks`): hotbar slot, the game's own
-// button actions (drop, inventory, perspective, pause) and held mouse buttons counted in game ticks.
+// `slot`, `action`, `button` and `settings` ops (config `gameHooks`): hotbar slot, the game's own
+// button actions (drop, inventory, perspective, pause, an arm swing), held mouse buttons counted in
+// game ticks, and the client's render distance.
 //
 // The pipe thread never touches the game: it queues a command and waits (timeoutMs, default 1000,
 // stretched at a slower game speed) until the next ClientLevelTickEvent, on the client thread, has applied it. Slot and actions
@@ -11,6 +12,12 @@
 // (GameInputHooks.cpp) like the `raw` op, but the tick listener releases them: after `holdTicks`
 // ticks, or (`releaseOn:'blockChange'`) once the block the client's hit result pointed at when the
 // button went down is gone or no longer targeted. So a hold never blocks the pipe.
+//
+// `action swing` calls LocalPlayer::swing, which plays the arm swing and sends the animate packet the
+// client owns, with no attack. `settings renderDistance` sets the video option "Render Distance" in
+// chunks, for each renderer (OptionID ViewDistance, DeferredViewDistance for Vibrant Visuals,
+// RayTracingViewDistance), not saved to options.txt, and calls ClientInstance::updateChunkRadius, so
+// the client sends request_chunk_radius itself.
 #include "BeDD.h"
 
 #include <algorithm>
@@ -30,7 +37,13 @@
 
 #include "mc/client/game/ClientInputCallbacks.h"
 #include "mc/client/game/ClientInstance.h"
+#include "mc/client/options/IOptionRegistry.h"
 #include "mc/client/player/LocalPlayer.h"
+#include "mc/options/option_types/IntOption.h"
+#include "mc/options/option_types/OptionID.h"
+#include "mc/options/option_types/OptionType.h"
+#include "mc/world/actor/ActorSwingSource.h"
+#include "mc/world/item/HandSlot.h"
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/block/Block.h"
@@ -53,7 +66,20 @@ constexpr std::array<ButtonDef, 3> kButtons{
     {{"attack", VK_LBUTTON, kGiLeft}, {"use", VK_RBUTTON, kGiRight}, {"pick", VK_MBUTTON, kGiMiddle}}
 };
 
-constexpr std::array<char const*, 5> kActions{"drop", "dropAll", "inventory", "perspective", "pause"};
+constexpr std::array<char const*, 6> kActions{"drop", "dropAll", "inventory", "perspective", "pause", "swing"};
+
+// The "Render Distance" options, one per renderer; the client uses the one of its graphics mode.
+constexpr std::array<OptionID, 3> kViewDistanceOptions{OptionID::ViewDistance, OptionID::DeferredViewDistance, OptionID::RayTracingViewDistance};
+
+// An IntOption (render distances are in chunks); nullptr if `id` is not one.
+IntOption* intOption(ClientInstance& client, OptionID id) {
+    auto opt = client.getOptions().getIfValid(id);
+    if (!opt || !*opt || !(*opt)->mImpl.get() || (*opt)->mImpl->mOptionType != OptionType::Int) return nullptr;
+    return static_cast<IntOption*>(*opt);
+}
+
+// {renderDistance}: the chunks the client uses now.
+json renderDistance(ClientInstance& client) { return {{"renderDistance", client.getOptions().getViewDistanceChunks()}}; }
 
 struct Held {
     bool        down        = false;
@@ -85,6 +111,7 @@ int64_t                               gKeyDownTick = 0;
 std::array<Held, kButtons.size()>     gHeld{};
 int64_t                               gTick = 0;
 int                                   gSlot = -1;
+json                                  gRenderDistance; // renderDistance(), refreshed every 20 ticks (the probe)
 
 ll::event::ListenerPtr gTickListener;
 
@@ -173,6 +200,13 @@ json apply(Command& c, ClientInstance& client, LocalPlayer& player) {
         r["via"]  = "none"; // already held
     } else if (c.op == "action") {
         std::string name = c.req["name"].get<std::string>();
+        if (name == "swing") { // no key: it works with a screen open too
+            bool off = c.req.value("hand", "main") == "off";
+            player.swing(ActorSwingSource::None, off ? HandSlot::Offhand : HandSlot::Mainhand);
+            r["name"] = name;
+            r["hand"] = off ? "off" : "main";
+            return r;
+        }
         // (Escape would close a screen instead of pausing, so pause waits for the world too)
         if (!inWorld) return fail("busy", "a screen is open (" + client.getTopScreenName() + ")");
         if (name == "drop") pressKeys({'Q'});
@@ -181,6 +215,20 @@ json apply(Command& c, ClientInstance& client, LocalPlayer& player) {
         else if (name == "perspective") ClientInputCallbacks::handleTogglePerspectiveButtonPress(client);
         else if (name == "pause") pressKeys({VK_ESCAPE});
         r["name"] = name;
+    } else if (c.op == "settings") {
+        int  want = c.req["renderDistance"].get<int>();
+        bool any  = false;
+        for (OptionID id : kViewDistanceOptions) {
+            IntOption* o = intOption(client, id);
+            if (!o) continue;
+            o->set(want, false); // the option keeps it to its own values (VALUE_MIN/MAX do not tell them all)
+            any = true;
+        }
+        if (!any) return fail("unavailable", "the game has no integer Render Distance option");
+        client.updateChunkRadius();
+        gRenderDistance = renderDistance(client);
+        r.update(gRenderDistance);
+        r["requested"] = want;
     } else { // button
         size_t      b      = buttonIndex(c.req["button"].get<std::string>());
         std::string action = c.req["action"].get<std::string>(); // down or click (up never queues)
@@ -219,6 +267,7 @@ void onTick() {
     auto         client = ll::service::getClientInstance();
     LocalPlayer* player = client ? client->getLocalPlayer() : nullptr;
     if (player) gSlot = player->getSelectedItemSlot();
+    if (client && (gTick % 20 == 1 || gRenderDistance.is_null())) gRenderDistance = renderDistance(*client);
     if (!gKeysUp.empty() && gTick > gKeyDownTick) releaseKeys();
 
     bool notify = false;
@@ -316,7 +365,7 @@ void releaseGameButtons() {
 nlohmann::json gameActionOp(std::string const& op, nlohmann::json const& req) {
     if (!options().gameHooks || !gTickListener) return disabled(op);
     if (req.contains("timeoutMs") && !req["timeoutMs"].is_number_integer()) return fail("bad_args", "timeoutMs must be an integer");
-    bool query = !req.contains(op == "slot" ? "slot" : op == "action" ? "name" : "button");
+    bool query = !req.contains(op == "slot" ? "slot" : op == "action" ? "name" : op == "settings" ? "renderDistance" : "button");
     if (op == "slot") {
         if (query) {
             std::lock_guard lock(gMutex);
@@ -331,7 +380,18 @@ nlohmann::json gameActionOp(std::string const& op, nlohmann::json const& req) {
         if (query) return {{"ok", true}, {"names", kActions}};
         auto const& n = req["name"];
         if (!n.is_string() || std::ranges::find(kActions, n.get<std::string>()) == kActions.end())
-            return fail("bad_args", "name must be one of drop, dropAll, inventory, perspective, pause");
+            return fail("bad_args", "name must be one of drop, dropAll, inventory, perspective, pause, swing");
+        if (req.contains("hand") && req["hand"] != "main" && req["hand"] != "off") return fail("bad_args", "hand must be 'main' or 'off'");
+    } else if (op == "settings") {
+        if (query) {
+            std::lock_guard lock(gMutex);
+            json r       = gRenderDistance.is_null() ? json{{"renderDistance", nullptr}} : gRenderDistance;
+            r["ok"]      = true;
+            r["inLevel"] = inLevel();
+            return r;
+        }
+        if (!req["renderDistance"].is_number_integer() || req["renderDistance"].get<int64_t>() < 1 || req["renderDistance"].get<int64_t>() > 255)
+            return fail("bad_args", "renderDistance: chunks, 1..255");
     } else { // button
         if (query) {
             std::lock_guard lock(gMutex);

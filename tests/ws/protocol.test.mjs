@@ -198,9 +198,9 @@ describe('BeDD WebSocket protocol', { skip }, () => {
       assert.equal(r.pid, ep.pid);
       if (isClient) {
         assert.equal(r.defaultMode, 'bedboo');
-        assert.deepEqual(r.modes.bedboo, ['world', 'look', 'input', 'slot', 'action', 'button', 'send', 'stack', 'timescale', 'join', 'tap']);
+        assert.deepEqual(r.modes.bedboo, ['world', 'look', 'input', 'slot', 'action', 'button', 'settings', 'send', 'stack', 'timescale', 'join', 'tap']);
         assert.deepEqual(r.modes.input, ['key', 'text', 'mouse', 'raw', 'release', 'flush', 'focus', 'window', 'screenshot']);
-        assert.deepEqual(r.modes.ui, ['ui']);
+        assert.deepEqual(r.modes.ui, ['ui', 'oreui']);
         assert.ok('hwnd' in r);
       }
     } finally {

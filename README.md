@@ -114,7 +114,7 @@ Every message is a JSON object: a request `{id, op, ...}` gets `{id, ok:true, ..
 
 | Mode | Ops | Use it for |
 |---|---|---|
-| **bedboo** (default) | `world`, `look`, `input`, `slot`, `action`, `button`, `send`, `stack`, `timescale`, `join`, `tap` | play by meaning: read the world, turn, walk, use items, chat and run commands, move items; [bedboo](https://github.com/LiteLDev/bedboo) speaks these for you |
+| **bedboo** (default) | `world`, `look`, `input`, `slot`, `action`, `button`, `settings`, `send`, `stack`, `timescale`, `join`, `tap` | play by meaning: read the world, turn, walk, use items, chat and run commands, move items; [bedboo](https://github.com/LiteLDev/bedboo) speaks these for you |
 | **UI tree** | `ui` | read the screen as an accessibility tree (roles, names, text, values, bounds) and click, set text or scroll a node by its `ref` |
 | **input** (last resort) | `key`, `text`, `mouse`, `raw`, `release`, `flush`, `focus`, `window`, `screenshot` | what a player's hands do, and the picture; costly for an agent, so only when the others cannot |
 
@@ -228,7 +228,7 @@ game start.
 | `tapLoopback` | default `true`, used only with `tap`: also tap singleplayer worlds and LAN worlds this game hosts (packets re-serialized; LAN guests' traffic is left out) |
 | `tapJournalMiB` | default `128`: size cap of the tap's join journal; past it a late attach is incomplete (`complete:false`) |
 | `allowSend` | default `true`: the `send` op, with which bedboo makes the client send chat and commands it serialized |
-| `sendAllow` | packet ids `send` may send, default `[9, 77]` (text, command_request); login, inventory_transaction, player_auth_input and item_stack_request are always refused |
+| `sendAllow` | packet ids `send` may send, default `[9, 77, 78, 97]` (text, command_request, command_block_update, book_edit: what the player can type or write in the game's own screens); login, inventory_transaction, player_auth_input and item_stack_request are always refused |
 | `allowStack` | default `true`: the `stack` op, with which bedboo makes the game send item stack requests (inventory moves, crafting, chest moves) for the signed-in player |
 
 The token is the boundary: anything that has it can do what the signed-in player can. It is written

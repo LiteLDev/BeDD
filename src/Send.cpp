@@ -6,7 +6,8 @@
 // (LocalPlayer::sendNetworkPacket), so it takes the client's own path to the server: the remote
 // connection, or the loopback sender in singleplayer and in a LAN world the client hosts.
 //
-// Only ids in sendAllow (default text and command_request) are sent. Packets the client itself
+// Only ids in sendAllow (default text, command_request, command_block_update and book_edit: what the
+// player could type or write in the game's own screens) are sent. Packets the client itself
 // owns (login, inventory_transaction, player_auth_input, item_stack_request) are always refused:
 // forging them would fight the client's own prediction and bookkeeping.
 #include "BeDD.h"

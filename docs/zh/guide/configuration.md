@@ -43,7 +43,7 @@ BeDD.exe mod config 1.26.60.05-2 --set 'allowHosts=["play.example.net"]' --set m
 | `tapLoopback` | 默认 `true`，仅在开启 `tap` 时生效：也截取本游戏主持的单人世界和局域网世界（数据包重新序列化；局域网访客的流量不包括在内） |
 | `tapJournalMiB` | 默认 `128`：tap 加入日志的大小上限；超过后，较晚接入的读取方拿到的不完整（`complete:false`） |
 | `allowSend` | 默认 `true`：`send` 操作，bedboo 之类的脚本用它让客户端发送自己序列化好的聊天和命令 |
-| `sendAllow` | `send` 可以发送的数据包 id，默认 `[9, 77]`（text、command_request）；login、inventory_transaction、player_auth_input 和 item_stack_request 始终拒绝 |
+| `sendAllow` | `send` 可以发送的数据包 id，默认 `[9, 77, 78, 97]`（text、command_request、command_block_update、book_edit：玩家在游戏自己的界面里能输入或写下的）；login、inventory_transaction、player_auth_input 和 item_stack_request 始终拒绝 |
 | `allowStack` | 默认 `true`：`stack` 操作让脚本以已登录玩家的身份让游戏发送物品堆请求（背包移动、合成、箱子移动），bedboo 就是这样用的 |
 | `ui` | 默认 `true`：`ui` 操作，即游戏界面的 [UI 树](/zh/guide/operation-modes#ui-树) |
 | `uiMaxNodes` | 默认 `1000`：一次 `ui` 回复最多包含的节点数（请求里的 `maxNodes` 只能调低）；有节点被省略时 `truncated` 会说明 |

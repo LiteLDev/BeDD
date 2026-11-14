@@ -267,7 +267,7 @@ json handle(json const& j) {
         r["kind"]        = "client";
         r["defaultMode"] = "bedboo";
         r["modes"]       = {
-            {"bedboo", {"world", "look", "input", "slot", "action", "button", "send", "stack", "timescale", "join", "tap"}},
+            {"bedboo", {"world", "look", "input", "slot", "action", "button", "settings", "send", "stack", "timescale", "join", "tap"}},
             {"input",  {"key", "text", "mouse", "raw", "release", "flush", "focus", "window", "screenshot"}              },
             {"ui",     {"ui", "oreui"}                                                                             },
         };
@@ -404,6 +404,8 @@ json handle(json const& j) {
         r = gameActionOp(op, j);
     } else if (op == "button") {
         r = gameActionOp(op, j);
+    } else if (op == "settings") {
+        r = gameActionOp(op, j);
     } else if (op == "input") {
         return moveInputOp(j);
     } else if (op == "send") {
@@ -516,7 +518,7 @@ bool concurrentOp(std::string const& line) {
     if (!req.is_object()) return true;
     std::string op = req.value("op", "");
     return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
-        || op == "stack" || op == "timescale" || op == "join" || op == "manager" || op == "close"
+        || op == "stack" || op == "settings" || op == "timescale" || op == "join" || op == "manager" || op == "close"
         || op == "screenshot" || op == "oreui" || (op == "ui" && !req.contains("action"));
 }
 
