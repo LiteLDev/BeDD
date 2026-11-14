@@ -68,7 +68,7 @@ ws.onmessage = (e) => { console.log(JSON.parse(e.data)); ws.close(); };
 | `action` | `gameHooks` | `names` | `name` drop\|dropAll\|inventory\|perspective\|pause\|swing；`hand` main\|off（swing）；`timeoutMs`（1000\*） |
 | `button` | `gameHooks` | `held` | `button` attack\|use\|pick；`action` down\|up\|click（click）；`holdTicks`（click：2）；`releaseOn` blockChange；`timeoutMs`（1000\*） |
 | `settings` | `gameHooks` | `renderDistance`（区块；第一次进世界前为 null）、`inLevel` | `renderDistance`（区块，1..255） |
-| `send` | `allowSend` | `allow`（`sendAllow` 中的 id） | `buf`、`timeoutMs`（2000\*，≤10000） |
+| `send` | `allowSend` | `allow`（`sendAllow` 中的 id；`"*"` 时逐个列出）、`allowAll` | `buf`、`timeoutMs`（2000\*，≤10000） |
 | `stack` | `allowStack` | `enabled, via:"raw", stats{sent, answered, rejected, failed, resyncs}` | `buf`、`timeoutMs`（2000\*）；或 `view:true` |
 | `tap` | `tap` | `enabled`、`attached`、`link{state up\|down, type remote\|local, address}`、`journal{frames, bytes, complete}`、`lastReplay`、`replay`、`counters{in, out, dropped, sent, readers}`、`hooks` | `action:"subscribe"` → [tap 流](/zh/reference/tap) |
 | `timescale` | 无 | [见下](#timescale-游戏速度) | `scale`、`paused`、`timeoutMs`（2000） |
@@ -87,7 +87,7 @@ ws.onmessage = (e) => { console.log(JSON.parse(e.data)); ws.close(); };
 | `button` | 虚拟 GameInput 左/右/中键；`holdTicks` 后松开，或（`releaseOn:"blockChange"`）在 `down` 时瞄准的方块改变、变成空气或不再被瞄准时松开。`up` 立即松开。从不阻塞。回复 `held`、`block{x,y,z}`。断开时只松开无终点的 `down`；其余跑完，`releaseOn` 最多再 1200 tick | `refused`：未瞄准方块 |
 | `settings` | `renderDistance` 在下一客户端 tick 设置所有渲染器（普通、Vibrant Visuals、光线追踪）的渲染距离（不写入 options.txt），再调用 `ClientInstance::updateChunkRadius`：客户端发 request_chunk_radius；服务器批准的半径以 chunk_radius_update 到达（tap）。回复 `renderDistance`（当前渲染值）、`requested`、`tick` | `not_in_level`、`timeout`、`bad_args`、`unavailable` |
 | `send` | `buf`：base64 的服务端方向数据包（varint 头 + 包体，bedrock-protocol），由本地玩家发送；回复 `packetId, name`。统计：`state.stats.send{sent, refused, failed, lastError}` | `bad_args`（无法解析，未发送）、`refused`（不在 `sendAllow` 中） |
-| `join` | 从标题界面或世界中（先离开：`left`）；自动应答 "Online play is not rated"（Proceed）和 "Trust this server?"（Trust and Join）。开始连接后 `started:true`；`wait:true` → `joined:true`。非本机主机需要 `allowHosts`（Remote 模式）。`host: null` 离开世界（保存并退出 / 断开连接）：`left:true`（`wait`：存好并回到菜单后；否则 `started:true`），不在世界中时 `left:false` | `join_failed`、`timeout`（`screen`）、`busy`、`not_allowed`、`stopped`、`no_client`、`unavailable`、`bad_args` |
+| `join` | 从标题界面或世界中（先离开：`left`）；自动应答 "Online play is not rated"（Proceed）和 "Trust this server?"（Trust and Join）。开始连接后 `started:true`；`wait:true` → `joined:true`。非本机主机需要 `allowHosts`（Remote 模式）；`allowHosts` 含 `"*"` 时解析该主机并加入（解析不了为 `not_allowed`）。`host: null` 离开世界（保存并退出 / 断开连接）：`left:true`（`wait`：存好并回到菜单后；否则 `started:true`），不在世界中时 `left:false` | `join_failed`、`timeout`（`screen`）、`busy`、`not_allowed`、`stopped`、`no_client`、`unavailable`、`bad_args` |
 
 ### `stack`：通过客户端发送物品堆请求
 
@@ -173,7 +173,7 @@ level_event 3007（SimTimeScale，pos 0,0,0，`data` = float 位模式按 int32�
 | `busy` | 界面打开、有更新的 `look`、join 进行中、tap 已被占用 |
 | `stopped` | 正在卸载 |
 | `join_failed` | join 放弃（客户端显示原因） |
-| `not_allowed` | 非本机主机、`loopbackOnly`、不在 `allowHosts` 中 |
+| `not_allowed` | 非本机主机、`loopbackOnly`、不在 `allowHosts` 中（或含 `"*"` 时无法解析） |
 | `unavailable` | 所需钩子未安装（见游戏日志） |
 | `no_client` | 尚无客户端实例 |
 | `remote` | 世界在非本机托管的服务器上 |
@@ -202,6 +202,10 @@ level_event 3007（SimTimeScale，pos 0,0,0，`data` = float 位模式按 int32�
 
 - `send`：以已登录玩家身份发包，限于 `sendAllow`（默认 9 text、77 command_request、78 command_block_update、97 book_edit）。id 1、30、144、147 始终拒绝。
   只为自己的服务器放宽。
+- <a id="send-allow-all"></a>`sendAllow: "*"`：除客户端自己发送的数据包外全部允许，排除：1 login、4 握手、8 资源包应答、23 tick_sync、30、
+  44 animate、45 respawn、75 show_credits、93 player_skin、94 subclient_login、113 set_local_player_as_initialized、115
+  network_stack_latency、129/135 客户端缓存、144、147、152 emote_list、175 subchunk_request、193 request_network_settings、312
+  serverbound_loading_screen。其他包可能让客户端和服务器的状态对不上（不是客户端自己发的）。
 - `stack`：在任何服务器上移动、合成、丢弃和销毁玩家的物品。
 - tap：整个会话。
 

@@ -10,6 +10,11 @@
 // player could type or write in the game's own screens) are sent. Packets the client itself
 // owns (login, inventory_transaction, player_auth_input, item_stack_request) are always refused:
 // forging them would fight the client's own prediction and bookkeeping.
+//
+// sendAllow "*" sends every id but the ones the client owns: those four, and the session and
+// bookkeeping packets it sends by itself (login and handshakes, resource packs, chunk and cache
+// requests, loading screens, latency, skins, respawn, animate, credits). bedboo drops the same
+// ones before it asks (authority.js clientOwned).
 #include "BeDD.h"
 
 #include <algorithm>
@@ -79,19 +84,37 @@ json fail(std::string code, std::string const& error) {
     };
 }
 
+// Not sent with sendAllow "*" either: the client sends them by itself. login, client_to_server_handshake,
+// resource_pack_client_response, tick_sync, inventory_transaction, animate, respawn, show_credits,
+// player_skin, subclient_login, set_local_player_as_initialized, network_stack_latency,
+// client_cache_status, client_cache_blob_status, player_auth_input, item_stack_request, emote_list,
+// subchunk_request, request_network_settings, serverbound_loading_screen.
+constexpr std::array<int, 20> kClientOwned{1, 4, 8, 23, 30, 44, 45, 75, 93, 94, 113, 115, 129, 135, 144, 147, 152, 175, 193, 312};
+
+constexpr int kEndId = static_cast<int>(MinecraftPacketIds::EndId);
+
 bool alwaysRefused(int id) { return std::ranges::find(kAlwaysRefused, id) != kAlwaysRefused.end(); }
 
-json allowList() {
-    json a = json::array();
-    for (int id : options().sendAllow)
-        if (!alwaysRefused(id)) a.push_back(id);
-    return a;
-}
+bool clientOwned(int id) { return std::ranges::find(kClientOwned, id) != kClientOwned.end(); }
 
 bool allowed(int id) {
     if (alwaysRefused(id)) return false;
+    if (options().sendAllowAll) return id > 0 && id < kEndId && !clientOwned(id);
     auto const& allow = options().sendAllow;
     return std::ranges::find(allow, id) != allow.end();
+}
+
+// Every id `send` takes; with "*" spelled out, so a caller checks an id the same way either way.
+json allowList() {
+    json a = json::array();
+    if (options().sendAllowAll) {
+        for (int id = 1; id < kEndId; ++id)
+            if (allowed(id)) a.push_back(id);
+        return a;
+    }
+    for (int id : options().sendAllow)
+        if (!alwaysRefused(id)) a.push_back(id);
+    return a;
 }
 
 // Standard base64 (padding optional); nullopt on any other character.
@@ -215,7 +238,7 @@ json sendOp(json const& req) {
             {"key",   "allowSend"                                          },
             {"error", "send is off (set \"allowSend\": true in config.json)"}
         };
-    if (!req.contains("buf")) return {{"ok", true}, {"allow", allowList()}};
+    if (!req.contains("buf")) return {{"ok", true}, {"allow", allowList()}, {"allowAll", options().sendAllowAll}};
     if (!req["buf"].is_string()) return fail("bad_args", "'buf' must be a base64 string");
     auto bytes = base64Decode(req["buf"].get<std::string>());
     if (!bytes) return fail("bad_args", "'buf' is not base64");
@@ -223,7 +246,13 @@ json sendOp(json const& req) {
     size_t   n      = readHeader(*bytes, header);
     if (!n) return fail("bad_args", "'buf' has no packet header");
     int id = static_cast<int>(header & 0x3ff);
-    if (!allowed(id)) return fail("refused", "packet id " + std::to_string(id) + " is not allowed (sendAllow)");
+    if (!allowed(id))
+        return fail(
+            "refused",
+            "packet id " + std::to_string(id)
+                + (options().sendAllowAll && (clientOwned(id) || alwaysRefused(id)) ? " is the client's own (not sent, even with sendAllow \"*\")"
+                                                                                    : " is not allowed (sendAllow)")
+        );
     // Not in a world when the client has not ticked for 20 ticks of its current cadence (at least 1 s).
     if (clientTickStale()) return fail("not_in_level", "the client is not in a world (or it is paused)");
     if (req.contains("timeoutMs") && !req["timeoutMs"].is_number_integer()) return fail("bad_args", "'timeoutMs' must be an integer");

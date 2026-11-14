@@ -237,15 +237,11 @@ void frame() {
 }
 
 // The game can reach `host`: loopbackOnly is off, or it is on the PC (localhost, 127.x, ::1), or in
-// allowHosts (as written there; a name is not resolved here).
-bool reachable(std::string host) {
+// allowHosts (as written there, or added by an earlier join), or allowHosts has "*" and it is added
+// now (NetHooks.cpp allowHostNow resolves it). Else false with `error`.
+bool reachable(std::string const& host, std::string& error) {
     if (!options().loopbackOnly) return true;
-    for (auto& c : host) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    if (host == "localhost" || host == "::1" || host == "[::1]" || host.starts_with("127.")) return true;
-    return std::ranges::any_of(options().allowHosts, [&](std::string h) {
-        for (auto& c : h) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        return h == host;
-    });
+    return allowHostNow(host, error);
 }
 
 std::string connectionName() {
@@ -363,6 +359,9 @@ json joinOp(json const& req) {
         json            r = connectionLocked();
         r["ok"]           = true;
         r["mode"]         = options().mode;
+        // Off-PC hosts the game may reach (loopbackOnly): allowHosts, their addresses, hosts joined with "*".
+        r["allowHosts"]   = options().loopbackOnly ? json(allowedHosts()) : json("*");
+        r["anyHost"]      = !options().loopbackOnly || options().allowAnyHost;
         r["joining"]      = gAttempt ? json{{"host", gAttempt->host}, {"port", gAttempt->port}, {"started", gAttempt->started}} : json(nullptr);
         r["last"]         = gLastResult;
         return r;
@@ -379,8 +378,7 @@ json joinOp(json const& req) {
             return fail("bad_args", "port: 1..65535");
         a->port = req["port"].get<int>();
     }
-    if (!a->leaveOnly && !reachable(a->host))
-        return fail("not_allowed", a->host + " is off the PC and not in allowHosts (loopbackOnly): use Remote mode (BeDD.exe mod config <instance> --world-mode Remote --server-host <host>)");
+    if (std::string why; !a->leaveOnly && !reachable(a->host, why)) return fail("not_allowed", why);
     bool wait    = req.value("wait", false);
     auto timeout = std::chrono::milliseconds(std::clamp(req.value("timeoutMs", 60000), 100, 600000));
     a->deadline  = Clock::now() + timeout;

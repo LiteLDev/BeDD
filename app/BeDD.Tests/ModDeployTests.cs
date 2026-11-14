@@ -64,6 +64,9 @@ public sealed class ModDeployTests : IDisposable
         Assert.Equal("Remote", (string?)c["mode"]);
         Assert.Equal("play.example.net", (string?)c["allowHosts"]![0]);
 
+        ModDeploy.ApplyWorldMode(c, "Remote", "*");
+        Assert.Equal("*", (string?)c["allowHosts"]![0]);
+
         ModDeploy.ApplyWorldMode(c, "Remote", "127.0.0.1");
         Assert.False(c.ContainsKey("allowHosts"));
 

@@ -22,7 +22,7 @@ BeDD.exe mod config 1.26.60.05-2 --set clientWidth=1600 --unset timeScale # --un
 | `manager` | `true` | show in the [manager window](/guide/several-games#the-manager-window), close without one for 30 s; `false`: hidden, never self-closes (headless CI) |
 | `loopbackOnly` | `true` | keep every socket on loopback: no firewall prompt, no "LAN worlds" from other hosts. Server mod: same for its IPv4/IPv6 ports, LAN discovery, NetherNet; `state` reports it |
 | `mode` | `ClientOnly` | `ClientOnly`, `ClientServer`, `Remote` ([world modes](/guide/modes)); `state` and `join` report it |
-| `allowHosts` | `[]` | off-PC hosts still reachable (the Remote server); while it names one, datagrams to other off-PC hosts are refused (`state` `stats.sendsRefused`) |
+| `allowHosts` | `[]` | off-PC hosts still reachable (the Remote server); while it names one, datagrams to other off-PC hosts are refused (`state` `stats.sendsRefused`). `"*"`: `join` adds its host when it joins, so any server works without a restart (other hosts still refused) |
 | `mute` | ignored | always silent; `false` only logs a warning |
 | `trace` | `false` | log every input to `logs\latest.log` |
 | `timeScale` | `1` | game speed 0.05..20 of hosted worlds (`timescale` op changes it). Behind a BeDD server the server leads; without BeDD no effect. Server mod: applied at start, sent to players |
@@ -31,7 +31,7 @@ BeDD.exe mod config 1.26.60.05-2 --set clientWidth=1600 --unset timeScale # --un
 | `tapLoopback` | `true` | with `tap`: also singleplayer and hosted LAN worlds |
 | `tapJournalMiB` | `128` | join journal cap; past it late attaches get `complete:false` |
 | `allowSend` | `true` | `send` op (chat, commands) |
-| `sendAllow` | `[9, 77, 78, 97]` | packet ids `send` may send (text, command_request, command_block_update, book_edit); login, inventory_transaction, player_auth_input, item_stack_request always refused |
+| `sendAllow` | `[9, 77, 78, 97]` | packet ids `send` may send (text, command_request, command_block_update, book_edit); login, inventory_transaction, player_auth_input, item_stack_request always refused. `"*"`: every id except the packets the client sends itself ([list](/reference/websocket#send-allow-all)) |
 | `allowStack` | `true` | `stack` op (item stack requests) |
 | `ui` | `true` | `ui` op ([UI tree](/reference/ui)) |
 | `uiMaxNodes` | `1000` | default node cap of a `format:"json"` `ui` reply (a request's `maxNodes` replaces it) |

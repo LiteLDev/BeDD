@@ -11,7 +11,7 @@ internal static class ModCommands
     [
         Flag.Strings("set", "", "<key=value>", "a config setting (repeatable; the value is JSON when it parses, else text)"),
         Flag.String("world-mode", "", "<mode>", "where worlds run: ClientOnly, ClientServer or Remote (config \"mode\")"),
-        Flag.String("server-host", "", "<host>", "with --world-mode Remote: the server the game joins"),
+        Flag.String("server-host", "", "<host>", "with --world-mode Remote: the server the game joins (* = any server `join` names)"),
     ];
 
     [ModuleInitializer]
@@ -36,6 +36,7 @@ internal static class ModCommands
                 "mod install 1.26.60.05-2",
                 "mod install 1.26.60.05-2 --from bin\\BeDD --set manager=false --set timeScale=2",
                 "mod install 1.26.60.05-2 --world-mode Remote --server-host play.example.net",
+                "mod install 1.26.60.05-2 --world-mode Remote --server-host '*' --set sendAllow=*",
             ],
             Run = Install,
         });

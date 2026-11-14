@@ -68,11 +68,11 @@ Config key `false` → `disabled`. [Implementation](/reference/how-it-works#bedb
 | `action` | `gameHooks` | `names` | `name` drop\|dropAll\|inventory\|perspective\|pause\|swing; `hand` main\|off (swing); `timeoutMs` (1000\*) |
 | `button` | `gameHooks` | `held` | `button` attack\|use\|pick; `action` down\|up\|click (click); `holdTicks` (click: 2); `releaseOn` blockChange; `timeoutMs` (1000\*) |
 | `settings` | `gameHooks` | `renderDistance` (chunks; null before the first world), `inLevel` | `renderDistance` (chunks, 1..255) |
-| `send` | `allowSend` | `allow` (`sendAllow` ids) | `buf`, `timeoutMs` (2000\*, ≤10000) |
+| `send` | `allowSend` | `allow` (`sendAllow` ids; `"*"` spelled out), `allowAll` | `buf`, `timeoutMs` (2000\*, ≤10000) |
 | `stack` | `allowStack` | `enabled, via:"raw", stats{sent, answered, rejected, failed, resyncs}` | `buf`, `timeoutMs` (2000\*); or `view:true` |
 | `tap` | `tap` | `enabled`, `attached`, `link{state up\|down, type remote\|local, address}`, `journal{frames, bytes, complete}`, `lastReplay`, `replay`, `counters{in, out, dropped, sent, readers}`, `hooks` | `action:"subscribe"` → [tap stream](/reference/tap) |
 | `timescale` | none | [below](#timescale-game-speed) | `scale`, `paused`, `timeoutMs` (2000) |
-| `join` | none | `mode`, `connection` none\|local\|remote, `host`, `port`, `inLevel`, `joining`, `last` | `host` (null: leave the world), `port` (19132), `wait`, `timeoutMs` (60000) |
+| `join` | none | `mode`, `connection` none\|local\|remote, `host`, `port`, `inLevel`, `joining`, `last`, `allowHosts` (reachable off the PC; `"*"` without `loopbackOnly`), `anyHost` | `host` (null: leave the world), `port` (19132), `wait`, `timeoutMs` (60000) |
 
 \* At ≥20 ticks/s; slower, defaults scale by tick interval / 50 ms (up to the max). `not_in_level`: no client tick
 within 20 tick intervals (≥1 s).
@@ -87,7 +87,7 @@ within 20 tick intervals (≥1 s).
 | `button` | virtual GameInput left/right/middle; released after `holdTicks`, or (`releaseOn:"blockChange"`) when the block targeted on `down` changes, turns to air or is untargeted. `up` at once. Never blocks. Replies `held`, `block{x,y,z}`. On disconnect only an endless `down` is released; others finish, `releaseOn` at most 1200 more ticks | `refused`: no block targeted |
 | `settings` | `renderDistance` sets Render Distance of every renderer (normal, Vibrant Visuals, ray tracing; not saved to options.txt) next client tick, then `ClientInstance::updateChunkRadius`: the client sends request_chunk_radius; the server's grant arrives as chunk_radius_update (tap). Replies `renderDistance` (rendered now), `requested`, `tick` | `not_in_level`, `timeout`, `bad_args`, `unavailable` |
 | `send` | `buf`: base64 serverbound packet (varint header + body, bedrock-protocol), sent by the local player; replies `packetId, name`. Stats: `state.stats.send{sent, refused, failed, lastError}` | `bad_args` (unreadable, not sent), `refused` (not in `sendAllow`) |
-| `join` | from title or a world (left first: `left`); answers "Online play is not rated" (Proceed) and "Trust this server?" (Trust and Join). `started:true` once connecting; `wait:true` → `joined:true`. Off-PC hosts need `allowHosts` (Remote mode). `host: null` leaves the world (Save & Quit / Disconnect): `left:true` (`wait`: once saved and back in the menus; else `started:true`), `left:false` in no world | `join_failed`, `timeout` (`screen`), `busy`, `not_allowed`, `stopped`, `no_client`, `unavailable`, `bad_args` |
+| `join` | from title or a world (left first: `left`); answers "Online play is not rated" (Proceed) and "Trust this server?" (Trust and Join). `started:true` once connecting; `wait:true` → `joined:true`. Off-PC hosts need `allowHosts` (Remote mode); with `allowHosts` `"*"` the host is resolved and added (`not_allowed` if it does not resolve). `host: null` leaves the world (Save & Quit / Disconnect): `left:true` (`wait`: once saved and back in the menus; else `started:true`), `left:false` in no world | `join_failed`, `timeout` (`screen`), `busy`, `not_allowed`, `stopped`, `no_client`, `unavailable`, `bad_args` |
 
 ### `stack`: item stack requests through the client
 
@@ -174,7 +174,7 @@ No config key. Reply after the game thread dispatched the input (`timeoutMs` 500
 | `busy` | screen open, newer `look`, join running, tap taken |
 | `stopped` | unloading |
 | `join_failed` | join gave up (the client shows why) |
-| `not_allowed` | off-PC host, `loopbackOnly`, not in `allowHosts` |
+| `not_allowed` | off-PC host, `loopbackOnly`, not in `allowHosts` (or, with `"*"`, does not resolve) |
 | `unavailable` | a needed hook did not install (game log) |
 | `no_client` | no client instance yet |
 | `remote` | world on a server not hosted here |
@@ -203,6 +203,11 @@ Anyone who can read the discovery file (the user's processes) can drive the game
 
 - `send`: packets as the signed-in player, within `sendAllow` (default 9 text, 77 command_request, 78 command_block_update, 97 book_edit). Ids 1, 30, 144,
   147 are always refused. Widen only for your own server.
+- <a id="send-allow-all"></a>`sendAllow: "*"`: every id but the ones the client sends itself: 1 login, 4 handshake, 8
+  resource pack response, 23 tick_sync, 30, 44 animate, 45 respawn, 75 show_credits, 93 player_skin, 94 subclient_login, 113
+  set_local_player_as_initialized, 115 network_stack_latency, 129/135 client cache, 144, 147, 152 emote_list, 175
+  subchunk_request, 193 request_network_settings, 312 serverbound_loading_screen. Others may desync the client from the
+  server (it did not make them).
 - `stack`: moves, crafts, drops and destroys the player's items on any server.
 - tap: the whole session.
 
