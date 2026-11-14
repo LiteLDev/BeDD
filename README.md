@@ -53,8 +53,11 @@ shows the games, and a client-side LeviLamina module it puts into each game for 
 
 ## Install
 
-Download `bedd-windows-x64.zip` from the [releases](https://github.com/LiteLDev/BeDD/releases) and
-unzip it anywhere:
+Run `bedd-windows-x64-setup.exe` from the [releases](https://github.com/LiteLDev/BeDD/releases). It
+installs for you alone, without administrator rights, to `%LOCALAPPDATA%\Programs\BeDD`, puts
+`BeDD.exe` on your `PATH` and adds **BeDD** to the Start menu. `bedd-windows-x64.msi` is the same for
+silent installs (`msiexec /i bedd-windows-x64.msi /qn`); `bedd-windows-x64.zip` needs no installer:
+unzip it anywhere. Either way you get:
 
 | | |
 |---|---|

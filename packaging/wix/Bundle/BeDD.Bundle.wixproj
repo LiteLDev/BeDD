@@ -1,0 +1,18 @@
+<Project Sdk="WixToolset.Sdk/7.0.1">
+
+  <PropertyGroup>
+    <OutputType>Bundle</OutputType>
+    <OutputName>bedd-setup</OutputName>
+    <!-- The .wxl files are payloads of the bootstrapper application, not localizations of the bundle. -->
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.BootstrapperApplications.wixext" Version="7.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Package\BeDD.Package.wixproj" />
+  </ItemGroup>
+
+</Project>

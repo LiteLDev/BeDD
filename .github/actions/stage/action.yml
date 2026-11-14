@@ -1,0 +1,22 @@
+name: Stage the release layout
+description: >
+  Puts BeDD.exe (bin/app), the two mods (bin/BeDD, bin/BeDD-server), the protocol spec and the
+  licences into bin/release/BeDD, the layout of the zip and of the installer.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        stage=bin/release/BeDD
+        rm -rf bin/release
+        mkdir -p "$stage/mod" "$stage/spec"
+        cp bin/app/BeDD.exe "$stage/"
+        for mod in BeDD BeDD-server; do
+          mkdir -p "$stage/mod/$mod"
+          cp -r "bin/$mod/." "$stage/mod/$mod/"
+        done
+        cp spec/bedd.asyncapi.yaml "$stage/spec/"
+        cp COPYING* README*.md "$stage/"
+        find "$stage" -name '*.pdb' -delete
+        find "$stage" -type f | sort

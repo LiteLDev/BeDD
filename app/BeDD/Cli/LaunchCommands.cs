@@ -17,9 +17,11 @@ internal static class LaunchCommands
         Description =
             "Starts Minecraft.Windows.exe of a BeDD instance without taking the foreground and waits until\n" +
             "the mod's WebSocket server listens; prints its address and token. The instance is cloned from\n" +
-            "its LeviLauncher instance first when needed (by name, or the clone for --slot). The game shows\n" +
-            "up in the manager window (started unless it runs) and holds the signaling lock for its whole\n" +
-            "life: shared, or with --exclusive-signaling the PC to itself (for runs that join online).",
+            "its LeviLauncher instance first when needed (by name, or the clone for --slot), and gets the\n" +
+            "BeDD mod that comes with this BeDD.exe: installed when missing, updated (config kept) when it\n" +
+            "differs. The game shows up in the manager window (started unless it runs) and holds the\n" +
+            "signaling lock for its whole life: shared, or with --exclusive-signaling the PC to itself\n" +
+            "(for runs that join online).",
         Flags =
         [
             Flag.Int("slot", "", "<n>", "the clone of the base instance for this slot when no instance is named", 1),
@@ -27,6 +29,7 @@ internal static class LaunchCommands
             Flag.String("label", "", "<text>", "the game's name in the manager window (default: BEDD_LABEL, else the calling repository)"),
             Flag.Bool("exclusive-signaling", "", "have the PC to itself: wait for every other game to close, keep new ones waiting"),
             Flag.Bool("no-manager", "", "do not start the manager window"),
+            Flag.Bool("keep-mod", "", "keep the BeDD mod the clone has, even when it differs from this BeDD.exe's"),
             Flag.Bool("detach", "", "return once the process is created; do not wait for the endpoint"),
             Flag.String("timeout", "", "<duration>", "how long to wait for the endpoint", "3m"),
             Flag.String("lock-timeout", "", "<duration>", "how long to wait for the signaling lock", "2h"),
@@ -64,6 +67,22 @@ internal static class LaunchCommands
         else
         {
             InstanceInfo info = InstanceStore.EnsureClone(name, slot, ctx.Notice);
+            if (!ctx.Bool("keep-mod"))
+            {
+                var mod = ModDeploy.EnsureCurrent(info, ctx.Warn);
+                switch (mod.Action)
+                {
+                    case "installed":
+                        ctx.Notice($"installed the BeDD mod {mod.To} into {info.Name}");
+                        break;
+                    case "updated":
+                        ctx.Notice($"updated the BeDD mod of {info.Name} from {mod.From ?? "?"} to {mod.To ?? "?"}");
+                        break;
+                    case "running":
+                        ctx.Warn($"{info.Name} has a game running: its BeDD mod was left as it is");
+                        break;
+                }
+            }
             dir = info.Dir;
             instance = info.Name;
         }

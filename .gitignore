@@ -9,3 +9,5 @@ compile_commands.json
 /app/**/bin/
 /app/**/obj/
 /app/**/TestResults/
+/packaging/wix/**/bin/
+/packaging/wix/**/obj/

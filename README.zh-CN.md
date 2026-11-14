@@ -42,7 +42,10 @@ LeviLamina 模块。**文档：<https://docs.levimc.org/BeDD/zh/>**
 
 ## 安装
 
-从 [Releases](https://github.com/LiteLDev/BeDD/releases) 下载 `bedd-windows-x64.zip`，解压到任意位置：
+从 [Releases](https://github.com/LiteLDev/BeDD/releases) 下载并运行 `bedd-windows-x64-setup.exe`。它只为你自己安装，
+不需要管理员权限，装到 `%LOCALAPPDATA%\Programs\BeDD`，把 `BeDD.exe` 加进 `PATH`，并在开始菜单里加上 **BeDD**。
+`bedd-windows-x64.msi` 内容相同，用于静默安装（`msiexec /i bedd-windows-x64.msi /qn`）；`bedd-windows-x64.zip` 不用安装，
+解压到任意位置即可。装好后有：
 
 | | |
 |---|---|

@@ -1,0 +1,29 @@
+<Project>
+
+  <PropertyGroup>
+    <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..'))\</RepoRoot>
+    <!-- WiX Toolset 7 asks every build to accept its EULA (the Open Source Maintenance Fee). -->
+    <AcceptEula>wix7</AcceptEula>
+    <!-- The release layout the zip is made of (.github/actions/stage): BeDD.exe, mod\, spec\, COPYING*. -->
+    <StageDir Condition="'$(StageDir)' == ''">$(RepoRoot)bin\release\BeDD</StageDir>
+    <!-- The version BeDD.exe states in its project file, unless one is given. -->
+    <ProductVersion Condition="'$(ProductVersion)' == ''">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(RepoRoot)app\BeDD\BeDD.csproj')), '(?&lt;=&lt;Version&gt;)[^&lt;]+'))</ProductVersion>
+    <!-- Windows Installer versions are numeric: no SemVer pre-release or build metadata. -->
+    <MsiVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(ProductVersion)', '[-+].*$', ''))</MsiVersion>
+    <DefineConstants>$(DefineConstants);ProductVersion=$(MsiVersion);StageDir=$(StageDir);IconFile=$(RepoRoot)app\BeDD\BeDD.ico</DefineConstants>
+    <!--
+      ICE09, ICE32 and ICE61 are implemented in VBScript, which recent Windows versions no longer ship.
+      ICE91 warns that a per-user folder would not follow a per-machine install: this package is
+      per user only.
+    -->
+    <SuppressIces>ICE09;ICE32;ICE61;ICE91</SuppressIces>
+  </PropertyGroup>
+
+  <Target Name="CheckBeDDInputs" BeforeTargets="Build">
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(MsiVersion)', '^\d+\.\d+\.\d+$'))"
+      Text="Cannot derive a Windows Installer version from '$(ProductVersion)'." />
+    <Error Condition="!Exists('$(StageDir)\BeDD.exe')"
+      Text="No release layout in $(StageDir): publish BeDD.exe and build both mods, then stage them (see .github/actions/stage)." />
+  </Target>
+
+</Project>

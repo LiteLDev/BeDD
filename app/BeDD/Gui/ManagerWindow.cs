@@ -26,6 +26,7 @@ internal sealed unsafe class ManagerWindow
     private const uint WM_APP_CHANGED = WM_APP + 1, WM_APP_STOP = WM_APP + 2, WM_APP_EXIT = WM_APP + 3;
     private const uint DWM_TNP_RECTDESTINATION = 0x1, DWM_TNP_OPACITY = 0x4, DWM_TNP_VISIBLE = 0x8, DWM_TNP_SOURCECLIENTAREAONLY = 0x10;
     private const int IdcArrow = 32512, AppIconId = 32512, CfUnicodeText = 13;
+    private const nint ENDSESSION_CLOSEAPP = 0x1;
     private const int CmdSolo = 1, CmdLogs = 2, CmdFolder = 3, CmdCopyUrl = 4, CmdClose = 5;
 
     private static readonly COLORREF Back = Rgb(24, 24, 27), CaptionBack = Rgb(39, 39, 42), BodyBack = Rgb(0, 0, 0);
@@ -242,9 +243,14 @@ internal sealed unsafe class ManagerWindow
                 if (wParam != 0 && !_closing)
                 {
                     _closing = true;
-                    ManagerLog.Write("windows is shutting down");
+                    // ENDSESSION_CLOSEAPP: the Restart Manager (an installer replacing BeDD.exe) closes
+                    // this app alone and waits for it to exit; at a real shutdown the process just ends.
+                    bool closeApp = ((nint)lParam & ENDSESSION_CLOSEAPP) != 0;
+                    ManagerLog.Write(closeApp ? "closed by the restart manager (an installer replaces BeDD.exe)" : "windows is shutting down");
                     SavePlacement();
                     _monitor.CloseAll();
+                    if (closeApp)
+                        PInvoke.DestroyWindow(hwnd);
                 }
                 return true;
             case WM_DESTROY:

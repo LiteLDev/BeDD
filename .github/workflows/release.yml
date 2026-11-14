@@ -76,28 +76,21 @@ jobs:
             [ "$actual" = "$expected" ] || { echo "::error::$mod manifest version $actual does not match tag $expected"; exit 1; }
           done
 
-      # One zip: BeDD.exe, the two mods it installs into games and servers, the protocol spec and the licences.
+      - uses: ./.github/actions/stage
+
+      # One zip (BeDD.exe, the two mods it installs into games and servers, the protocol spec and the
+      # licences), and the same files as a per-user MSI and the setup.exe around it.
       - name: Package
         shell: bash
         run: |
-          stage=bin/release/BeDD
-          rm -rf bin/release
-          mkdir -p "$stage/mod"
-          cp bin/app/BeDD.exe "$stage/"
-          for mod in BeDD BeDD-server; do
-            mkdir -p "$stage/mod/$mod"
-            cp -r "bin/$mod/." "$stage/mod/$mod/"
-          done
-          if [ -f spec/bedd.asyncapi.yaml ]; then
-            mkdir -p "$stage/spec"
-            cp spec/bedd.asyncapi.yaml "$stage/spec/"
-          fi
-          cp COPYING* README*.md "$stage/"
-          find "$stage" -name '*.pdb' -delete
           rm -f bedd-windows-x64.zip
           # Windows' own bsdtar writes zip files; Git Bash's GNU tar does not.
           /c/Windows/System32/tar.exe -a -c -f bedd-windows-x64.zip -C bin/release BeDD
           /c/Windows/System32/tar.exe -t -f bedd-windows-x64.zip
+          wix=packaging/wix
+          dotnet build $wix/Bundle/BeDD.Bundle.wixproj -c Release -p:Platform=x64 "-p:ProductVersion=${GITHUB_REF_NAME#v}" --no-incremental
+          cp $wix/Package/bin/x64/Release/bedd.msi bedd-windows-x64.msi
+          cp $wix/Bundle/bin/x64/Release/bedd-setup.exe bedd-windows-x64-setup.exe
 
       - name: Release notes
         shell: bash
@@ -121,4 +114,6 @@ jobs:
         with:
           files: |
             bedd-windows-x64.zip
+            bedd-windows-x64.msi
+            bedd-windows-x64-setup.exe
           body_path: RELEASE_NOTES.md

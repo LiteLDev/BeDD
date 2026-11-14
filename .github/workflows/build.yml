@@ -68,6 +68,30 @@ jobs:
 
       - run: dotnet publish app/BeDD/BeDD.csproj -c Release -o bin/app
 
+      - uses: ./.github/actions/stage
+
+      # Two versions of the MSI for the upgrade tests, then the installers of this commit.
+      - name: Build the installers
+        shell: bash
+        run: |
+          wix=packaging/wix
+          dotnet build $wix/Package/BeDD.Package.wixproj -c Release -p:Platform=x64 -p:ProductVersion=0.0.1 --no-incremental
+          mkdir -p bin/installer-test/old bin/installer-test/new bin/installer
+          cp $wix/Package/bin/x64/Release/bedd.msi bin/installer-test/old/
+          dotnet build $wix/Bundle/BeDD.Bundle.wixproj -c Release -p:Platform=x64 -p:ProductVersion=0.0.2 --no-incremental
+          cp $wix/Package/bin/x64/Release/bedd.msi $wix/Bundle/bin/x64/Release/bedd-setup.exe bin/installer-test/new/
+          dotnet build $wix/Bundle/BeDD.Bundle.wixproj -c Release -p:Platform=x64 --no-incremental
+          cp $wix/Package/bin/x64/Release/bedd.msi bin/installer/bedd-windows-x64.msi
+          cp $wix/Bundle/bin/x64/Release/bedd-setup.exe bin/installer/bedd-windows-x64-setup.exe
+
+      - name: Test the installers
+        shell: bash
+        env:
+          BEDD_MSI_OLD: bin/installer-test/old/bedd.msi
+          BEDD_MSI: bin/installer-test/new/bedd.msi
+          BEDD_SETUP: bin/installer-test/new/bedd-setup.exe
+        run: node --test tests/installer/installer.test.mjs
+
       - name: Validate the AsyncAPI spec
         if: hashFiles('spec/bedd.asyncapi.yaml') != ''
         shell: bash
@@ -90,3 +114,9 @@ jobs:
           name: ${{ github.event.repository.name }}-${{ github.sha }}-app-windows-x64
           path: |
             bin/app/BeDD.exe
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ github.event.repository.name }}-${{ github.sha }}-installer-windows-x64
+          path: |
+            bin/installer/

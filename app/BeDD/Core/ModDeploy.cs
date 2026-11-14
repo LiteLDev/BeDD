@@ -71,7 +71,7 @@ public static class ModDeploy
             FileLinks.DeleteTree(dest);
         Directory.CreateDirectory(Path.Combine(dest, "config"));
         var files = new JsonArray();
-        foreach (var f in new[] { "BeDD.dll", "BeDD.pdb", "manifest.json" })
+        foreach (var f in ModFiles)
         {
             string from = Path.Combine(source, f);
             if (!File.Exists(from))
@@ -91,6 +91,70 @@ public static class ModDeploy
             ["config"] = config.DeepClone(),
             ["crashLogger"] = crash,
         };
+    }
+
+    // The files of the mod that a build is made of; the pdb is optional.
+    private static readonly string[] ModFiles = ["BeDD.dll", "BeDD.pdb", "manifest.json"];
+
+    // What EnsureCurrent did: "installed", "updated", "current", "running" (left alone, its game
+    // runs) or "no-source" (no build of the mod to compare with).
+    public sealed record EnsureResult(string Action, string? From, string? To);
+
+    // Keeps the mod of a BeDD clone the build that comes with this BeDD.exe, so a clone made before
+    // BeDD was upgraded does not run the old mod: installs it when missing (with the mod's default
+    // config), and when the build differs, copies its files over and keeps the clone's config. The
+    // source is found as by FindSource(null); without one, nothing changes.
+    public static EnsureResult EnsureCurrent(InstanceInfo i, Action<string>? warn = null, string? cwd = null, string? appDir = null)
+    {
+        string source;
+        try
+        {
+            source = FindSource(null, cwd, appDir);
+        }
+        catch (CliError)
+        {
+            return new EnsureResult("no-source", null, null);
+        }
+        string dest = ModDir(i);
+        string? to = Cloner.ModVersion(source);
+        if (!File.Exists(Path.Combine(dest, "BeDD.dll")))
+        {
+            if (FileLinks.ProcessesIn(i.Dir).Count > 0)
+                return new EnsureResult("running", null, to);
+            Install(i, source, new ModSettings(), warn);
+            return new EnsureResult("installed", null, to);
+        }
+        if (SameBuild(source, dest))
+            return new EnsureResult("current", to, to);
+        string? from = Cloner.ModVersion(dest);
+        using var _ = SetupLock.Acquire();
+        if (FileLinks.ProcessesIn(i.Dir).Count > 0)
+            return new EnsureResult("running", from, to);
+        foreach (var f in ModFiles)
+        {
+            string src = Path.Combine(source, f), dst = Path.Combine(dest, f);
+            if (File.Exists(src))
+                File.Copy(src, dst, overwrite: true);
+            else if (File.Exists(dst))
+                File.Delete(dst);
+        }
+        SwitchCrashLogger(i.ModsDir, warn);
+        return new EnsureResult("updated", from, to);
+    }
+
+    // The same files with the same bytes (the pdb is not compared: it is no part of what runs).
+    internal static bool SameBuild(string a, string b)
+    {
+        foreach (var f in new[] { "BeDD.dll", "manifest.json" })
+        {
+            var fa = new FileInfo(Path.Combine(a, f));
+            var fb = new FileInfo(Path.Combine(b, f));
+            if (!fa.Exists || !fb.Exists || fa.Length != fb.Length)
+                return false;
+            if (!File.ReadAllBytes(fa.FullName).AsSpan().SequenceEqual(File.ReadAllBytes(fb.FullName)))
+                return false;
+        }
+        return true;
     }
 
     // Removes mods\BeDD; false when it was not there.
