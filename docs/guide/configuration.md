@@ -45,7 +45,7 @@ default: the WebSocket only listens on `127.0.0.1` and wants the token, which on
 | `tapLoopback` | default `true`, used only with `tap`: also tap singleplayer worlds and LAN worlds this game hosts (packets re-serialized; LAN guests' traffic is left out) |
 | `tapJournalMiB` | default `128`: size cap of the tap's join journal; past it a late attach is incomplete (`complete:false`) |
 | `allowSend` | default `true`: the `send` op, with which a script such as bedboo makes the client send chat and commands it serialized |
-| `sendAllow` | packet ids `send` may send, default `[9, 77]` (text, command_request); login, inventory_transaction, player_auth_input and item_stack_request are always refused |
+| `sendAllow` | packet ids `send` may send, default `[9, 77, 78, 97]` (text, command_request, command_block_update, book_edit: what the player can type or write in the game's own screens); login, inventory_transaction, player_auth_input and item_stack_request are always refused |
 | `allowStack` | default `true`: the `stack` op lets a script make the game send item stack requests (inventory moves, crafting, chest moves) for the signed-in player, as bedboo does |
 | `ui` | default `true`: the `ui` op, the [UI tree](/guide/operation-modes#ui-tree) of the game's screens |
 | `uiMaxNodes` | default `1000`: the most nodes one `ui` reply holds (a request's `maxNodes` can only lower it); `truncated` says when nodes were left out |

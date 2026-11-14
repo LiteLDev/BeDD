@@ -97,7 +97,7 @@ console.log(await call('ping'), await call('world')); ws.close(); // 提供哪�
 
 | 模式 | 操作 | 用途 |
 |---|---|---|
-| **bedboo**（默认） | `world`、`look`、`input`、`slot`、`action`、`button`、`send`、`stack`、`timescale`、`join`、`tap` | 按语义玩：读取世界、转向、行走、使用物品、聊天和执行命令、移动物品；[bedboo](https://github.com/LiteLDev/bedboo) 替你说这些 |
+| **bedboo**（默认） | `world`、`look`、`input`、`slot`、`action`、`button`、`settings`、`send`、`stack`、`timescale`、`join`、`tap` | 按语义玩：读取世界、转向、行走、使用物品、聊天和执行命令、移动物品；[bedboo](https://github.com/LiteLDev/bedboo) 替你说这些 |
 | **界面组件树** | `ui` | 把屏幕读成无障碍树（角色、名称、文字、值、位置），按 `ref` 点击、设置文字或滚动某个节点 |
 | **输入**（最后手段） | `key`、`text`、`mouse`、`raw`、`release`、`flush`、`focus`、`window`、`screenshot` | 玩家双手做的事，以及画面；对 agent 来说很费 token，别的方式做不到时再用 |
 
@@ -193,7 +193,7 @@ BeDD.exe stop <pid>; BeDD.exe mod uninstall 1.26.60.05-2
 | `tapLoopback` | 默认 `true`，只在 `tap` 打开时生效：单人世界和本游戏开的局域网世界也接到 tap 上（数据包重新序列化；局域网访客的流量不包括在内） |
 | `tapJournalMiB` | 默认 `128`：tap 加入日志的大小上限；超过后中途接入不完整（`complete:false`） |
 | `allowSend` | 默认 `true`：`send` 操作，bedboo 借此让客户端发送它序列化好的聊天和命令 |
-| `sendAllow` | `send` 可发送的数据包 id，默认 `[9, 77]`（text、command_request）；login、inventory_transaction、player_auth_input 和 item_stack_request 始终被拒绝 |
+| `sendAllow` | `send` 可发送的数据包 id，默认 `[9, 77, 78, 97]`（text、command_request、command_block_update、book_edit：玩家在游戏自己的界面里能输入或写下的）；login、inventory_transaction、player_auth_input 和 item_stack_request 始终被拒绝 |
 | `allowStack` | 默认 `true`：`stack` 操作，bedboo 借此以登录玩家的身份发出物品堆请求（背包移动、合成、箱子存取） |
 
 令牌就是边界：拿到它的程序能做登录玩家能做的任何事。它只写在 `%LOCALAPPDATA%\BeDD\run\<pid>.json` 里，只有你的用户能读。

@@ -74,8 +74,8 @@ struct Options {
     int tapJournalMiB = 128;
     /// Allow the `send` op: the local client sends serverbound packets a caller serialized (Send.cpp).
     bool allowSend = true;
-    /// Packet ids `send` may send (text, command_request). 1, 30, 144 and 147 are always refused.
-    std::vector<int> sendAllow{9, 77};
+    /// Packet ids `send` may send (text, command_request, command_block_update, book_edit). 1, 30, 144 and 147 are always refused.
+    std::vector<int> sendAllow{9, 77, 78, 97};
     /// Allow the `stack` op: the local client sends item stack requests a caller serialized (Stack.cpp).
     bool allowStack = true;
     /// Game speed, 0.05..20; 1 = normal. A client applies it on entering a world it hosts

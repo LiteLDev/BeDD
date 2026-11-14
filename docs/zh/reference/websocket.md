@@ -144,7 +144,7 @@ Console.WriteLine(Encoding.UTF8.GetString(buffer, 0, result.Count));
 BeDD 提供三种驱动游戏的方式，全部同时可用。按这个顺序选：
 
 1. **bedboo**（`defaultMode`）：基于游戏自己的输入管线和网络会话的语义操作。`world` 告诉你玩家在哪、显示着什么界面；
-   `look`、`input`、`slot`、`action` 和 `button` 用来玩；`send` 和 `stack` 用来聊天、执行命令和搬物品；`join` 和 `timescale` 用来布置会话。
+   `look`、`input`、`slot`、`action` 和 `button` 用来玩；`send` 和 `stack` 用来聊天、执行命令和搬物品；`join`、`settings` 和 `timescale` 用来布置会话。
    输入输出都是小段 JSON，与窗口大小无关，bedboo 用的就是它。
 2. **ui**：把游戏界面当作一棵类似无障碍树的组件树（`ui`）。先读一个快照，再按 `ref` 点击、输入文字或滚动某个节点。
    bedboo 操作够不着的菜单和界面用它。
@@ -155,7 +155,7 @@ BeDD 提供三种驱动游戏的方式，全部同时可用。按这个顺序选
 
 ```json
 {"ok": true, "protocol": 2, "pid": 23116, "defaultMode": "bedboo",
- "modes": {"bedboo": ["world","look","input","slot","action","button","send","stack","timescale","join","tap"],
+ "modes": {"bedboo": ["world","look","input","slot","action","button","settings","send","stack","timescale","join","tap"],
            "input": ["key","text","mouse","raw","release","flush","focus","window","screenshot"],
            "ui": ["ui","oreui"]},
  "hwnd": 4589122, "managed": true, "client": {"w": 1280, "h": 720}, "cursor": {"x": 640, "y": 360},
@@ -186,13 +186,14 @@ Alt+Tab 里。配置 `manager`（默认 `true`）打开时，窗口出现后 30 
 | `look` | `gameHooks` | `{inLevel, yaw, pitch, tick}` | `yaw`、`pitch`、`timeoutMs`（1000\*，最多 60000） |
 | `input` | `gameHooks` | `active`、`via` hooks\|keys、`hooks{raw,state}`、`tick`、`applied`、`ticksLeft`（`ttlTicks` 覆盖） | `move{x,z}`、`jump`、`sneak`、`sprint`、`ttlMs`（300）或 `ttlTicks` |
 | `slot` | `gameHooks` | `{slot}`（不在世界里时为 null） | `slot` 0..8 |
-| `action` | `gameHooks` | `{names}` | `name` drop\|dropAll\|inventory\|perspective\|pause |
+| `action` | `gameHooks` | `{names}` | `name` drop\|dropAll\|inventory\|perspective\|pause\|swing；`hand` main\|off（swing） |
 | `button` | `gameHooks` | `{held}` | `button` attack\|use\|pick；`action` down\|up\|click；`holdTicks`；`releaseOn` blockChange |
+| `settings` | `gameHooks` | `{renderDistance, inLevel}`（区块；进入第一个世界前为 null） | `renderDistance`（区块，1..255） |
 | `send` | `allowSend` | `{allow}`（`sendAllow` 里的 id） | `buf`、`timeoutMs`（2000\*，最多 10000） |
 | `stack` | `allowStack` | `{enabled, via:"raw", stats{sent, answered, rejected, failed, resyncs}}` | `buf`、`timeoutMs`（2000\*）；或 `view:true` |
 | `tap` | `tap` | `enabled`、`attached`（有订阅方连接）、`link{state up\|down, type remote\|local, address}`、`journal{frames, bytes, complete}`（当前加入日志）、`lastReplay`（上一个订阅方回放了什么）、`replay`（装了日志）、`counters{in, out, dropped, sent, readers}`、`hooks` | `action:"subscribe"`：这个连接以二进制消息接收 [tap](/zh/reference/tap) |
 | `timescale` | （无） | 见下文 | `scale`、`paused`、`timeoutMs`（2000） |
-| `join` | （无） | `mode`、`connection` none\|local\|remote、`host`、`port`、`inLevel`、`joining`、`last` | `host`、`port`（19132）、`wait`、`timeoutMs`（60000） |
+| `join` | （无） | `mode`、`connection` none\|local\|remote、`host`、`port`、`inLevel`、`joining`、`last` | `host`（null：退出世界）、`port`（19132）、`wait`、`timeoutMs`（60000） |
 
 \* 以及 `slot`、`action`、`button` 的 `timeoutMs`（1000）：这些默认值适用于每秒 20 刻及更快。客户端走刻更慢时（游戏速度更慢），
 不带 `timeoutMs` 的请求相应地等得更久（默认值乘以实测刻间隔除以 50 ms，最多到该操作的上限）；调用方给出的 `timeoutMs` 原样使用。
@@ -221,9 +222,16 @@ Alt+Tab 里。配置 `manager`（默认 `true`）打开时，窗口出现后 30 
   - `slot`：默认键位的快捷栏键 `1`..`9`，玩家拿上这一格后回复。客户端自己发送 `mob_equipment`。回复 `slot` 和 `via` keys\|none（本来就拿着）。
   - `action`：默认键位的按键，下一刻松开：drop Q、dropAll Ctrl+Q、inventory E、pause Escape；perspective 调用
     `ClientInputCallbacks::handleTogglePerspectiveButtonPress`（从 1.26.60 起游戏不再导出其他 `handle*ButtonPress`）。改过的键位会让它们失效。
+    `swing` 调用 `LocalPlayer::swing`：挥一下手臂、不攻击，客户端自己发送 animate 数据包；打开界面时也能用。`hand:"off"`
+    只在本客户端上挥副手（animate 不带手）。回复 `name`、`hand`。
   - `button`：虚拟 GameInput 鼠标上的左/中/右键，由刻监听器在 `holdTicks` 后松开（click 默认 2），或者带
     `releaseOn:"blockChange"` 时，在按下时客户端命中结果指向的方块改变、变成空气或不再被指向时松开（没有指向方块时为 `refused`）。
     `up` 立即生效。从不阻塞连接。回复 `held` 和 `block{x,y,z}`。
+- **`settings`**：`renderDistance`（区块）在下一个客户端刻设置每种渲染器的视频选项“渲染距离”（`ViewDistance`、Vibrant
+  Visuals 用的 `DeferredViewDistance`、`RayTracingViewDistance`），由游戏按各自允许的值取舍，不写入 options.txt，然后调用
+  `ClientInstance::updateChunkRadius`：客户端自己发送 request_chunk_radius，服务器回复它给的半径（tap 上的 chunk_radius_update，
+  可能比请求的大）。回复 `renderDistance`（客户端现在渲染的区块数）、`requested`、`tick`。错误码：`not_in_level`、`timeout`、
+  `bad_args`、`unavailable`。
 - **`send`**：`buf` 是一个服务端方向数据包的 base64（varint 头 + 包体，与 bedrock-protocol 的序列化一致）。它在客户端线程上重建
   （`MinecraftPackets::createPacket` + `Packet::read`，用客户端 NetworkSystem 的 `ReflectionCtx`），并通过本地玩家发送（`sendNetworkPacket`），
   远程服务器和单人世界都一样；发出后回复 `{packetId, name}`。游戏读不完的字节为 `bad_args`，什么都不发；不在 `sendAllow` 里的 id 为 `refused`。
@@ -234,6 +242,9 @@ Alt+Tab 里。配置 `manager`（默认 `true`）打开时，窗口出现后 30 
   错误码：`join_failed`（客户端放弃了，界面上显示原因）、`timeout`（`screen`：游戏可能还在连接）、`busy`（已有加入在进行）、
   `not_allowed`（`loopbackOnly` 不让游戏访问的本机以外主机：不在 `allowHosts` 里）、`stopped`、`no_client`、`unavailable`、`bad_args`。
   本机以外的服务器需要 Remote 模式（配置 `allowHosts`）。
+  `host: null` 只退出：客户端退出它所在的世界（`requestLeaveGame`，等同暂停菜单里的“保存并退出”或“断开连接”），回到菜单。
+  回复 `left:true`（不带 `wait` 时还有 `started:true`；带 `wait` 时等世界保存完、不再显示进度界面才回复），不在世界里时回复
+  `left:false`；已有加入或退出在进行时为 `busy`。
 - **`tap`**：`{op:"tap", action:"subscribe"}` 回答 `{ok:true}`，此后这个连接每收到一条二进制消息就是一帧 tap：HELLO、加入日志的回放，
   然后是实时流。同一时间只有一个订阅方（其他人得到 `busy`）；落后超过 32 MiB 的订阅方收到 DROPPED，连接随之关闭。
   已订阅的连接上不要再发别的请求。帧格式见 [Tap 协议](/zh/reference/tap)。
@@ -292,10 +303,12 @@ Alt+Tab 里。配置 `manager`（默认 `true`）打开时，窗口出现后 30 
 
 | 类别 | 数据包 | 处理 |
 |---|---|---|
-| clientOwned | login、client_to_server_handshake、request_network_settings、resource_pack_client_response、client_cache_status、client_cache_blob_status、request_chunk_radius、subchunk_request、serverbound_loading_screen、set_local_player_as_initialized、network_stack_latency、tick_sync、player_skin、emote_list、respawn、player_action（respawn / dimension_change_ack / start_item_use_on / stop_item_use_on）、animate、interact mouse_over_entity | bedboo 丢弃它们（计数）：客户端自己发。重生是用户在客户端上点“重生” |
-| translated | player_auth_input（move_vector + 标志 → `input`；yaw/pitch → `look`；block_actions start_break/abort_break/stop_break → `button attack`）、mob_equipment（`slot`）、inventory_transaction（item_use click_block/click_air、item_release、item_use_on_entity：先 `look`，再 `button use`/`attack`）、interact open_inventory（`action inventory`）、container_close（按键 ESC）、item_stack_request（`stack`） | bedboo 的路由把它们变成操作 |
+| clientOwned | login、client_to_server_handshake、request_network_settings、resource_pack_client_response、client_cache_status、client_cache_blob_status、request_chunk_radius、subchunk_request、serverbound_loading_screen、set_local_player_as_initialized、network_stack_latency、tick_sync、player_skin、emote_list、respawn、show_credits、player_action（respawn / dimension_change_ack / start_item_use_on / stop_item_use_on）、animate、interact mouse_over_entity | bedboo 丢弃它们（计数）：客户端自己发。bedboo 想要的效果走操作：`bot.swingArm` 用 `action swing`（animate），视距用 `settings renderDistance`（request_chunk_radius），“重生”通过 `ui` 点击，末地字幕按 ESC 退出（然后客户端发送 show_credits） |
+| translated | player_auth_input（move_vector + 标志 → `input`；yaw/pitch → `look`；block_actions start_break/abort_break/stop_break → `button attack`）、mob_equipment（`slot`）、inventory_transaction（item_use click_block/click_air、item_release、item_use_on_entity：先 `look`，再 `button use`/`attack`）、interact open_inventory（`action inventory`）、container_close（按键 ESC）、item_stack_request（`stack`）、block_pick_request（先 `look`，再 `button pick`） | bedboo 的路由把它们变成操作 |
 | shared | text、command_request | 通过 `send` 发送；后备：T 或 SLASH，然后 `text`，然后 ENTER |
-| unsupported | book_edit、block_pick_request、crafting_event、set_default_game_type，以及其他所有 | bedboo 抛出 BeddUnsupportedError（ERR_BEDD_UNSUPPORTED） |
+| screens | player_action stop_sleeping（离开床）、告示牌的 block_entity_data（告示牌编辑界面） | bedboo 通过 `ui` 操作客户端自己的界面 |
+| allowlisted | 其他所有 id 在 `send` 探测的 `allow` 里的数据包（配置 `sendAllow`；默认有 book_edit 97 和 command_block_update 78，客户端在书和命令方块界面里自己也发它们） | 通过 `send` 原样发送 |
+| unsupported | 其他所有（crafting_event、set_default_game_type……） | bedboo 抛出 BeddUnsupportedError（ERR_BEDD_UNSUPPORTED） |
 
 只有在 `stack` 探测不回答 `ok` 时，item_stack_request 才算 unsupported。
 
@@ -381,7 +394,7 @@ Alt+Tab 里。配置 `manager`（默认 `true`）打开时，窗口出现后 30 
 ## 多个客户端
 
 可以同时打开多个连接（配置 `wsMaxClients`，默认 8），每个由自己的线程按顺序处理。投递窗口输入的操作在连接之间是串行的，
-所以两个客户端的按键或输入的文字不会交错；`ping`、`state`、`tap`、`world`、`look`、`input`、`send`、`stack`、`timescale`、`join` 和读取 `ui`
+所以两个客户端的按键或输入的文字不会交错；`ping`、`state`、`tap`、`world`、`look`、`input`、`settings`、`send`、`stack`、`timescale`、`join` 和读取 `ui`
 不加这把锁（它们只读，或把工作交给游戏线程）。一个连接关闭（或其进程退出）时，释放它持有的东西，且不动其他连接持有的：
 它的按键和鼠标按钮、它发起的 `button` 按住、它设置的 `input` 覆盖。
 

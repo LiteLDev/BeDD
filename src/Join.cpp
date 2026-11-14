@@ -16,6 +16,9 @@
 // attempt connects again) and "Trust this server?" (a modal_screen during the connect, once per
 // address: Tab to "Trust and Join", Enter). The server is the one the caller asked to join.
 //
+// `host: null` only leaves: the client leaves the world it is in (requestLeaveGame, as "Save & Quit"
+// or "Disconnect" in the pause menu) and goes back to the title screen, through the same frame hook.
+//
 // The level listeners also tell `state` and the probe (no `host`) where the client plays: nowhere,
 // a local world (ClientStartJoinLevelEvent::isJoiningLocalServer), or a remote host:port (the
 // client's GameConnectionInfo).
@@ -66,6 +69,7 @@ struct Attempt {
     bool              safety   = false; // the online-safety notice was accepted: connect again from the title screen
     bool              again    = false; // ... which it did
     int               trust    = 0;     // trust prompt: 1 = Tab pressed, 2 = Enter pressed
+    bool              leaveOnly = false; // host:null: leave the world, join nothing
     bool              done     = false; // joined, failed or timed out: `result` is the reply
     json              result;
 };
@@ -97,12 +101,19 @@ void finish(std::shared_ptr<Attempt> a, json reply) {
     if (a->done) return;
     a->done   = true;
     a->result = std::move(reply);
-    a->result["host"] = a->host;
-    a->result["port"] = a->port;
+    if (a->leaveOnly) {
+        a->result["host"] = nullptr;
+    } else {
+        a->result["host"] = a->host;
+        a->result["port"] = a->port;
+    }
     a->result["left"] = a->left;
     gLastResult       = a->result;
     if (gAttempt == a) gAttempt = nullptr;
-    if (options().trace) log().info("join {}:{}: {}", a->host, a->port, a->result.dump());
+    if (options().trace) {
+        if (a->leaveOnly) log().info("leave: {}", a->result.dump());
+        else log().info("join {}:{}: {}", a->host, a->port, a->result.dump());
+    }
     gChanged.notify_all();
 }
 
@@ -120,33 +131,51 @@ void pressKey(int vk) {
 void step(std::shared_ptr<Attempt> const& a) {
     auto        ci  = ll::service::getClientInstance();
     std::string top = ci ? ci->getTopScreenName() : std::string();
-    enum class Do { Nothing, Leave, Connect, Check } todo = Do::Nothing;
+    enum class Do { Nothing, Leave, Connect, Check, LeaveDone } todo = Do::Nothing;
     {
         std::lock_guard lock(gMutex);
         if (a->done) return;
         if (gStopping) return finish(a, fail("stopped", "BeDD is unloading"));
         if (Clock::now() >= a->deadline) {
             // The game may still be connecting (`screen`): a later join or the probe shows how it ended.
-            json r = fail("timeout", a->started ? "the client did not get into the level within the timeout" : "the client did not get to connect within the timeout");
+            json r = fail("timeout", a->leaveOnly ? "the client did not get back to its menus within the timeout" : a->started ? "the client did not get into the level within the timeout" : "the client did not get to connect within the timeout");
             r["screen"] = top;
             return finish(a, std::move(r));
         }
         if (!ci) return finish(a, fail("no_client", "the client instance does not exist (yet)"));
-        if (a->started) todo = Do::Check;
+        if (a->leaveOnly) {
+            if (a->leaving) todo = Do::LeaveDone;
+            else if (gInLevel) todo = Do::Leave;
+            else return finish(a, json{{"ok", true}, {"connection", "none"}}); // nothing to leave
+        } else if (a->started) todo = Do::Check;
         else if (gInLevel) todo = a->leaving ? Do::Nothing : Do::Leave;
         else todo = Do::Connect;
     }
     // The engine calls run without gMutex: they may raise the level events synchronously.
     switch (todo) {
     case Do::Leave:
-        if (options().trace) log().info("join {}:{}: leaving the current world first", a->host, a->port);
+        if (options().trace) {
+            if (a->leaveOnly) log().info("leave: leaving the current world");
+            else log().info("join {}:{}: leaving the current world first", a->host, a->port);
+        }
         ci->requestLeaveGame(true, false);
         {
             std::lock_guard lock(gMutex);
             a->leaving = a->left = true;
             a->leftAt            = Clock::now();
+            if (a->leaveOnly) {
+                a->started = true; // the reply without `wait`
+                gChanged.notify_all();
+            }
         }
         break;
+    case Do::LeaveDone: {
+        bool done = ci->isLeaveGameDone();
+        std::lock_guard lock(gMutex);
+        // Back in the menus: the world is saved and no progress screen shows.
+        if (done && !gInLevel && top.find("progress") == std::string::npos) finish(a, json{{"ok", true}, {"connection", "none"}, {"screen", top}});
+        break;
+    }
     case Do::Nothing:
         break;
     case Do::Connect: {
@@ -191,7 +220,7 @@ void step(std::shared_ptr<Attempt> const& a) {
 void disconnected() {
     std::lock_guard lock(gMutex);
     if (options().trace) log().info("join: the client flagged a disconnection");
-    if (!gAttempt || !gAttempt->started || gInLevel) return;
+    if (!gAttempt || !gAttempt->started || gAttempt->leaveOnly || gInLevel) return;
     finish(gAttempt, fail("join_failed", "the client could not connect (it shows why)"));
 }
 
@@ -284,11 +313,11 @@ void installJoin() {
         }
         if (options().trace)
             log().info("joined a level: local={} connection type={} host={} port={}", gLocal, conn ? static_cast<int>(conn->mType) : -1, gHost, gPort);
-        if (gAttempt && gAttempt->started) finish(gAttempt, json{{"ok", true}, {"joined", true}, {"connection", connectionName()}});
+        if (gAttempt && gAttempt->started && !gAttempt->leaveOnly) finish(gAttempt, json{{"ok", true}, {"joined", true}, {"connection", connectionName()}});
     });
     gCancelListener = bus.emplaceListener<ll::event::ClientCancelJoinLevelEvent>([](ll::event::ClientCancelJoinLevelEvent&) {
         std::lock_guard lock(gMutex);
-        if (gAttempt && gAttempt->started) finish(gAttempt, fail("join_failed", "the client cancelled the join"));
+        if (gAttempt && gAttempt->started && !gAttempt->leaveOnly) finish(gAttempt, fail("join_failed", "the client cancelled the join"));
     });
     gExitListener = bus.emplaceListener<ll::event::ClientExitLevelEvent>([](ll::event::ClientExitLevelEvent&) {
         std::lock_guard lock(gMutex);
@@ -338,21 +367,26 @@ json joinOp(json const& req) {
         r["last"]         = gLastResult;
         return r;
     }
-    if (!req["host"].is_string() || req["host"].get<std::string>().empty()) return fail("bad_args", "host: a host name or address");
-    auto a  = std::make_shared<Attempt>();
-    a->host = req["host"].get<std::string>();
-    if (req.contains("port")) {
+    auto a       = std::make_shared<Attempt>();
+    a->leaveOnly = req["host"].is_null();
+    if (!a->leaveOnly && (!req["host"].is_string() || req["host"].get<std::string>().empty()))
+        return fail("bad_args", "host: a host name or address, or null to leave the world");
+    if (!a->leaveOnly) a->host = req["host"].get<std::string>();
+    if (a->leaveOnly) {
+        // nothing to check
+    } else if (req.contains("port")) {
         if (!req["port"].is_number_integer() || req["port"].get<int64_t>() < 1 || req["port"].get<int64_t>() > 65535)
             return fail("bad_args", "port: 1..65535");
         a->port = req["port"].get<int>();
     }
-    if (!reachable(a->host))
+    if (!a->leaveOnly && !reachable(a->host))
         return fail("not_allowed", a->host + " is off the PC and not in allowHosts (loopbackOnly): use Remote mode (BeDD.exe mod config <instance> --world-mode Remote --server-host <host>)");
     bool wait    = req.value("wait", false);
     auto timeout = std::chrono::milliseconds(std::clamp(req.value("timeoutMs", 60000), 100, 600000));
     a->deadline  = Clock::now() + timeout;
 
     std::unique_lock lock(gMutex);
+    if (gAttempt && gAttempt->leaveOnly) return fail("busy", "a leave is in progress");
     if (gAttempt) return fail("busy", "a join to " + gAttempt->host + ":" + std::to_string(gAttempt->port) + " is in progress");
     if (gStopping) return fail("stopped", "BeDD is unloading");
     if (!gUpdateHooked) return fail("unavailable", "ClientInstance::update could not be hooked (see the log)");
@@ -366,6 +400,7 @@ json joinOp(json const& req) {
     // Started, or done (a failure before it started, or a quick join).
     if (!gChanged.wait_until(lock, a->deadline + 2s, [&] { return a->started || a->done; })) return giveUp();
     if (a->done) return a->result;
+    if (!wait && a->leaveOnly) return json{{"ok", true}, {"started", true}, {"host", nullptr}, {"left", true}};
     if (!wait) return json{{"ok", true}, {"started", true}, {"host", a->host}, {"port", a->port}, {"left", a->left}};
     if (!gChanged.wait_until(lock, a->deadline + 2s, [&] { return a->done; })) return giveUp();
     return a->result;
