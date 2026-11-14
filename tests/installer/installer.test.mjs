@@ -15,6 +15,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+// Windows' own tools by full path: in Git Bash (CI's shell) its coreutils whoami comes first on PATH.
+const SYS = name => path.join(process.env.SystemRoot, 'System32', name);
 const LOCAL = process.env.LOCALAPPDATA;
 const INSTALL_DIR = path.join(LOCAL, 'Programs', 'BeDD');
 const EXE = path.join(INSTALL_DIR, 'BeDD.exe');
@@ -29,7 +31,7 @@ const msiNew = given('BEDD_MSI');
 const setup = given('BEDD_SETUP');
 
 function reg(...args) {
-  const r = spawnSync('reg.exe', args, { encoding: 'utf8' });
+  const r = spawnSync(SYS('reg.exe'), args, { encoding: 'utf8' });
   return r.status === 0 ? r.stdout : null;
 }
 
@@ -44,7 +46,7 @@ const onPath = () => userPath().some(p => path.resolve(p).toLowerCase() === path
 
 // Where Windows Installer registers the products installed for this user (not HKCU\...\Uninstall,
 // which holds the bundle's entry).
-const SID = execFileSync('whoami.exe', ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8' }).trim().split(',').pop().replaceAll('"', '');
+const SID = execFileSync(SYS('whoami.exe'), ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8' }).trim().split(',').pop().replaceAll('"', '');
 const MSI_PRODUCTS_KEY = `HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Installer\\UserData\\${SID}\\Products`;
 
 // Installed Apps entries named BeDD, the bundle's and the MSI's: [{ key, version, systemComponent, uninstall }].
@@ -73,7 +75,7 @@ function removeLeftovers() {
     if (!arpEntries().some(x => x.key === e.key)) continue;
     const code = e.uninstall?.match(/\{[0-9A-F-]{36}\}/i)?.[0];
     if (e.key.startsWith('HKEY_CURRENT_USER')) spawnSync(e.uninstall, { shell: true, timeout: 10 * 60 * 1000 });
-    else if (code) spawnSync('msiexec.exe', ['/x', code, '/qn', '/norestart'], { timeout: 10 * 60 * 1000 });
+    else if (code) spawnSync(SYS('msiexec.exe'), ['/x', code, '/qn', '/norestart'], { timeout: 10 * 60 * 1000 });
   }
 }
 
@@ -83,7 +85,7 @@ const visibleEntries = () => arpEntries().filter(e => !e.systemComponent);
 // msiexec with a verbose log; its exit code (1603 for a failure, 3010 when a reboot is needed).
 function msi(name, args, expected = 0) {
   const log = path.join(LOG_DIR, `${name}.log`);
-  const r = spawnSync('msiexec.exe', [...args, '/l*v', log], { encoding: 'utf8', timeout: 10 * 60 * 1000 });
+  const r = spawnSync(SYS('msiexec.exe'), [...args, '/l*v', log], { encoding: 'utf8', timeout: 10 * 60 * 1000 });
   if (r.status !== expected) {
     const tail = fs.existsSync(log) ? fs.readFileSync(log, 'utf16le').split(/\r?\n/).slice(-60).join('\n') : '(no log)';
     assert.fail(`${name}: exit code ${r.status}, expected ${expected}\n${tail}`);
@@ -120,7 +122,7 @@ function assertRemoved() {
 }
 
 function managerProcesses() {
-  const out = spawnSync('tasklist.exe', ['/fi', 'IMAGENAME eq BeDD.exe', '/fo', 'csv', '/nh', '/v'], { encoding: 'utf8' }).stdout ?? '';
+  const out = spawnSync(SYS('tasklist.exe'), ['/fi', 'IMAGENAME eq BeDD.exe', '/fo', 'csv', '/nh', '/v'], { encoding: 'utf8' }).stdout ?? '';
   return out.split(/\r?\n/).filter(l => l.startsWith('"BeDD.exe"'));
 }
 
