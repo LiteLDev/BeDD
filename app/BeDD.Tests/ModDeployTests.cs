@@ -142,6 +142,53 @@ public sealed class ModDeployTests : IDisposable
         Assert.Equal(src, ModDeploy.FindSource(src));
         Assert.Throws<CliError>(() => ModDeploy.FindSource(deep));
     }
+
+    // The mod next to an installed BeDD.exe (appDir\mod\BeDD).
+    private string Release(string version, string dll, string? name = null)
+    {
+        string app = Path.Combine(_tmp, name ?? "app-" + version);
+        string mod = Path.Combine(app, "mod", "BeDD");
+        Directory.CreateDirectory(mod);
+        File.WriteAllText(Path.Combine(mod, "BeDD.dll"), dll);
+        File.WriteAllText(Path.Combine(mod, "manifest.json"), $$"""{ "name": "BeDD", "version": "{{version}}" }""");
+        return app;
+    }
+
+    [Fact]
+    public void EnsureCurrentInstallsAMissingModAndUpdatesAnOldOneKeepingItsConfig()
+    {
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("BEDD_MOD_DIR")))
+            return; // the variable would pick the source
+        var i = Instance();
+        string cwd = Path.Combine(_tmp, "cwd");
+        Directory.CreateDirectory(cwd);
+        string mod = Path.Combine(i.Dir, "mods", "BeDD");
+
+        // Nothing to compare with: nothing changes.
+        Assert.Equal("no-source", ModDeploy.EnsureCurrent(i, cwd: cwd, appDir: Path.Combine(_tmp, "none")).Action);
+        Assert.False(Directory.Exists(mod));
+
+        string v1 = Release("2.0.0", "dll 1");
+        var r = ModDeploy.EnsureCurrent(i, cwd: cwd, appDir: v1);
+        Assert.Equal(("installed", "2.0.0"), (r.Action, r.To));
+        Assert.Equal("dll 1", File.ReadAllText(Path.Combine(mod, "BeDD.dll")));
+        Assert.Equal("current", ModDeploy.EnsureCurrent(i, cwd: cwd, appDir: v1).Action);
+
+        ModDeploy.Configure(i, new ModSettings { Set = ["manager=false"] });
+        File.WriteAllText(Path.Combine(mod, "BeDD.pdb"), "old pdb"); // a build without a pdb leaves none behind
+        string v2 = Release("2.1.0", "dll 2");
+        r = ModDeploy.EnsureCurrent(i, cwd: cwd, appDir: v2);
+        Assert.Equal(("updated", "2.0.0", "2.1.0"), (r.Action, r.From, r.To));
+        Assert.Equal("dll 2", File.ReadAllText(Path.Combine(mod, "BeDD.dll")));
+        Assert.Equal("2.1.0", Cloner.ModVersion(mod));
+        Assert.False(File.Exists(Path.Combine(mod, "BeDD.pdb")));
+        Assert.False((bool)ModDeploy.ReadConfig(i)["manager"]!);
+
+        // Another build of the same version (a development build) is a difference too.
+        string rebuilt = Release("2.1.0", "dll 2 rebuilt", "app-rebuilt");
+        Assert.Equal("updated", ModDeploy.EnsureCurrent(i, cwd: cwd, appDir: rebuilt).Action);
+        Assert.Equal("dll 2 rebuilt", File.ReadAllText(Path.Combine(mod, "BeDD.dll")));
+    }
 }
 
 public sealed class WorldTests : IDisposable

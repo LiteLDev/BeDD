@@ -18,6 +18,7 @@
     <Product>Be.D.D.</Product>
     <Description>Run end-to-end tests of LeviLamina client mods in background Minecraft games.</Description>
     <ApplicationIcon>BeDD.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="BeDD.Tests" />

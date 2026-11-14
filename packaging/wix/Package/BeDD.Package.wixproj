@@ -1,0 +1,7 @@
+<Project Sdk="WixToolset.Sdk/7.0.1">
+
+  <PropertyGroup>
+    <OutputName>bedd</OutputName>
+  </PropertyGroup>
+
+</Project>

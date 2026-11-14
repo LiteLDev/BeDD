@@ -1,9 +1,18 @@
 # Installation
 
-## Download
+## Install
 
-Download `bedd-windows-x64.zip` from the [releases](https://github.com/LiteLDev/BeDD/releases) and unzip it
-anywhere. It holds:
+From the [releases](https://github.com/LiteLDev/BeDD/releases), pick one:
+
+| | |
+|---|---|
+| `bedd-windows-x64-setup.exe` | the installer: run it, accept the licence, done |
+| `bedd-windows-x64.msi` | the same, for silent and managed installs: `msiexec /i bedd-windows-x64.msi /qn` |
+| `bedd-windows-x64.zip` | no installer: unzip anywhere and run `BeDD.exe` from there |
+
+The installer needs no administrator rights: it installs for you alone, to `%LOCALAPPDATA%\Programs\BeDD`, adds a
+**BeDD** entry to the Start menu (it opens the [manager window](/guide/several-games#the-manager-window)) and puts the
+folder on your `PATH`, so a new terminal finds `BeDD.exe`. The folder (and the zip) holds:
 
 ```
 BeDD.exe                    the app: manager window and command line
@@ -12,10 +21,21 @@ mod\BeDD-server\            the server mod, for client + server runs
 spec\bedd.asyncapi.yaml     the WebSocket protocol, for code generators
 ```
 
-`BeDD.exe` is self-contained: it needs no .NET runtime, no PowerShell and no installer. Put its folder on `PATH`
-if you like; the examples here call it as `BeDD.exe`.
+`BeDD.exe` is self-contained: it needs no .NET runtime and no PowerShell. Be.D.D. is not a lip package and is not
+listed on LeviMC Mods.
 
-Be.D.D. is not a lip package and is not listed on LeviMC Mods.
+### Upgrading
+
+Run the newer installer. If the manager window is open, the installer closes it first, and with it the games it
+shows. Your clones keep the mod they have until their next start:
+`BeDD.exe launch` puts the mod of the installed `BeDD.exe` into a clone when it differs, and keeps the clone's
+`config.json`. `launch --keep-mod` starts a clone with the mod it has.
+
+### Uninstalling
+
+Remove **BeDD** in Settings > Apps > Installed apps. That removes the app, the Start menu entry and the `PATH` entry;
+your clones, worlds and logs in `%LOCALAPPDATA%\BeDD` stay. To remove those too, first remove each clone
+(`BeDD.exe instance remove --slot N --yes`), then delete that folder. Your LeviLauncher instance is never touched.
 
 ## Requirements
 
@@ -36,10 +56,12 @@ Be.D.D. finds that instance.
 ## Try it by hand
 
 ```powershell
-BeDD.exe instance clone --slot 1            # your clone of the instance, e.g. 1.26.60.05-1
-BeDD.exe mod install 1.26.60.05-1           # puts mod\BeDD into it and writes its config
-BeDD.exe launch --slot 1 --detach           # starts it in the background: pid, url, token
+BeDD.exe launch --slot 1 --detach           # clones the instance (1.26.60.05-1), puts the mod in, starts it
 ```
+
+`launch` makes the clone and installs the mod when they are missing; `BeDD.exe instance clone --slot 1` and
+`BeDD.exe mod install 1.26.60.05-1` do those steps alone (`mod install` also writes [config](/guide/configuration)
+keys).
 
 The game shows up in the [manager window](/guide/several-games#the-manager-window), which `launch` opens when it is
 not running yet. Then [drive it](/guide/usage). The base instance you play is never touched: Be.D.D. installs its mod
@@ -47,7 +69,7 @@ only into its own clones, so a normally started game stays as it was.
 
 ## Let the harness fetch it
 
-A harness can fetch Be.D.D. itself instead of expecting a copy somewhere. `curl` and `tar` ship with Windows 10 and
+A harness can fetch Be.D.D. itself instead of expecting an installed copy. `curl` and `tar` ship with Windows 10 and
 11, so this works from any shell or language; `BEDD_DIR` points at an unpacked copy when you have one:
 
 ```powershell

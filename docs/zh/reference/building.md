@@ -50,6 +50,18 @@ dotnet publish app/BeDD/BeDD.csproj -c Release -o bin\app   # -> bin\app\BeDD.ex
 dotnet test app/BeDD.slnx                                   # 单元测试（不需要 vswhere）
 ```
 
+**安装程序**（WiX Toolset 7，`packaging/wix`，参照 lip）。`Package` 生成按用户安装的 MSI，`Bundle` 生成套在它外面的 `setup.exe`
+（标准界面，英文或中文）。两者都取 `bin\release\BeDD` 里的发布布局（`.github/actions/stage` 用 `bin\app`、`bin\BeDD`、`bin\BeDD-server`
+和协议规范生成它），版本取 `app/BeDD/BeDD.csproj` 里的，除非用 `-p:ProductVersion=` 指定。WiX 来自 NuGet；构建即表示接受它的 EULA
+（`packaging/wix/Directory.Build.props` 里的 `AcceptEula`）。
+
+```powershell
+dotnet build packaging/wix/Bundle/BeDD.Bundle.wixproj -c Release -p:Platform=x64
+# -> packaging\wix\Package\bin\x64\Release\bedd.msi、packaging\wix\Bundle\bin\x64\Release\bedd-setup.exe
+```
+
+`tests/installer/installer.test.mjs` 为当前用户安装、升级、卸载它们并逐步检查（见文件开头；CI 会运行它）。已经装了 BeDD 的机器上它拒绝运行。
+
 **开发循环。** `bin\app\BeDD.exe dev` 是刚构建好的模组的试验场：它为开发用的槽位克隆基础实例（`instance clone`，默认槽位 9，可用 `--slot` 改），
 把 `bin\BeDD` 装进克隆（`mod install`，或用 `--from <dir>` 指定），在后台启动游戏（`launch`，标签默认 `dev`，可用 `--label` 改），然后保持运行。
 期间它把每次前台窗口和光标锁定矩形的变化记录到 `tools\out\desktop-watch.log`（或 `--watch-log <file>`）：
@@ -64,8 +76,7 @@ bin\app\BeDD.exe dev --watch-only    # 只监视桌面（游戏由别的方式�
 
 Ctrl+C 或创建 `tools\out\dev.stop` 会关掉游戏（除非 `--keep`）并结束 dev；`tools\out\dev.restart` 会关掉游戏、重新安装重新构建的模组并再次启动。
 游戏退出时 dev 也会结束。它只会关闭从自己的克隆启动的游戏，同一个槽位同时只能有一个 dev 循环
-（锁是 `%LOCALAPPDATA%\BeDD\locks\dev-<slot>.lock`，dev 无论怎样退出都会释放）。`BeDD.exe` 是窗口程序，shell 可能不会等它结束：
-在 PowerShell 里用管道（`bin\app\BeDD.exe dev | Out-Host`）让提示符一直等到 dev 结束，这时用 `tools\out\dev.stop` 结束它。
+（锁是 `%LOCALAPPDATA%\BeDD\locks\dev-<slot>.lock`，dev 无论怎样退出都会释放）。`BeDD.exe` 是控制台程序，shell 会一直等到 dev 结束。
 
 ## 文档与展示素材
 
@@ -110,6 +121,8 @@ Ctrl+C 或创建 `tools\out\dev.stop` 会关掉游戏（除非 `--keep`）并结
 | `src/MemoryOperators.cpp` | 让 `new`/`delete` 走 LeviLamina 的分配器（LeviLamina 要求） |
 | `app/` | `BeDD.exe`（C# NativeAOT）：`Cli/` 命令，`Core/` 实例、启动、服务器、发现文件、WebSocket 客户端，`Gui/` 管理窗口；`BeDD.Tests/` |
 | `tests/ws/` | 针对运行中游戏的协议测试（`node --test tests/ws/`） |
+| `packaging/wix/` | 安装程序（WiX Toolset 7）：`Package/` 按用户安装的 MSI，`Bundle/` 套在外面的 setup.exe |
+| `tests/installer/` | 安装程序的安装、升级、卸载测试（`node --test tests/installer/installer.test.mjs`） |
 | `spec/bedd.asyncapi.yaml` | WebSocket 接口（AsyncAPI 3.0） |
 
 挂钩游戏或 LeviLamina 的符号时，先查 `%LOCALAPPDATA%\.xmake\packages\l\levilamina\<version>\<hash>\include` 下的 SDK 头文件。

@@ -1,0 +1,107 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <!--
+    Per user, like everything BeDD does (its instances, run and lock files are under
+    %LOCALAPPDATA%\BeDD): installs to %LOCALAPPDATA%\Programs\BeDD without elevation and puts that
+    folder on the user's PATH. Uninstalling leaves %LOCALAPPDATA%\BeDD (instances, worlds, logs).
+  -->
+  <Package
+    Name="BeDD"
+    Manufacturer="LiteLDev"
+    Version="$(ProductVersion)"
+    UpgradeCode="{7CD5D082-8B75-4C2F-8D04-B7CE345A268B}"
+    Scope="perUser">
+
+    <MajorUpgrade
+      AllowSameVersionUpgrades="yes"
+      DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="BeDD.ico" SourceFile="$(IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="BeDD.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://docs.levimc.org/BeDD/" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/LiteLDev/BeDD/issues" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="BeDD">
+          <Directory Id="ModFolder" Name="mod">
+            <Directory Id="ClientModFolder" Name="BeDD" />
+            <Directory Id="ServerModFolder" Name="BeDD-server" />
+          </Directory>
+          <Directory Id="SpecFolder" Name="spec" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <!--
+      A file in a user's profile is kept by a registry value under HKCU, not by the file itself
+      (ICE38), and every folder there is removed on uninstall (ICE64). WiX derives no GUID for such
+      a component, so each has its own: never reuse one for other files. BeDD.exe finds its mods in
+      mod\ next to it.
+    -->
+    <Component Id="App" Directory="INSTALLFOLDER" Guid="{E02AAC98-F422-4CE0-A6CF-5B4FD9E8E2DD}">
+      <RegistryValue Root="HKCU" Key="Software\LiteLDev\BeDD\Components" Name="App" Type="integer" Value="1" KeyPath="yes" />
+      <File Id="BeDD.exe" Source="$(StageDir)\BeDD.exe" />
+      <File Id="COPYING" Source="$(StageDir)\COPYING" />
+      <File Id="COPYING.LESSER" Source="$(StageDir)\COPYING.LESSER" />
+    </Component>
+
+    <Component Id="ClientMod" Directory="ClientModFolder" Guid="{147B1CD5-A820-480A-A058-88314FE9B2B1}">
+      <RegistryValue Root="HKCU" Key="Software\LiteLDev\BeDD\Components" Name="ClientMod" Type="integer" Value="1" KeyPath="yes" />
+      <File Id="ClientMod.dll" Source="$(StageDir)\mod\BeDD\BeDD.dll" />
+      <File Id="ClientMod.manifest" Source="$(StageDir)\mod\BeDD\manifest.json" />
+    </Component>
+
+    <Component Id="ServerMod" Directory="ServerModFolder" Guid="{B8062159-037A-40F8-B051-04EB4C7DAC79}">
+      <RegistryValue Root="HKCU" Key="Software\LiteLDev\BeDD\Components" Name="ServerMod" Type="integer" Value="1" KeyPath="yes" />
+      <File Id="ServerMod.dll" Source="$(StageDir)\mod\BeDD-server\BeDD-server.dll" />
+      <File Id="ServerMod.manifest" Source="$(StageDir)\mod\BeDD-server\manifest.json" />
+    </Component>
+
+    <Component Id="Spec" Directory="SpecFolder" Guid="{303B98F5-F256-4EF4-B7FA-4EA7F05411FA}">
+      <RegistryValue Root="HKCU" Key="Software\LiteLDev\BeDD\Components" Name="Spec" Type="integer" Value="1" KeyPath="yes" />
+      <File Id="Spec.yaml" Source="$(StageDir)\spec\bedd.asyncapi.yaml" />
+    </Component>
+
+    <Component Id="Folders" Directory="INSTALLFOLDER">
+      <RegistryValue Root="HKCU" Key="Software\LiteLDev\BeDD" Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+      <RemoveFolder Id="RemoveSpecFolder" Directory="SpecFolder" On="uninstall" />
+      <RemoveFolder Id="RemoveServerModFolder" Directory="ServerModFolder" On="uninstall" />
+      <RemoveFolder Id="RemoveClientModFolder" Directory="ClientModFolder" On="uninstall" />
+      <RemoveFolder Id="RemoveModFolder" Directory="ModFolder" On="uninstall" />
+      <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+      <RemoveFolder Id="RemoveProgramsFolder" Directory="ProgramsFolder" On="uninstall" />
+    </Component>
+
+    <!-- BeDD.exe on the user's PATH, for the command line (and the agents and scripts that use it). -->
+    <Component Id="Path" Directory="INSTALLFOLDER">
+      <RegistryValue Root="HKCU" Key="Software\LiteLDev\BeDD" Name="Path" Type="integer" Value="1" KeyPath="yes" />
+      <Environment
+        Id="PATH"
+        Name="PATH"
+        Value="[INSTALLFOLDER]"
+        Action="set"
+        Part="last"
+        System="no" />
+    </Component>
+
+    <!-- Started without arguments, BeDD.exe is the manager window. -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut">
+        <RegistryValue Root="HKCU" Key="Software\LiteLDev\BeDD" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+        <Shortcut
+          Id="ManagerShortcut"
+          Name="BeDD"
+          Description="Be.D.D.: the manager window of the Minecraft games BeDD runs"
+          Target="[INSTALLFOLDER]BeDD.exe"
+          WorkingDirectory="INSTALLFOLDER" />
+        <RemoveRegistryKey Root="HKCU" Key="Software\LiteLDev\BeDD" Action="removeOnUninstall" />
+      </Component>
+    </StandardDirectory>
+
+  </Package>
+
+</Wix>

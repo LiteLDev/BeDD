@@ -59,6 +59,20 @@ dotnet publish app/BeDD/BeDD.csproj -c Release -o bin\app   # -> bin\app\BeDD.ex
 dotnet test app/BeDD.slnx                                   # unit tests (no vswhere needed)
 ```
 
+**The installers** (WiX Toolset 7, `packaging/wix`, after lip's). `Package` builds the per-user MSI,
+`Bundle` the `setup.exe` around it (standard UI in English or Chinese). Both take the release layout
+of `bin\release\BeDD` (`.github/actions/stage` makes it from `bin\app`, `bin\BeDD`, `bin\BeDD-server`
+and the spec) and the version of `app/BeDD/BeDD.csproj`, unless `-p:ProductVersion=` gives one. WiX
+comes from NuGet; building it means accepting its EULA (`AcceptEula` in `packaging/wix/Directory.Build.props`).
+
+```powershell
+dotnet build packaging/wix/Bundle/BeDD.Bundle.wixproj -c Release -p:Platform=x64
+# -> packaging\wix\Package\bin\x64\Release\bedd.msi, packaging\wix\Bundle\bin\x64\Release\bedd-setup.exe
+```
+
+`tests/installer/installer.test.mjs` installs, upgrades and uninstalls them for the current user and checks
+each step (see its header; CI runs it). It refuses to run where BeDD is installed.
+
 **The dev loop.** `bin\app\BeDD.exe dev` is a playground for the mod you just built: it clones the
 base instance for a dev slot (`instance clone`, slot 9 unless `--slot`), installs `bin\BeDD` into
 the clone (`mod install`, or `--from <dir>`), launches the game in the background (`launch`, label
@@ -78,9 +92,7 @@ Ctrl+C, or creating `tools\out\dev.stop`, closes the game (unless `--keep`) and 
 `tools\out\dev.restart` closes the game, installs the rebuilt mod again and relaunches it. Dev
 also ends when the game exits. It only ever closes games started from its own clone, and one dev
 loop at a time uses a slot (the lock is `%LOCALAPPDATA%\BeDD\locks\dev-<slot>.lock`, released when
-dev exits, however it exits). `BeDD.exe` is a windowed program, so a shell may not wait for it:
-in PowerShell pipe it (`bin\app\BeDD.exe dev | Out-Host`) to keep the prompt until dev ends, and
-use `tools\out\dev.stop` to end it then.
+dev exits, however it exits). `BeDD.exe` is a console program, so the shell waits until dev ends.
 
 ## Documentation and showcase media
 
@@ -129,6 +141,8 @@ the manager on the left and the terminal on the right, into the MP4, WebP and po
 | `src/MemoryOperators.cpp` | routes `new`/`delete` through LeviLamina's allocator (required by LeviLamina) |
 | `app/` | `BeDD.exe` (C# NativeAOT): `Cli/` commands, `Core/` instances, launch, servers, discovery, WebSocket client, `Gui/` manager window; `BeDD.Tests/` |
 | `tests/ws/` | protocol tests against a running game (`node --test tests/ws/`) |
+| `packaging/wix/` | the installers (WiX Toolset 7): `Package/` the per-user MSI, `Bundle/` the setup.exe around it |
+| `tests/installer/` | install, upgrade and uninstall tests of the installers (`node --test tests/installer/installer.test.mjs`) |
 | `spec/bedd.asyncapi.yaml` | the WebSocket API (AsyncAPI 3.0) |
 
 When you hook a game or LeviLamina symbol, check the SDK headers under

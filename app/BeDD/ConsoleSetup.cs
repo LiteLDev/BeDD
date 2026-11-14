@@ -7,8 +7,9 @@ namespace BeDD;
 // BeDD.exe is a console program, so shells and agents wait for the command line and get its output
 // and exit code (a GUI-subsystem exe returns at once in PowerShell and cmd). Without arguments it is
 // the manager window, which must not keep a console around:
-//   - double-clicked in Explorer, Windows made a console just for it: hide it and let it go (a
-//     console window may flash for a moment);
+//   - opened from Explorer or the Start menu: on Windows 11 24H2 and later the manifest's
+//     consoleAllocationPolicy "detached" keeps Windows from making a console (nothing to do);
+//     before that Windows made one just for it: hide it and let it go (it may flash for a moment);
 //   - started without arguments from a terminal: start a copy of itself without a console and
 //     return at once, so the terminal stays free;
 //   - started detached (launch starts the manager this way): no console at all, nothing to do.

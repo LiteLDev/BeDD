@@ -137,6 +137,9 @@ The full recipe is in [docs/reference/building.md](docs/reference/building.md)
   SDK. The NativeAOT publish (`dotnet publish app/BeDD/BeDD.csproj -c Release -o <dir>`) also needs
   the Visual Studio C++ tools and `vswhere.exe` on `PATH`
   (`%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`).
+- **The installers**: `dotnet build packaging/wix/Bundle/BeDD.Bundle.wixproj -c Release -p:Platform=x64`
+  builds the MSI and `setup.exe` from `bin\release\BeDD` (`.github/actions/stage`);
+  `node --test tests/installer/installer.test.mjs` installs, upgrades and uninstalls them (CI runs it).
 - **The protocol tests**: `node --test tests/ws/` (Node 22 or newer) runs against a game that is
   running, found through its discovery file.
 
@@ -164,8 +167,9 @@ and the terminal on the right, into the MP4, WebP and poster files.
 1. Move the *Unreleased* entries of [CHANGELOG.md](CHANGELOG.md) under the new version and date,
    and add its compare link at the bottom.
 2. Tag the commit `v<version>` and push the tag. `.github/workflows/release.yml` builds both mod
-   targets and publishes `BeDD.exe`, and attaches one asset to the GitHub release,
-   `bedd-windows-x64.zip`:
+   targets and publishes `BeDD.exe`, and attaches three assets to the GitHub release: the
+   installer `bedd-windows-x64-setup.exe`, the MSI inside it, `bedd-windows-x64.msi` (per user,
+   `%LOCALAPPDATA%\Programs\BeDD`, see `packaging/wix`), and `bedd-windows-x64.zip`:
 
    ```
    BeDD/BeDD.exe

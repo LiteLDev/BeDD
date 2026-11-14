@@ -1,0 +1,37 @@
+<Wix
+  xmlns="http://wixtoolset.org/schemas/v4/wxs"
+  xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+
+  <!--
+    The installer for people: the MSI behind the standard UI in English or Chinese, with a link to
+    the licence and a button that opens the manager window. BeDD.exe is NativeAOT, so there is no
+    runtime to install first. The MSI alone (bedd-windows-x64.msi) is for silent and managed installs.
+  -->
+  <Bundle
+    Name="BeDD"
+    Manufacturer="LiteLDev"
+    Version="$(ProductVersion)"
+    UpgradeCode="{977DA92C-C74C-4ED0-9874-7CF8FDE07D14}"
+    AboutUrl="https://docs.levimc.org/BeDD/"
+    HelpUrl="https://github.com/LiteLDev/BeDD/issues"
+    IconSourceFile="$(IconFile)"
+    DisableModify="yes">
+
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication
+        Theme="hyperlinkLicense"
+        LicenseUrl="https://github.com/LiteLDev/BeDD/blob/main/COPYING.LESSER"
+        LaunchTarget="[LocalAppDataFolder]Programs\BeDD\BeDD.exe"
+        ShowVersion="yes"
+        SuppressOptionsUI="yes" />
+      <Payload Name="1033\thm.wxl" SourceFile="en-US.wxl" />
+      <Payload Name="2052\thm.wxl" SourceFile="zh-CN.wxl" />
+    </BootstrapperApplication>
+
+    <Chain>
+      <MsiPackage SourceFile="$(BeDD.Package.TargetPath)" />
+    </Chain>
+
+  </Bundle>
+
+</Wix>
