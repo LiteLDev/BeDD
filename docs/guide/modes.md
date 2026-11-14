@@ -9,7 +9,7 @@ Config `mode`; not to be confused with the [operation mode](/guide/operation-mod
 | `Remote` | the game joined to a server without BeDD, reachable via `allowHosts`; speed not settable | servers you do not run |
 
 Set it per clone before `launch`: `BeDD.exe mod config <instance> --world-mode <mode>` (also `mod install`). `Remote`
-needs `--server-host <host>`, added to `allowHosts` when off the PC.
+needs `--server-host <host>`, added to `allowHosts` when off the PC; `--server-host '*'` lets `join` reach any server.
 
 ## Client + server
 
@@ -56,5 +56,6 @@ BeDD.exe mod config 1.26.60.05-1 --world-mode Remote --server-host play.example.
 BeDD.exe launch --slot 1 --exclusive-signaling --json
 ```
 
-Only `allowHosts` is reachable off loopback ([No firewall prompts](/guide/configuration#no-firewall-prompts)). Online
+Only `allowHosts` is reachable off loopback ([No firewall prompts](/guide/configuration#no-firewall-prompts)). With
+`--server-host '*'`, each `join` adds its host (`join` probe: `allowHosts`, `anyHost`); nothing else gets through. Online
 sign-in servers need `--exclusive-signaling` ([rules](/guide/several-games#rules-for-parallel-runs)).

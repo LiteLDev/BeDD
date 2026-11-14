@@ -9,7 +9,7 @@
 | `Remote` | 游戏加入没有 BeDD 的服务器，经 `allowHosts` 可达；速度不可设 | 不归你管的服务器 |
 
 在 `launch` 前按克隆设置：`BeDD.exe mod config <instance> --world-mode <mode>`（`mod install` 也支持）。`Remote`
-需要 `--server-host <host>`，主机不在本机时会加进 `allowHosts`。
+需要 `--server-host <host>`，主机不在本机时会加进 `allowHosts`；`--server-host '*'` 让 `join` 可连任意服务器。
 
 ## 客户端 + 服务端
 
@@ -56,5 +56,6 @@ BeDD.exe mod config 1.26.60.05-1 --world-mode Remote --server-host play.example.
 BeDD.exe launch --slot 1 --exclusive-signaling --json
 ```
 
-回环地址以外只能访问 `allowHosts`（[不弹防火墙提示](/zh/guide/configuration#不弹防火墙提示)）。需要联机登录的服务器要用
+回环地址以外只能访问 `allowHosts`（[不弹防火墙提示](/zh/guide/configuration#不弹防火墙提示)）。用
+`--server-host '*'` 时，每次 `join` 把它的主机加进来（`join` 探测：`allowHosts`、`anyHost`），其他主机照样不通。需要联机登录的服务器要用
 `--exclusive-signaling`（[规矩](/zh/guide/several-games#并行测试的规矩)）。

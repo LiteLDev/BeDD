@@ -57,6 +57,9 @@ struct Options {
     /// Host names / IPs loopbackOnly still lets the game reach (Remote mode's server): servers off
     /// the PC are queried, and UDP goes out on the PC's address towards them, to them only.
     std::vector<std::string> allowHosts;
+    /// allowHosts has "*": `join` adds its host to allowHosts when it is off the PC (NetHooks.cpp
+    /// allowHostNow), so the game can join any server without a restart; nothing else gets through.
+    bool allowAnyHost = false;
     /// Where the world runs: "ClientOnly" (a local world), "ClientServer" (a BDS with BeDD on this
     /// PC), "Remote" (a server without BeDD). `BeDD.exe mod config --world-mode` writes it; `state` reports it.
     std::string mode = "ClientOnly";
@@ -76,6 +79,8 @@ struct Options {
     bool allowSend = true;
     /// Packet ids `send` may send (text, command_request, command_block_update, book_edit). 1, 30, 144 and 147 are always refused.
     std::vector<int> sendAllow{9, 77, 78, 97};
+    /// sendAllow "*": every packet id but the ones the client owns (login, handshakes, player_auth_input, ...; Send.cpp).
+    bool sendAllowAll = false;
     /// Allow the `stack` op: the local client sends item stack requests a caller serialized (Stack.cpp).
     bool allowStack = true;
     /// Game speed, 0.05..20; 1 = normal. A client applies it on entering a world it hosts
@@ -219,6 +224,12 @@ void                   uninstallNetHooks();
 [[nodiscard]] uint64_t serverQueriesRefused();
 /// Datagrams to hosts off the PC that are not in allowHosts, refused (only while allowHosts names one).
 [[nodiscard]] uint64_t sendsRefused();
+/// allowHosts "*": let the game reach `host` from now on (resolved now; a host on the PC needs
+/// nothing). False with `error` when allowHosts has no "*" or the host does not resolve.
+[[nodiscard]] bool allowHostNow(std::string const& host, std::string& error);
+/// What loopbackOnly lets the game reach off the PC: allowHosts as written, their addresses and the
+/// hosts `join` added.
+[[nodiscard]] std::vector<std::string> allowedHosts();
 
 /// Trace.cpp: log the game's input events (trace mode only).
 void startInputTrace();

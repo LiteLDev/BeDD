@@ -66,7 +66,8 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.loopbackOnly = j.value("loopbackOnly", gOptions.loopbackOnly);
     if (auto it = j.find("allowHosts"); it != j.end() && it->is_array()) {
         for (auto const& h : *it)
-            if (h.is_string() && !h.get<std::string>().empty()) gOptions.allowHosts.push_back(h.get<std::string>());
+            if (h.is_string() && h.get<std::string>() == "*") gOptions.allowAnyHost = true;
+            else if (h.is_string() && !h.get<std::string>().empty()) gOptions.allowHosts.push_back(h.get<std::string>());
             else log().warn("allowHosts: {} is not a host name or address; ignored", h.dump());
     }
     gOptions.mode = j.value("mode", gOptions.mode);
@@ -81,7 +82,12 @@ void readOptions(std::filesystem::path const& file) {
     gOptions.tapLoopback  = gOptions.tap && j.value("tapLoopback", gOptions.tapLoopback);
     gOptions.tapJournalMiB = j.value("tapJournalMiB", gOptions.tapJournalMiB);
     gOptions.allowSend    = j.value("allowSend", gOptions.allowSend);
-    if (auto it = j.find("sendAllow"); it != j.end() && it->is_array()) {
+    if (auto it = j.find("sendAllow"); it != j.end() && it->is_string() && it->get<std::string>() == "*") {
+        gOptions.sendAllow.clear();
+        gOptions.sendAllowAll = true;
+    } else if (it != j.end() && !it->is_array()) {
+        log().warn("sendAllow: {} is neither a list of packet ids nor \"*\"; using the default", it->dump());
+    } else if (it != j.end()) {
         gOptions.sendAllow.clear();
         for (auto const& id : *it)
             if (id.is_number_integer() && id.get<int64_t>() >= 0 && id.get<int64_t>() <= 0x3ff) gOptions.sendAllow.push_back(id.get<int>());

@@ -1218,7 +1218,11 @@ components:
         Config key `allowSend`. Without `buf`, a probe. `buf` is the base64 of one serverbound packet
         (varint header + body, as bedrock-protocol serializes it), sent through the local player. Ids
         outside `sendAllow` (default 9 text, 77 command_request, 78 command_block_update, 97 book_edit)
-        are `refused`; 1, 30, 144 and 147 are always refused.
+        are `refused`; 1, 30, 144 and 147 are always refused. `sendAllow: "*"` allows every id except the
+        packets the client sends itself (login, handshakes, resource pack response, tick_sync, animate,
+        respawn, show_credits, player_skin, subclient_login, set_local_player_as_initialized,
+        network_stack_latency, client cache, emote_list, subchunk_request, request_network_settings,
+        serverbound_loading_screen, and the four above).
       tags: [{ $ref: '#/components/tags/bedboo' }]
       payload:
         type: object
@@ -1240,7 +1244,8 @@ components:
           - $ref: '#/components/schemas/Reply'
           - type: object
             properties:
-              allow: { type: array, items: { type: integer }, description: 'Probe: the ids in sendAllow.' }
+              allow: { type: array, items: { type: integer }, description: 'Probe: the ids send takes (sendAllow; with "*" every one spelled out).' }
+              allowAll: { type: boolean, description: 'Probe: sendAllow is "*".' }
               packetId: { type: integer }
               name: { type: string }
       examples:
@@ -1370,7 +1375,9 @@ components:
         leaves the world it is in (Save & Quit / Disconnect) and goes back to its menus: `left:true`
         (`started:true` without `wait`; with `wait`, once the world is saved and no progress screen
         shows), or `left:false` when it was in no world. Codes: `busy` (a join or leave is in progress),
-        `timeout`, `stopped`, `no_client`, `unavailable`.
+        `timeout`, `stopped`, `no_client`, `unavailable`, `not_allowed` (a host off the PC that
+        `loopbackOnly` keeps the game from: not in `allowHosts`; with `allowHosts` "*" the host is
+        resolved and added, `not_allowed` only when it does not resolve).
       tags: [{ $ref: '#/components/tags/bedboo' }]
       payload:
         type: object
@@ -1409,6 +1416,10 @@ components:
               inLevel: { type: boolean }
               joining: { description: 'The attempt in progress.' }
               last: { description: 'How the last attempt ended.' }
+              allowHosts:
+                description: 'Probe: what the game may reach off the PC: allowHosts, their addresses and the hosts joined with "*"; "*" when loopbackOnly is off.'
+                oneOf: [{ type: array, items: { type: string } }, { const: '*' }]
+              anyHost: { type: boolean, description: 'Probe: join may reach any host (allowHosts "*", or loopbackOnly off).' }
     tapRequest:
       name: tap
       title: tap request
