@@ -26,14 +26,13 @@ info:
        pipeline and network session: `world`, `look`, `input`, `slot`, `action`, `button`,
        `settings`, `send`, `stack`, `timescale`, `join`, `tap`. Small JSON in, small JSON out; this is what
        [bedboo](https://github.com/LiteLDev/bedboo)'s transport `bedd` uses.
-    2. **ui**: the game's UI as an accessibility-style tree (`ui`): read a snapshot of the screens,
-       then act on a node by its `ref` (click, set text, scroll). Use it for menus and screens that
-       the bedboo ops do not cover.
+    2. **ui** (for menus and screens the bedboo ops do not cover): `ui` answers the screen in front
+       as one line per control (JSON UI and Ore UI alike) and acts on a control by its `ref` (click,
+       set text, scroll).
     3. **input** (the last resort): what a user does with a keyboard and mouse, plus screenshots:
        `key`, `text`, `mouse`, `raw`, `release`, `flush`, `focus`, `window`, `screenshot`.
-       Screenshots and pixel coordinates are expensive for an agent (an image costs far more tokens
-       than a JSON snapshot) and break when the layout changes, so reach for them only when the
-       other two modes cannot do the job.
+       Screenshots and pixel coordinates cost an agent far more tokens than a `ui` view and break
+       when the layout changes: use them only when the other two modes cannot do the job.
 
     `ping`, `state`, `manager` and `close` belong to no mode (tag `system`).
 
@@ -368,7 +367,7 @@ operations:
     action: send
     channel: { $ref: '#/channels/v1' }
     title: ui
-    summary: Reads the UI tree of the game's screens, or acts on a node by ref.
+    summary: Answers the screen in front as one line per control, or acts on a control by ref.
     tags: [{ $ref: '#/components/tags/ui' }]
     messages: [{ $ref: '#/channels/v1/messages/uiRequest' }]
     reply:
@@ -380,7 +379,7 @@ operations:
     action: send
     channel: { $ref: '#/channels/v1' }
     title: oreui
-    summary: Reads the DOM of the Ore UI view (the screens `ui` shows as one opaque node).
+    summary: The raw DOM of the Ore UI view (`ui` already lists its controls).
     tags: [{ $ref: '#/components/tags/ui' }]
     messages: [{ $ref: '#/channels/v1/messages/oreuiRequest' }]
     reply:
@@ -618,11 +617,12 @@ components:
         - `no_client`: the client instance does not exist yet.
         - `remote`: the world is on a server this game does not host (its speed cannot change from here).
         - `server_led`: that server runs BeDD and leads the game speed: change it there.
-        - `stale_ref`: the `ref` is not in that snapshot, or its node is gone.
-        - `stale_snapshot`: the screens changed since that snapshot: read the tree again.
-        - `occluded`: another control covers the node at the point an action would hit.
-        - `not_ready`: no UI tree to read yet (the game is loading, no scene).
-        - `unsupported`: the node cannot do that action (an OreUI screen is one opaque node).
+        - `bad_request`: the op cannot act on the request (an unknown `action`, a `ui` action without `ref`, `setText` without `text`, a binary message, `tap subscribe` / `manager attach` off a connection).
+        - `internal`: a `ui` action's input step answered unreadably (a bug: report it).
+        - `stale_ref`: no such ref (its screen closed), or its control is gone or is another control now; `candidates` lists look-alike controls with their refs.
+        - `occluded`: the control is hidden, outside the window, or covered at the point an action would hit (`occludedBy`).
+        - `not_ready`: no UI to read yet (the game is loading, no scene), or the Ore UI page did not answer in time.
+        - `unsupported`: the target cannot do that (a whole Ore UI page), or this game version's UI could not be read.
       enum:
         - disabled
         - not_in_level
@@ -637,8 +637,9 @@ components:
         - no_client
         - remote
         - server_led
+        - bad_request
+        - internal
         - stale_ref
-        - stale_snapshot
         - occluded
         - not_ready
         - unsupported
@@ -709,8 +710,9 @@ components:
     UiNode:
       type: object
       properties:
-        role: { type: string, description: 'button, toggle, slider, textbox, label, image, list, scroll, group, screen, ...' }
-        name: { type: string, description: 'The control name or its accessible label.' }
+        ref: { type: string, description: 'The control''s ref: the same while its screen lives, across reads and connections.' }
+        role: { type: string, enum: [button, toggle, text_input, slider, scroll, text, item, group] }
+        name: { type: string, description: 'JSON UI: the control name. Ore UI: aria-label, title, alt, placeholder, name or data-testid.' }
         text: { type: string, description: 'The text it shows.' }
         value: { description: 'A toggle state, slider value or text field content.' }
         state:
@@ -723,10 +725,13 @@ components:
         children: { type: array, items: { type: string }, description: 'Refs of the child nodes.' }
         source:
           type: object
-          description: 'Where the node comes from: `{kind:"jsonui", ...}` or `{kind:"oreui", url}`.'
+          description: 'Where the node comes from: `jsonui` (path, type), `oreui` (a whole Ore UI screen: url, route) or `dom` (an element of its page: path, type = tag, url, route).'
           properties:
-            kind: { type: string, enum: [jsonui, oreui] }
+            kind: { type: string, enum: [jsonui, oreui, dom] }
+            path: { type: string }
+            type: { type: string }
             url: { type: string }
+            route: { type: string }
           additionalProperties: true
         hash: { type: string, description: 'Changes when the node changes.' }
 
@@ -757,6 +762,7 @@ components:
             required: [protocol, pid, defaultMode, modes]
             properties:
               protocol: { type: integer, const: 2 }
+              kind: { type: string, enum: [client, server] }
               pid: { type: integer }
               defaultMode: { const: bedboo }
               modes: { $ref: '#/components/schemas/Modes' }
@@ -821,6 +827,14 @@ components:
                 description: 'Counters: synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal, sendsRefused.'
                 additionalProperties: true
               clients: { type: integer, description: 'WebSocket clients connected now.' }
+              held:
+                type: array
+                description: 'Keys and mouse buttons down in the virtual state (the left keys for Shift, Ctrl, Alt), each with the connection that pressed it.'
+                items:
+                  type: object
+                  properties:
+                    vk: { type: integer }
+                    client: { type: integer, description: 'The connection id (0: none).' }
               hooks:
                 type: object
                 description: 'Each game hook a feature installed (false while the feature is off).'
@@ -1013,8 +1027,8 @@ components:
       title: input request
       description: |
         Config key `gameHooks`. Without fields: a probe. A dead-man switch: the override ends `ttlMs`
-        after the request (or after `ttlTicks` client ticks), on `ttlMs:0`, on `release` and when the
-        owning connection closes.
+        after the request (or after `ttlTicks` client ticks), on `ttlMs:0` and on `release`. It
+        outlives the connection that set it (a one-shot caller may send it and hang up).
       tags: [{ $ref: '#/components/tags/bedboo' }]
       payload:
         type: object
@@ -1127,7 +1141,11 @@ components:
     buttonRequest:
       name: button
       title: button request
-      description: Config key `gameHooks`. Without `button`, a probe. Never blocks the connection.
+      description: |
+        Config key `gameHooks`. Without `button`, a probe. Never blocks the connection. When the
+        connection that pressed a button closes, a hold without an end (`down` without `holdTicks` or
+        `releaseOn`) is released; a `click`, a `holdTicks` hold and a `releaseOn` hold run to their end
+        (a `releaseOn` hold at most 1200 ticks more).
       tags: [{ $ref: '#/components/tags/bedboo' }]
       payload:
         type: object
@@ -1468,10 +1486,25 @@ components:
       name: ui
       title: ui request
       description: |
-        Config key `ui`. Without `action`: read the tree. JSON UI screens are walked control by control;
-        an OreUI screen is one opaque node `{role:"group", source:{kind:"oreui", url}}`. With `action`
-        and `ref` (from the snapshot named by `snapshot`): act on that node through the same virtual
-        mouse and keyboard as the input ops.
+        Config key `ui`. Without `action`, a read; with `action` and `ref`, an action through the same
+        virtual mouse and keyboard as the input ops.
+
+        Read forms:
+        - `{op:"ui"}`: `view`, the screens of `scope` as text. A header line `screen <name>` (an Ore UI
+          screen: `screen <route> (Ore UI)`), then one line per control or text,
+          `- <role> "<text>"` or `- <role> <name>` (no text), then ` = <value>`, `checked`/`unchecked`,
+          `disabled`, `focused`, `selected` as they apply, then ` [<ref>]` when it takes an action.
+          Indentation is nesting. Six or more alike lines in a row are one line ending ` x<n> [in <ref>]`:
+          `{op:"ui", ref}` lists them. Past `maxNodes` lines the first 3/4 and the last 1/4 stay, with a
+          line saying how many were cut. A last line `under: ...` names the screens below.
+        - `{op:"ui", find}`: only the lines whose text, name or value contains `find` (case-insensitive).
+        - `{op:"ui", ref}`: that control and everything below it, nothing folded.
+        - `{op:"ui", ref, detail:true}`: `node`, every field of that control (UiNode, plus `ancestors`).
+        - `{op:"ui", format:"json"}`: the tree as objects, for programs (`nodes` by ref, `roots`,
+          `screens`, `active`).
+
+        A ref names one control (scene + path) for as long as its screen is on the stack, across reads
+        and connections; it is never moved to another control.
       tags: [{ $ref: '#/components/tags/ui' }]
       payload:
         type: object
@@ -1479,22 +1512,39 @@ components:
         properties:
           id: { $ref: '#/components/schemas/Id' }
           op: { const: ui }
-          depth: { type: integer, minimum: 1, description: 'Levels below each root to include.' }
-          scope: { type: string, description: 'A ref to read below, instead of every screen.' }
-          includeInvisible: { type: boolean, default: false }
-          maxNodes: { type: integer, minimum: 1 }
-          snapshot: { type: string, description: 'The snapshot the ref comes from (action form).' }
-          action: { type: string, enum: [click, setText, scroll] }
+          scope: { type: string, default: active, description: '`active` (the screen in front), `all`, a screen name, or a screen id (`scene-...`).' }
+          find: { type: string }
           ref: { type: string }
+          detail: { type: boolean, default: false }
+          format: { type: string, enum: [text, json], default: text }
+          maxNodes: { type: integer, minimum: 1, description: 'text: lines (default 80); json: nodes (default config `uiMaxNodes`).' }
+          depth: { type: integer, minimum: 0, description: 'Levels below each screen root.' }
+          includeInvisible: { type: boolean, default: false }
+          compact: { type: boolean, default: true, description: '`false`: every control, layout panels included.' }
+          timeoutMs: { type: integer, minimum: 100, default: 3000 }
+          debug: { type: boolean, default: false, description: 'json/detail: per node the components and their vtables.' }
+          action: { type: string, enum: [click, setText, scroll] }
+          button: { $ref: '#/components/schemas/Button' }
+          holdMs: { type: integer, minimum: 50 }
+          anchor: { type: string, enum: [center, top_left, top, top_right, left, right, bottom_left, bottom, bottom_right], default: center }
+          offsetX: { type: integer, default: 0 }
+          offsetY: { type: integer, default: 0 }
+          force: { type: boolean, default: false, description: 'Act although another control covers the point.' }
           text: { type: string, description: 'setText: the new content.' }
-          notches: { type: integer, description: 'scroll: wheel notches (positive = up).' }
+          clear: { type: boolean, default: true, description: 'setText: CTRL+A, BACK first.' }
+          submit: { type: boolean, default: false, description: 'setText: ENTER after.' }
+          delayMs: { type: integer, minimum: 0, description: 'setText: between characters.' }
+          notches: { type: integer, default: 1, description: 'scroll: wheel notches (positive scrolls down).' }
+          observeMs: { type: integer, minimum: 0, maximum: 5000, default: 150, description: 'How long to wait before reading the result.' }
       examples:
         - name: read
-          payload: { id: 20, op: ui, depth: 6 }
+          payload: { id: 20, op: ui }
+        - name: find
+          payload: { id: 21, op: ui, find: quit }
         - name: click
-          payload: { id: 21, op: ui, snapshot: s17, action: click, ref: n42 }
+          payload: { id: 22, op: ui, action: click, ref: e1 }
         - name: type into a text box
-          payload: { id: 22, op: ui, snapshot: s17, action: setText, ref: n57, text: My World }
+          payload: { id: 23, op: ui, action: setText, ref: e53, text: My World }
     uiReply:
       name: ui
       title: ui reply
@@ -1504,47 +1554,62 @@ components:
           - $ref: '#/components/schemas/Reply'
           - type: object
             properties:
-              snapshot: { type: string, description: 'Names this read; pass it with an action.' }
-              screens: { type: array, items: { type: string }, description: 'The scene stack, bottom first.' }
-              active: { type: string, description: 'The screen on top.' }
-              roots: { type: array, items: { type: string }, description: 'Refs of the root nodes.' }
+              view: { type: string, description: 'Read (text) and `ref`: the lines. Action: present only when another screen (or Ore UI route) came to the front: its view.' }
+              screen: { type: string, description: 'Read and action: the screen in front.' }
+              truncated: { type: boolean, description: 'maxNodes cut lines (text) or nodes (json).' }
+              node: { $ref: '#/components/schemas/UiNode' }
+              action: { type: string, description: 'Action: the action done.' }
+              ref: { type: string, description: 'Action: the target.' }
+              point: { $ref: '#/components/schemas/Point' }
+              changed: { type: boolean, description: 'Action: whether any text, state, place or the screen in front changed.' }
+              target: { type: [string, 'null'], description: 'Action: the target''s line now; null when it is gone.' }
+              snapshot: { type: string, description: 'json: a name for this read (informational).' }
+              tick: { type: integer, description: 'json: client ticks seen.' }
+              client: { $ref: '#/components/schemas/Size' }
+              screens: { type: array, items: { type: object }, description: 'json: the scene stack, bottom first.' }
+              active: { type: string, description: 'json: the id of the screen in front.' }
+              roots: { type: array, items: { type: string }, description: 'json: refs of the root nodes.' }
               nodes:
                 type: object
-                description: Every node by ref.
+                description: 'json: every node by ref.'
                 additionalProperties: { $ref: '#/components/schemas/UiNode' }
-              truncated: { type: boolean, description: 'maxNodes or depth cut the tree.' }
       examples:
-        - name: start screen
+        - name: pause screen
           payload:
             id: 20
             ok: true
-            snapshot: s17
-            screens: [start_screen]
-            active: start_screen
-            roots: [n1]
+            screen: pause_screen
             truncated: false
-            nodes:
-              n1: { role: screen, name: start_screen, children: [n42], actions: [], hash: 9f1c }
-              n42:
-                role: button
-                name: play_button
-                text: Play
-                state: { visible: true, enabled: true }
-                bounds: { x: 540, y: 330, w: 200, h: 40 }
-                boundsNorm: { x: 0.42, y: 0.46, w: 0.16, h: 0.06 }
-                actions: [click]
-                children: []
-                source: { kind: jsonui }
-                hash: 03ab
+            view: |
+              screen pause_screen
+              - button "Resume Game" [e30]
+              - button "Settings" [e31]
+              - button "Save & Quit" [e33]
+              - text "Game is paused"
+              under: hud_screen, hud_crosshair_screen, in_game_play_screen
+        - name: click
+          payload:
+            id: 22
+            ok: true
+            action: click
+            ref: e1
+            point: { x: 800, y: 428 }
+            changed: true
+            target: '- button "Play" [e1]'
+            screen: /play/all
+            view: |
+              screen /play/all (Ore UI)
+              - button "Create new world" [e25]
+              - button "My World 11/14/26" [e27]
 
     oreuiRequest:
       name: oreui
       title: oreui request
       description: |
-        Config key `ui`. Reads the DOM of the Ore UI view (world list, settings and the other HTML
-        screens) with a read-only script run in the view's V8 context; it never changes the page.
-        Nodes have no refs: act on one with `mouse` at the centre of its `bounds` (game client
-        pixels). Written against the V8 9.x in the game's v8.dll; another major version answers
+        Config key `ui`. The raw DOM of the Ore UI view (world list, settings and the other HTML
+        screens), read by a read-only script run in the view's V8 context; it never changes the page.
+        `ui` already lists the page's controls with refs: use this to see what `ui` leaves out. Nodes
+        have no refs; `bounds` are game client pixels (`mouse` `x`/`y`). Written against the V8 9.x in the game's v8.dll; another major version answers
         `unsupported` unless `force` is set. Errors are `unsupported` (with `findings`), `not_ready`
         (no Ore UI screen ran script within `timeoutMs`) and `disabled`.
       tags: [{ $ref: '#/components/tags/ui' }]
@@ -1554,7 +1619,7 @@ components:
         properties:
           id: { $ref: '#/components/schemas/Id' }
           op: { const: oreui }
-          url: { type: string, description: 'Wait for a view whose URL contains this.' }
+          url: { type: string, description: 'Wait for a view whose page URL (location.href, e.g. `ui://./hbui/index.html`) contains this.' }
           maxNodes: { type: integer, minimum: 1, maximum: 50000, default: 2000 }
           maxText: { type: integer, minimum: 8, maximum: 4096, default: 200, description: 'Characters kept of each text.' }
           timeoutMs: { type: integer, minimum: 100, default: 3000, description: 'How long to wait for the view to run script.' }
@@ -1571,7 +1636,7 @@ components:
           - $ref: '#/components/schemas/Reply'
           - type: object
             properties:
-              url: { type: string, description: 'The page (route) the view shows.' }
+              url: { type: string, description: 'The page URL (location.href, e.g. `ui://./hbui/index.html`); the route is in `ui`''s screen line.' }
               title: { type: string }
               width: { type: integer }
               height: { type: integer }
@@ -1586,6 +1651,8 @@ components:
                     class: { type: string }
                     testId: { type: string, description: 'data-testid' }
                     role: { type: string }
+                    type: { type: string, description: 'The type attribute.' }
+                    act: { type: integer, enum: [1, 2], description: 'Takes a click: 1 by tag, ARIA role, tabindex, test id or event handler; 2 only by Ore UI hover styling.' }
                     name: { type: string, description: 'aria-label, title, alt, placeholder or name.' }
                     text: { type: string, description: 'Own text of the element.' }
                     value: { type: string }
@@ -1641,7 +1708,8 @@ components:
       description: |
         Moves the virtual cursor (if a point or a node is given), then presses buttons or scrolls on the
         virtual GameInput mouse. A point is `x`,`y` (client pixels), `rx`,`ry` (fractions of the client
-        area) or `ref` + `snapshot` (the centre of a ui node; `stale_ref`, `stale_snapshot`, `occluded`).
+        area) or `ref` (a point of a `ui` control: `anchor`, `offsetX`/`offsetY`; `stale_ref`, `occluded`;
+        the reply adds `changed`, `target`, `screen` and `view` as a `ui` action does).
       tags: [{ $ref: '#/components/tags/input' }]
       payload:
         type: object
@@ -1655,7 +1723,10 @@ components:
           rx: { type: number, minimum: 0, maximum: 1 }
           ry: { type: number, minimum: 0, maximum: 1 }
           ref: { type: string }
-          snapshot: { type: string }
+          anchor: { type: string, default: center }
+          offsetX: { type: integer, default: 0 }
+          offsetY: { type: integer, default: 0 }
+          force: { type: boolean, default: false }
           button: { $ref: '#/components/schemas/Button' }
           notches: { type: integer, default: 1 }
           holdMs: { type: integer, minimum: 50, default: 80 }
@@ -1668,7 +1739,7 @@ components:
         - name: click at a fraction
           payload: { id: 32, op: mouse, action: click, rx: 0.498, ry: 0.474 }
         - name: click a ui node
-          payload: { id: 33, op: mouse, action: click, ref: n42, snapshot: s17 }
+          payload: { id: 33, op: mouse, action: click, ref: e42 }
     rawRequest:
       name: raw
       title: raw request

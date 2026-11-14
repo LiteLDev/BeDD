@@ -311,4 +311,35 @@ describe('BeDD WebSocket protocol', { skip }, () => {
       await watcher.close();
     }
   });
+  it('ui: a text view whose refs work from another connection', { skip: !isClient }, async () => {
+    const a = await Client.open();
+    let view;
+    try {
+      const r = await a.request({ op: 'ui' });
+      assert.equal(r.ok, true, JSON.stringify(r));
+      assert.equal(typeof r.view, 'string');
+      assert.match(r.view, /^screen \S+/);
+      view = r.view;
+    } finally {
+      await a.close();
+    }
+    const ref = view.match(/\[(e\d+)\]/)?.[1];
+    const b = await Client.open();
+    try {
+      if (ref) {
+        // Read-only: the ref, from a connection that never read the view.
+        const r = await b.request({ op: 'ui', ref, detail: true });
+        assert.equal(r.ok, true, JSON.stringify(r));
+        assert.equal(r.node.ref, ref);
+      }
+      const stale = await b.request({ op: 'ui', action: 'click', ref: 'e999999' });
+      assert.equal(stale.ok, false);
+      assert.equal(stale.code, 'stale_ref');
+      const json = await b.request({ op: 'ui', format: 'json', maxNodes: 5 });
+      assert.equal(json.ok, true, JSON.stringify(json));
+      assert.equal(typeof json.nodes, 'object');
+    } finally {
+      await b.close();
+    }
+  });
 });

@@ -25,7 +25,8 @@ internal static class ModCommands
                 "settings given (every other one keeps the mod's default) and switch LeviLamina to its built-in crash logger\n" +
                 "(no console window as the game starts). Replaces an earlier install, its config included.\n" +
                 "The files come from --from, else BEDD_MOD_DIR, else mod\\BeDD next to BeDD.exe, else bin\\BeDD of the checkout\n" +
-                "the current folder is in.",
+                "the current folder is in. With --from, launch keeps the mod current with that folder (not the default\n" +
+                "source) until the next install without --from.",
             Args = "<instance>",
             MinArgs = 1,
             MaxArgs = 1,
@@ -79,7 +80,7 @@ internal static class ModCommands
         ModDeploy.Apply(new JsonObject(), settings);
         string source = ModDeploy.FindSource(ctx.String("from"));
         ctx.Verbose($"installing the mod from {source}");
-        var result = ModDeploy.Install(i, source, settings, ctx.Warn);
+        var result = ModDeploy.Install(i, source, settings, ctx.Warn, pin: !string.IsNullOrWhiteSpace(ctx.String("from")));
         if ((string?)result["crashLogger"] == "noConfig")
             ctx.Notice("LeviLamina has no config yet: its crash logger is switched to built-in by the next 'instance refresh' (or clone) after the first game start");
         return ctx.Render(result, [i.Name], w =>

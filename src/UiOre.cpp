@@ -9,7 +9,8 @@
 // some 300 calls a second while an Ore UI screen shows, none while only JSON UI screens do): on the
 // next such call while a request is pending, the hook compiles and runs a read-only script in that
 // call's context (the view's page) and copies the JSON string it returns. The script reads the
-// DOM only: tag, id, class, data-testid, role/aria-*, own text, value, state, bounds, children.
+// DOM only: tag, id, class, data-testid, role/aria-*, type, own text, value, state, bounds,
+// whether it takes a click (act), children.
 //
 // The hooks are installed on the first request and stay (unhooking could free a trampoline under a
 // thread that is inside it); while nothing is pending they cost one atomic load per call. A request
@@ -143,7 +144,37 @@ constexpr char kWalker[] = R"JS((function () {
     try { var c = e.childNodes; for (var i = 0; c && i < c.length; i++) if (c[i].nodeType === 3) s += c[i].nodeValue; } catch (x) {}
     return clip(s);
   }
-  function walk(e, depth) {
+  // Whether the element takes a click: a tag or ARIA role that is a control, a tabindex, a test id
+  // that names one (Ore UI's "...-primary-action-0", "...-button"), an event handler React or Preact
+  // attached (the props or listener map they keep on the element), or Ore UI's "-interactive" hover
+  // and press styling. That styling sits on every layer of a button (background, highlight, label),
+  // so it counts only outside an element already counted (inAct): the layers are one control. That
+  // styling alone is a weak sign (act 2; the others act 1): the reader drops such an element when it
+  // has no text and a sibling is a control with text (an outline or a shadow beside a button).
+  var HANDLERS = ['onClick', 'onPointerDown', 'onPointerUp', 'onMouseDown', 'onMouseUp', 'onTouchStart'];
+  var ROLES = /^(button|link|tab|menuitem|menuitemcheckbox|menuitemradio|option|checkbox|switch|radio|slider|textbox|searchbox|combobox)$/;
+  var TESTIDS = /(button|action|tab|toggle|checkbox|switch|dropdown|slider|link)(-\d+)?$/i;
+  function clickable(e, n, inAct) {
+    if (/^(button|a|input|select|textarea)$/.test(n.tag)) return true;
+    if (n.role && ROLES.test(n.role)) return true;
+    var t = attr(e, 'tabindex'); if (t != null && +t >= 0) return true;
+    if (n.testId && TESTIDS.test(n.testId)) return true;
+    if (!inAct && n['class'] && /-interactive\b/.test(n['class'])) return 2;
+    try {
+      var keys = Object.keys(e);
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i], o = e[k];
+        if (!o || typeof o !== 'object') continue;
+        if (k.indexOf('__reactProps') === 0 || k.indexOf('__reactEventHandlers') === 0) {
+          for (var h = 0; h < HANDLERS.length; h++) if (typeof o[HANDLERS[h]] === 'function') return true;
+        } else if (k === 'l' || k === '__l') { // Preact's listener map: {click, pointerdown, ...}
+          for (var m in o) if (/^(click|pointerdown|pointerup|mousedown|mouseup|touchstart)/i.test(m)) return true;
+        }
+      }
+    } catch (x) {}
+    return false;
+  }
+  function walk(e, depth, inAct) {
         if (nodes.length >= MAX || depth > 256) { truncated = true; return -1; }  // a deep branch only skips itself
     var n = { tag: String(e.tagName || e.nodeName || '').toLowerCase() }, i = nodes.length, v;
     nodes.push(n);
@@ -155,6 +186,8 @@ constexpr char kWalker[] = R"JS((function () {
     if (v) n.name = clip(v);
     if ((v = ownText(e))) n.text = v;
     try { if ('value' in e && e.value != null && e.value !== '') n.value = clip(e.value); } catch (x) {}
+    if ((v = attr(e, 'type'))) n.type = v;
+    if ((v = clickable(e, n, inAct))) n.act = v === 2 ? 2 : 1;
     var st = {};
     try { if (e.disabled || attr(e, 'aria-disabled') === 'true') st.disabled = true; } catch (x) {}
     try { if (e.checked || attr(e, 'aria-checked') === 'true') st.checked = true; } catch (x) {}
@@ -170,14 +203,14 @@ constexpr char kWalker[] = R"JS((function () {
     } catch (x) {}
     var kids = [], ch = e.children;
     for (var j = 0; ch && j < ch.length; j++) {
-      var k = walk(ch[j], depth + 1);
+      var k = walk(ch[j], depth + 1, inAct || !!n.act);
             if (k >= 0) kids.push(k); else if (nodes.length >= MAX) break;
     }
     n.children = kids;
     return i;
   }
   var root = document.documentElement || document.body;
-  if (root) walk(root, 0);
+  if (root) walk(root, 0, false);
   return JSON.stringify({ href: String(location.href), width: innerWidth, height: innerHeight,
     title: String(document.title || ''), nodes: nodes, truncated: truncated });
 })())JS";

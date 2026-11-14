@@ -1,138 +1,78 @@
 # Tap protocol
 
-The tap is a read-only binary stream of the game packets the client receives and sends, for
-[bedboo](https://github.com/LiteLDev/bedboo)'s transport `bedd`. It is on by default; config `tap` set to `false`
-turns it off ([Configuration](/guide/configuration#feature-keys)).
+Read-only stream of the client's game packets for [bedboo](https://github.com/LiteLDev/bedboo) (transport `bedd`). Config `tap` ([Configuration](/guide/configuration#feature-keys)); status: the
+[`tap` op](/reference/websocket#bedboo-ops).
 
 ## Subscribing and frames
 
-The tap rides on the game's [WebSocket](/reference/websocket). A connection sends
-`{"op":"tap","action":"subscribe"}`, gets `{"ok":true}`, and from then on receives one binary WebSocket message per
-frame; it sends nothing else on that connection (open another one for requests). One subscriber at a time: another
-`subscribe` answers `code:"busy"`, and a tap that is off answers `code:"disabled"`, `key:"tap"`. `{"op":"tap"}` without
-`action` is the status (see the [`tap` op](/reference/websocket#bedboo-ops)). BeDD writes, the subscriber only reads.
-It carries every clientbound game packet the client receives, an echo of every serverbound packet it sends (not login,
-the handshakes or request_network_settings), and JSON markers.
+`{"op":"tap","action":"subscribe"}` → `{"ok":true}`, then one binary message per frame. Send nothing else on that
+connection. Second subscriber: `busy`; off: `disabled`.
 
-Frames, little-endian:
-
-```
-u32 len (bytes after this field) | u8 kind | u8 flags | u16 0 | u64 seq | u64 tUs (steady clock µs) | payload
-```
-
-Each binary message holds exactly one frame, `len` field included. `len` is at most 16 MiB + 20. `seq` rises over the process (replayed frames keep theirs).
+| Bytes (LE) | Field |
+|---|---|
+| u32 | `len`: bytes after it, ≤ 16 MiB + 20 |
+| u8 | `kind` |
+| u8 | `flags`: 1 replay, 2 reserialized (`Packet::write`), 4 local link, 8 suppressed (reserved) |
+| u16 | 0 |
+| u64 | `seq` (process-wide; replay keeps it) |
+| u64 | `tUs` (steady clock µs) |
+| … | payload |
 
 | kind | | payload |
 |---|---|---|
-| 1 | CLIENTBOUND | one game packet: varint header (`id \| senderSub<<10 \| targetSub<<12`) + body, as bedrock-protocol's `parsePacketBuffer` reads it |
-| 2 | SERVERBOUND_ECHO | the same, for a packet the client sent (never ids 1, 3, 4, 193) |
-| 4 | MARKER | UTF-8 JSON |
-
-Subscribers ignore other kinds. Flags: 1 replay (from the join journal), 2 reserialized
-(`Packet::write`, not wire bytes), 4 local link, 8 suppressed (reserved).
+| 1 | CLIENTBOUND | varint header (`id \| senderSub<<10 \| targetSub<<12`) + body (bedrock-protocol `parsePacketBuffer`) |
+| 2 | SERVERBOUND_ECHO | same; never ids 1, 3, 4, 193 (login, handshakes, request_network_settings) |
+| 4 | MARKER | UTF-8 JSON (ignore other kinds) |
 
 | marker | fields |
 |---|---|
-| `HELLO` (always first) | `tap:1`, `mod`, `game:"1.26.60.05"`, `protocol` (2225), `pid`, `link{state, type, address}`, `journal{frames, bytes, complete}` (what this subscriber is replayed) |
+| `HELLO` (first) | `tap:1`, `mod`, `game:"1.26.60.05"`, `protocol` (2225), `pid`, `link{state, type, address}`, `journal{frames, bytes, complete}` |
 | `LINK_UP` | `type` remote\|local, `address` |
 | `LINK_DOWN` | `reason` |
 | `REPLAY_BEGIN` | `frames` |
-| `REPLAY_END` | `complete` (false when the journal went past `tapJournalMiB`) |
-| `DROPPED` | `count`; the connection closes after it |
+| `REPLAY_END` | `complete` (false past `tapJournalMiB`; no journal: empty pair, false) |
+| `DROPPED` | `count`; subscriber > 32 MiB behind; then disconnected (resubscribe: full replay) |
 
-A subscriber gets HELLO, REPLAY_BEGIN, the join journal's frames (flag replay), REPLAY_END, then the
-live stream; live frames that arrive during the replay wait until REPLAY_END, and live frames the
-replay already held are skipped by seq. Without a journal the pair is empty (`complete:false`). A
-subscriber more than 32 MiB behind gets DROPPED and its connection is closed; subscribing again gives a full replay.
+Live frames wait for REPLAY_END; duplicates are skipped by seq.
 
-All publishers share `src/TapSink.h`, which must stay byte-identical: each installs its sink with
-`prev = gEmit.exchange(&own)`, forwards every frame to `prev`, and on removal puts `prev` back
-only if `gEmit` is still its own (compare-exchange). The hooks only copy bytes; the subscriber's
-connection thread drains its queue.
+Publishers share `src/TapSink.h` ([code rules](https://github.com/LiteLDev/BeDD/blob/main/CONTRIBUTING.md#code-rules)); hooks only copy, the subscriber thread drains.
 
 ## Remote servers (`NetTap.cpp`)
 
-The client's NetworkSystem follows its one open connection: `NetworkSystem::send` (before the
-client's first packet goes out) and `runEvents` (every tick) look it up, so a new one brings the
-link up and none takes it down; `$onConnectionClosed` and `closeConnection` end it at once (since
-1.26.60 the game exports no `onNewOutgoingConnection`, `onAllConnectionsClosed` or `disconnect`). On
-a remote link, `BatchedNetworkPeer::_receivePacket` of its batched peer (after it, `HasData`) gives each decompressed,
-decrypted packet, and `NetworkSystem::_sendInternal` each serialized packet the client sends: wire
-bytes, flags 0. With config `trace`, the first 50 packets of each link are logged as
-`tap trace #n in|out id len`: they come in the order of a BDS capture (network_settings,
-server_to_client_handshake, play_status, resource_packs_info, ..., start_game, ...).
-
-**Blob cache.** A client with its blob cache on gets sub-chunks as blob hashes and only the blobs
-it misses (`client_cache_miss_response`); the rest come from its cache on disk and never cross the
-wire, so a subscriber could not build the world. While the tap is on, BeDD therefore clears `enabled`
-in the client's `client_cache_status` before it is sent, and servers send every sub-chunk in full.
-The echo shows `enabled:false`.
+| | |
+|---|---|
+| Link up | `NetworkSystem::send` (before the first packet) and `runEvents` (each tick) find the open connection |
+| Link down | `$onConnectionClosed`, `closeConnection` (1.26.60 exports no `onNewOutgoingConnection`, `onAllConnectionsClosed`, `disconnect`) |
+| In | `BatchedNetworkPeer::_receivePacket` (after it, `HasData`): decrypted, decompressed; flags 0 |
+| Out | `NetworkSystem::_sendInternal`; flags 0 |
+| `trace` | first 50 packets per link: `tap trace #n in\|out id len` |
+| Blob cache | `client_cache_status.enabled` cleared before sending, so servers send full sub-chunks (echo shows `false`) |
 
 ## Singleplayer and LAN-host worlds (`TapLoopback.cpp`, config `tapLoopback`)
 
-`tapLoopback` (default `true`, effective only with `tap`) puts singleplayer worlds and LAN worlds
-the client hosts on the tap. The client then talks to its in-process server through the
-LocalConnector and the remote capture publishes nothing; `LoopbackPacketSender` is hooked instead,
-and each packet is re-serialized (varint header `id | senderSub << 10 | targetSub << 12`, then
-`Packet::write` with the sending `NetworkSystem`'s `ReflectionCtx`). Frames carry the flags
-`reserialized` (2) and `local` (4).
+Default `true`, needs `tap`. Hooks `LoopbackPacketSender`; packets re-serialized (header as above, `Packet::write` with
+the sender `NetworkSystem`'s `ReflectionCtx`); flags 2 + 4.
 
-- **CLIENTBOUND**: the server's sender (`$sendToClient` both overloads, `$sendToClients`,
-  `$sendBroadcast` both overloads, `$sendTo`; `$sendTo` and `$sendBroadcast(except)` have no symbol
-  since 1.26.60 and are found in `LoopbackPacketSender`'s vtable, next to the slots the game still
-  exports), only for a `NetworkIdentifier` whose connection on
-  the server is of type `Local`. LAN guests are remote connections and are never published
-  (counted as `guest`). Broadcasts are published once the local player got `start_game`.
-- **SERVERBOUND_ECHO**: the client's sender (`$sendToServer`, `$send`, `$sendTo`), never ids 1, 3, 4
-  or 193.
-- Chunks: the integrated server answers every `subchunk_request` through the same sender, so each
-  `subchunk` and `subchunk_request` the client exchanges is on the tap (checked in game: as many
-  `subchunk` frames as `ServerNetworkHandler::handle(SubChunkRequestPacket)` calls). The client
-  asks relative to one origin (its own sub-chunk) and only up to each column's
-  `highest_subchunk_count`; a local client sends `client_cache_status` with `enabled:false`, so
-  every entry carries its payload.
-- Only while the client's link (`tap::gLinkType`) is local. The client sender's first packet on a
-  new connection and `$onConnectionClosed` on the client `NetworkSystem` set it from the connection type, as the tap
-  core does, so the loopback tap works without it. While no link is known yet (the in-process
-  server already sends before the client's connect call returns), a `Local` connection of the
-  client counts; that check never writes `gLinkType`. The remote capture only publishes on a
-  `Remote` link (`_sendInternal` also runs for the local link), so no packet is published twice. A
-  sender method that calls another publishes a packet once.
-- Without a tap sink (`tap::gEmit` null) frames are only counted. `state` reports
-  `stats.tapLoopback{enabled, hooks, link, clientbound, echo, bytes, unpublished, guest}`.
-- With `trace`, the first 50 frames are logged (`trace tap loopback: in|out id= len=`) and the first
-  4000 are written to `mods\BeDD\data\tap-loopback.bin` in the tap framing (seq and tUs 0).
+| | |
+|---|---|
+| CLIENTBOUND | server sender `$sendToClient` (both), `$sendToClients`, `$sendBroadcast` (both), `$sendTo` (`$sendTo`, `$sendBroadcast(except)` via vtable since 1.26.60); only `Local` connections. LAN guests: counted as `guest`. Broadcasts after the local player's `start_game` |
+| SERVERBOUND_ECHO | client sender `$sendToServer`, `$send`, `$sendTo`; never ids 1, 3, 4, 193 |
+| Chunks | every `subchunk_request`/`subchunk` (one origin, up to `highest_subchunk_count`; `client_cache_status.enabled:false`) |
+| Link | only while `tap::gLinkType` is local; set by the client sender's first packet and `$onConnectionClosed`. Before a link is known a `Local` client connection counts (never writes `gLinkType`). Remote capture publishes only on `Remote`: no doubles |
+| No sink | `tap::gEmit` null: only counted. `state.stats.tapLoopback{enabled, hooks, link, clientbound, echo, bytes, unpublished, guest}` |
+| `trace` | first 50 frames logged (`trace tap loopback: in\|out id= len=`); first 4000 to `mods\BeDD\data\tap-loopback.bin` (seq, tUs 0) |
 
 ## Join journal (`TapJournal.cpp`)
 
-With `tap` on, the journal chains onto `bedd::tap::gEmit` and sets `bedd::tap::gReplay`, which the
-tap calls for each new subscriber between `REPLAY_BEGIN` and `REPLAY_END`. Replayed frames keep
-their seq and order and carry flag `replay`.
+Chains on `bedd::tap::gEmit`, sets `bedd::tap::gReplay` (called per subscriber between the REPLAY markers).
 
-- Only CLIENTBOUND frames are kept. The journal resets on a new link (the `LINK_UP` marker or a
-  change of `gLinkType`) and on `start_game` (11), which becomes its first frame.
-- Compaction keys (read from the leading fields only; the last frame with a key wins):
-  `level_chunk` (x, z, dimension), `update_block` (position,
-  layer), `set_time`, `set_health`, `network_chunk_publisher_update`, `current_structure_feature`,
-  `inventory_content` (window), `inventory_slot` (window, slot), `level_event` (event id, so the
-  weather keeps its last state), `update_abilities` (unique id), the `add_*` packets (unique id;
-  `add_player` by runtime id), and per runtime id `set_entity_motion`, `move_entity`,
-  `move_player` and `mob_armor_equipment`. Packets that carry only the fields that changed are
-  keyed by entity and the set of fields, so every field keeps its last value: `set_entity_data`
-  (the metadata keys), `update_attributes` (the attribute names), `move_entity_delta` (the fields
-  present) and `mob_effect` (the effect).
-- `subchunk` is kept per sub-chunk, not per packet: the client asks for all its sub-chunks relative
-  to one origin, so a packet is dropped only once newer frames carry every sub-chunk in it (origin +
-  each entry's offset). A packet the journal cannot walk is kept whole.
-- `remove_entity` (14) deletes the entity's `add_entity`/`add_item_entity`/`add_player` frame
-  (`add_player` is matched by its unique id's bytes) and everything keyed by its runtime id.
-- Not kept: `text`, `animate`, `network_stack_latency`, `play_sound`, `stop_sound`,
-  `level_sound_event` (and v2), `spawn_particle_effect`, `level_event_generic`.
-- Past `tapJournalMiB` (default 128) frames are no longer kept and the journal reports
-  `complete:false` until the next reset: a late subscriber then misses chunks until the player
-  re-enters them or the client rejoins.
-- `state` reports `stats.journal`: `enabled`, `frames`, `bytes`, `complete`, and the counters
-  `seen` (clientbound frames), `compacted` (replaced by a later frame with the same key), `pruned`
-  (entities whose add frame `remove_entity` deleted), `transient` (not kept), `overCap` (not kept
-  past `tapJournalMiB`), `resets` and `replays`.
-
+| | |
+|---|---|
+| Kept | CLIENTBOUND only. Reset on a new link and on `start_game` (11, first frame) |
+| Last per key | `level_chunk` (x, z, dim), `update_block` (pos, layer), `set_time`, `set_health`, `network_chunk_publisher_update`, `current_structure_feature`, `inventory_content` (window), `inventory_slot` (window, slot), `level_event` (event id), `update_abilities` (unique id), `add_*` (unique id; `add_player` runtime id); per runtime id `set_entity_motion`, `move_entity`, `move_player`, `mob_armor_equipment` |
+| Per entity + fields | `set_entity_data` (keys), `update_attributes` (names), `move_entity_delta` (fields), `mob_effect` (effect) |
+| `subchunk` | dropped once newer frames cover all its sub-chunks; unwalkable: kept |
+| `remove_entity` (14) | deletes the add frame (`add_player` by unique id bytes) and runtime-id keys |
+| Not kept | `text`, `animate`, `network_stack_latency`, `play_sound`, `stop_sound`, `level_sound_event` (v1, v2), `spawn_particle_effect`, `level_event_generic` |
+| Cap | `tapJournalMiB` (128): beyond, `complete:false` until reset (late subscribers miss chunks) |
+| Stats | `state.stats.journal`: `enabled, frames, bytes, complete, seen, compacted, pruned, transient, overCap, resets, replays` |

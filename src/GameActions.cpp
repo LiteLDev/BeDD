@@ -347,10 +347,22 @@ void uninstallGameActions() {
     releaseGameButtons();
 }
 
+// A client that disconnects lets go of its open-ended holds (`down` without holdTicks or releaseOn).
+// A hold with an end runs to it: a one-shot caller sends `click` and hangs up at once, and the click
+// must still last its ticks. A releaseOn hold whose block never changes ends kOrphanTicks later.
+constexpr int64_t kOrphanTicks = 1200;
+
 void releaseGameButtonsOf(uint64_t client) {
     std::lock_guard lock(gMutex);
     for (size_t b = 0; b < kButtons.size(); ++b) {
-        if (!gHeld[b].down || gHeld[b].owner != client) continue;
+        Held& h = gHeld[b];
+        if (!h.down || h.owner != client) continue;
+        h.owner = 0;
+        if (h.releaseTick >= 0) continue;
+        if (h.onBlockChange) {
+            h.releaseTick = gTick + kOrphanTicks;
+            continue;
+        }
         log().info("client {} left holding button {}: released", client, kButtons[b].name);
         releaseHeld(b);
     }

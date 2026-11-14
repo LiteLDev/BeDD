@@ -78,6 +78,9 @@ internal static class LaunchCommands
                     case "updated":
                         ctx.Notice($"updated the BeDD mod of {info.Name} from {mod.From ?? "?"} to {mod.To ?? "?"}");
                         break;
+                    case "pinned-missing":
+                        ctx.Warn($"{info.Name} has the BeDD mod from {mod.From}, which has no build any more: the mod was left as it is ({Dispatcher.ProgramName} mod install {info.Name} to take the default build)");
+                        break;
                     case "running":
                         ctx.Warn($"{info.Name} has a game running: its BeDD mod was left as it is");
                         break;
