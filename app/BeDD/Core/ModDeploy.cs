@@ -58,9 +58,14 @@ public static class ModDeploy
         return dir;
     }
 
+    // The file in mods\BeDD that names the folder a "mod install --from" took the mod from. While it
+    // exists, launch keeps the mod current with that folder, not with the default source.
+    public const string PinFile = "source.pin";
+
     // Copies the mod into the instance, writes its config (only the given settings) and switches
-    // LeviLamina to its built-in crash logger. Replaces an earlier install, config included.
-    public static JsonObject Install(InstanceInfo i, string source, ModSettings settings, Action<string>? warn = null)
+    // LeviLamina to its built-in crash logger. Replaces an earlier install, config included. pin:
+    // the source was named explicitly (--from), so launch keeps following it (PinFile).
+    public static JsonObject Install(InstanceInfo i, string source, ModSettings settings, Action<string>? warn = null, bool pin = false)
     {
         var config = new JsonObject();
         Apply(config, settings);
@@ -79,6 +84,8 @@ public static class ModDeploy
             File.Copy(from, Path.Combine(dest, f));
             files.Add((JsonNode)f);
         }
+        if (pin)
+            File.WriteAllText(Path.Combine(dest, PinFile), Path.GetFullPath(source));
         WriteConfig(i, config);
         string crash = SwitchCrashLogger(i.ModsDir, warn);
         return new JsonObject
@@ -87,6 +94,7 @@ public static class ModDeploy
             ["dir"] = dest,
             ["source"] = source,
             ["version"] = Cloner.ModVersion(dest),
+            ["pinned"] = pin,
             ["files"] = files,
             ["config"] = config.DeepClone(),
             ["crashLogger"] = crash,
@@ -97,7 +105,8 @@ public static class ModDeploy
     private static readonly string[] ModFiles = ["BeDD.dll", "BeDD.pdb", "manifest.json"];
 
     // What EnsureCurrent did: "installed", "updated", "current", "running" (left alone, its game
-    // runs) or "no-source" (no build of the mod to compare with).
+    // runs), "no-source" (no build of the mod to compare with) or "pinned-missing" (the folder of
+    // the PinFile has no build any more: left alone; From is that folder).
     public sealed record EnsureResult(string Action, string? From, string? To);
 
     // Keeps the mod of a BeDD clone the build that comes with this BeDD.exe, so a clone made before
@@ -106,16 +115,26 @@ public static class ModDeploy
     // source is found as by FindSource(null); without one, nothing changes.
     public static EnsureResult EnsureCurrent(InstanceInfo i, Action<string>? warn = null, string? cwd = null, string? appDir = null)
     {
-        string source;
-        try
-        {
-            source = FindSource(null, cwd, appDir);
-        }
-        catch (CliError)
-        {
-            return new EnsureResult("no-source", null, null);
-        }
         string dest = ModDir(i);
+        string source;
+        string pinFile = Path.Combine(dest, PinFile);
+        if (File.Exists(pinFile))
+        {
+            source = File.ReadAllText(pinFile).Trim();
+            if (!File.Exists(Path.Combine(source, "BeDD.dll")) || !File.Exists(Path.Combine(source, "manifest.json")))
+                return new EnsureResult("pinned-missing", source, null);
+        }
+        else
+        {
+            try
+            {
+                source = FindSource(null, cwd, appDir);
+            }
+            catch (CliError)
+            {
+                return new EnsureResult("no-source", null, null);
+            }
+        }
         string? to = Cloner.ModVersion(source);
         if (!File.Exists(Path.Combine(dest, "BeDD.dll")))
         {

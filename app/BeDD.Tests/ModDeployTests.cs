@@ -189,6 +189,38 @@ public sealed class ModDeployTests : IDisposable
         Assert.Equal("updated", ModDeploy.EnsureCurrent(i, cwd: cwd, appDir: rebuilt).Action);
         Assert.Equal("dll 2 rebuilt", File.ReadAllText(Path.Combine(mod, "BeDD.dll")));
     }
+
+    [Fact]
+    public void EnsureCurrentFollowsTheFolderOfAnInstallFrom()
+    {
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("BEDD_MOD_DIR")))
+            return;
+        var i = Instance();
+        string cwd = Path.Combine(_tmp, "cwd");
+        Directory.CreateDirectory(cwd);
+        string mod = Path.Combine(i.Dir, "mods", "BeDD");
+        string pinned = Path.Combine(Release("3.0.0", "pinned dll", "pinned-app"), "mod", "BeDD");
+        string other = Release("2.0.0", "default dll", "default-app");
+
+        ModDeploy.Install(i, pinned, new ModSettings(), pin: true);
+        // The default source differs, but the install named its folder: it is left alone.
+        Assert.Equal("current", ModDeploy.EnsureCurrent(i, cwd: cwd, appDir: other).Action);
+        Assert.Equal("pinned dll", File.ReadAllText(Path.Combine(mod, "BeDD.dll")));
+
+        // A new build in the pinned folder is taken up.
+        File.WriteAllText(Path.Combine(pinned, "BeDD.dll"), "pinned dll 2");
+        Assert.Equal("updated", ModDeploy.EnsureCurrent(i, cwd: cwd, appDir: other).Action);
+        Assert.Equal("pinned dll 2", File.ReadAllText(Path.Combine(mod, "BeDD.dll")));
+
+        // The pinned folder gone: nothing changes.
+        Directory.Delete(pinned, true);
+        Assert.Equal("pinned-missing", ModDeploy.EnsureCurrent(i, cwd: cwd, appDir: other).Action);
+        Assert.Equal("pinned dll 2", File.ReadAllText(Path.Combine(mod, "BeDD.dll")));
+
+        // An install without --from ends the pin.
+        ModDeploy.Install(i, Path.Combine(other, "mod", "BeDD"), new ModSettings());
+        Assert.False(File.Exists(Path.Combine(mod, ModDeploy.PinFile)));
+    }
 }
 
 public sealed class WorldTests : IDisposable

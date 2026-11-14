@@ -1,96 +1,142 @@
 # UI 树
 
-`ui` 操作把游戏界面读成一棵控件树（类似无障碍树），并可按引用对控件执行操作。它是驱动游戏的第三种方式，与 bedboo 的游戏操作和普通的键盘鼠标输入并列：脚本先问屏幕上有什么，然后点击“Resume Game 按钮”而不是某个像素，用控件状态做断言而不是比对截图。操作不是捷径：BeDD 把虚拟指针移到控件上，使用与 `mouse`、`key`、`text` 操作相同的鼠标、按键和文字输入。设计见 [issue #21](https://github.com/LiteLDev/BeDD/issues/21)。
+`ui` 把 JSON UI 和 Ore UI 界面读成文本，每个控件一行，并用 input 操作的虚拟鼠标、按键和文字对 ref 执行动作。在
+bedboo 操作之后使用（[顺序](/zh/guide/operation-modes)）。配置 `ui`（`true`）同时控制 `oreui` 和带 `ref` 的 `mouse`。
+设计：[#21](https://github.com/LiteLDev/BeDD/issues/21)。
 
-配置 `ui`（默认 `true`）控制开关；关闭时 `{op:"ui"}` 和带 `ref` 的 `mouse` 回复 `{ok:false, code:"disabled", key:"ui"}`。`uiMaxNodes`（默认 `1000`）限制一次快照的节点数。
+1600x900 下的字符数：标题界面 519（旧 JSON 20,569），世界列表 ~860（原始 DOM ~48,000），暂停 ~600，背包 ~950。
 
-## 快照
+## 视图
 
-```json
-{ "op": "ui" }
 ```
+screen start_screen
+- button "Play" [e1]
+- button "Settings" [e2]
+- text "v26.60/LeviLamina-26.60.5"
+under: toast_screen, debug_screen, cubemap_background_screen
+```
+
+| 行 | |
+|---|---|
+| `screen <name>` | 每个读取的界面一行；Ore UI：`screen <route> (Ore UI)`，如 `screen /play/all (Ore UI)`。后缀 ` (not ready: read again)` 或 ` (page not read: <why>)` |
+| `- <role> "<text>"` / `- <role> <name>` | 然后是 ` = <value>` 或 ` checked`/` unchecked`、` disabled`、` focused`、` selected`，可执行动作时再加 ` [<ref>]`。缩进 = 嵌套 |
+| `- button hotbar_slot_button x9 [in e29]` | 连续 6 行以上相似的行；`{op:"ui", ref:"e29"}` 列出它们 |
+| `... <n> lines cut: ...` | 超过 `maxNodes`；保留前 3/4 和后 1/4 |
+| `under: a, b` | 最前面界面之下的界面（仅 `scope:"active"`） |
+| `(nothing read on this page)` / `(no match)` | Ore UI 页面为空 / `find` 无命中 |
+
+角色：`button`、`toggle`、`text_input`、`slider`、`scroll`、`text`、`item`（集合格子，如背包格）、`group`。
+
+输出内容（`compact`）：能看到、能读或能操作的。按钮读作其第一个可见标签；重复其控件的文字被丢弃；分组仅在可点击且
+不含其他行时输出；名为 `button`、`default`、`panel`、`image`、`label`、`content`、`control` 或其角色名的 JSON UI 控件
+显示所在分组的名字。
+
+Ref（`e1`、...）：每个控件（场景 + 路径）一个，在其界面留在栈上期间由所有读取和连接共用；从不重新分配。`snapshot`
+字段被忽略。
+
+## 读取
+
+| 请求 | 回复 |
+|---|---|
+| `{op:"ui"}` | `{view, screen（最前面）, truncated}` |
+| `{op:"ui", find:"quit"}` | 文字、名字或值包含该串（不分大小写）的行，平铺 |
+| `{op:"ui", ref}` | `{view, truncated}`：该控件（带 ref）及其下全部，不折叠 |
+| `{op:"ui", ref, detail:true}` | `{node}`：全部节点字段 + `ref`、`ancestors`（文字或名字，由近及远） |
+| `{op:"ui", format:"json"}` | `snapshot`（仅供参考）、`tick`、`screens`、`active`、`roots`、按 ref 的 `nodes`（+`parent`、`children`）、`truncated`、`client{w,h}` |
 
 | 字段 | 默认 | |
 |---|---|---|
-| `scope` | `active` | `active`（最前面的界面）、`all`、界面名或界面 id（`scene-…`） |
-| `depth` | 全部 | 每个界面根节点以下的层数 |
-| `includeInvisible` | `false` | 也返回隐藏的控件（`state.visible:false`） |
-| `compact` | `true` | 只返回能看到、能读或能操作的控件，以及包含多个这类控件的分组；`false` = 全部控件 |
-| `maxNodes` | `uiMaxNodes` | 节点上限，超过时 `truncated:true` |
-| `timeoutMs` | `3000` | 等待客户端线程的时间，超时回复 `code:"not_ready"` |
-| `debug` | `false` | 每个节点附带组件及其虚表、原始可见性位 |
+| `scope` | `active` | `active`、`all`、界面名或 `scene-…` id |
+| `maxNodes` | 80 行；json：`uiMaxNodes`（1000） | 1..100000 |
+| `depth` | 全部 | 每个界面根以下的层数 |
+| `includeInvisible` | `false` | 也包括隐藏控件 |
+| `compact` | `true` | `false`：全部控件 |
+| `timeoutMs` | 3000 | 100..30000，之后 `not_ready` |
+| `debug` | `false` | json/detail：组件、虚表、可见性位 |
 
-回复的字段与英文页相同：`snapshot`、`screens`（场景栈，自下而上）、`active`、`roots`、`nodes`（`ref` → `role`、`name`、`text`、`value`、`state`、`bounds`、`boundsNorm`、`actions`、`children`、`parent`、`surface`、`source`、`hash`）、`truncated`、`client`。
+| 节点字段 | |
+|---|---|
+| `role`、`name`、`text` | `name`：JSON UI 控件名；Ore UI 的 `aria-label`/`title`/`alt`/`placeholder`/`name`/`data-testid` |
+| `value` | 文本框文字、滑块 0..1、开关状态 |
+| `state` | `visible, enabled, hovered, focused, selected, pressed, editable, scrollable, checked`（null：非开关） |
+| `bounds`、`boundsNorm` | 客户区像素（`x`/`y`）；比例（`rx`/`ry`） |
+| `actions` | `click`、`setText`、`scroll` |
+| `surface` | 界面 id |
+| `source` | `kind` jsonui\|oreui（整个页面）\|dom；`path`（同名兄弟用 `name[k]`）、`type`（JSON UI 类型或标签）、`collectionName`/`collectionIndex`（如 `inventory_items`/9）、`url`、`route` |
+| `hash` | 由 role、name、text、path、type、kind、url、route 计算 |
 
-- `screens[].kind`：`jsonui`（逐个控件读取）、`oreui`（一个不透明节点）、`unknown`（其他场景，如游戏内的 play screen，不读取）。
-- `role`：`button`、`toggle`、`text_input`、`slider`、`scroll`、`text`、`item`（集合中接受输入但没有已知按钮组件的格子）或 `group`。
-- `name` 是控件在 JSON UI 定义里的名字；`text` 是绘制出来的本地化文字（按钮或开关取其第一个可见标签）；`value` 是文本框的文字、滑块的 0..1、开关是否选中。
-- `bounds` 是客户区像素，与 `mouse` 的 `x`/`y` 同一坐标系；`boundsNorm` 是窗口比例，与 `rx`/`ry` 相同。
-- `source.path` 是控件路径（同名兄弟用 `name[k]` 区分）；集合中的格子另有 `collectionName` 和 `collectionIndex`（背包格：`inventory_items` / 9）。
-- `hash` 覆盖 role、name、text 和 source：其中任何一项变化，引用即失效。
-- 每个连接只保留最后一次快照，引用（按绘制顺序的 `e1`、`e2`……）只对它有效。
+`screens[]`：`{id, kind jsonui|oreui|unknown, screen, interactive, modal}`，设置时另有 `rawScreen`、`route`、`ready:false`、
+`pageError`、`debug`。`unknown` 场景（`in_game_play_screen`）不读取。
 
 ## 操作
 
 ```json
-{ "op": "ui", "snapshot": "ui-12", "action": "click", "ref": "e5" }
+{"op": "ui", "action": "click", "ref": "e1"}
+{"ok": true, "action": "click", "ref": "e1", "point": {"x": 800, "y": 428}, "changed": true,
+ "target": "- button \"Play\" [e1]", "screen": "/play/all", "view": "screen /play/all (Ore UI)\n- button ..."}
 ```
 
-| `action` | 字段 | |
+| `action` | 字段（默认） | 输入 |
 |---|---|---|
-| `click` | `button`（`left`）、`holdMs`、`anchor`、`offsetX`/`offsetY`、`force` | 在控件上 `mouse click` |
-| `setText` | `text`、`clear`（`true`）、`submit`（`false`）、`delayMs` | 点击获得焦点；`clear` 时 CTRL+A、BACK；再走 `text` 操作；`submit` 时按 ENTER |
-| `scroll` | `notches`（`1`，正数向下） | 在控件上 `mouse wheel` |
+| `click` | `button`（left）、`holdMs`、`settleMs`、`afterMs` | `mouse click` |
+| `setText` | `text`、`clear`（true）、`submit`（false）、`delayMs` | 点击；CTRL+A、BACK；`text`；ENTER |
+| `scroll` | `notches`（1，正数 = 向下） | `mouse wheel` |
 
-`mouse` 操作可以用 `ref` + `snapshot` 代替 `x`/`y`，用于悬停和拖动：
+全部动作：`anchor`（center、top_left、top、top_right、left、right、bottom_left、bottom、bottom_right）、`offsetX`/`offsetY`、
+`force`、`timeoutMs`、`observeMs`（150，≤5000：读取结果前等待）。
 
-```json
-{ "op": "mouse", "action": "move", "ref": "e68", "snapshot": "ui-12" }
-```
+回复：`point`；`changed`（任何文字、状态、值、位置或最前面界面变化）；`target`（其当前行，消失则为 null）；`screen`
+（最前面）；`view` 仅在另一个界面或 Ore UI 路由来到最前面时返回。
 
-`anchor`（`center`、`top_left`、`top`、`top_right`、`left`、`right`、`bottom_left`、`bottom`、`bottom_right`）和 `offsetX`/`offsetY`（像素）决定落点，其余与普通 `mouse` 操作相同。
+### 引用上的 mouse
 
-执行前 BeDD 会重新读取界面，按路径找到控件：
+`{"op":"mouse", "action":"move", "ref":"e68"}`：`mouse` 瞄准一个 ref（`anchor`、`offsetX`/`offsetY`、`force`；`action`
+默认 `move`）；回复附加动作回复的字段。只有 `click`/`down` 检查遮挡控件。
+
+### 错误
+
+控件必须保持其角色和名字（JSON UI）或文字（Ore UI）。
 
 | `code` | |
 |---|---|
-| `stale_snapshot` | 不是本连接的最后一次快照（`snapshot` 给出最后一次） |
-| `stale_ref` | 控件已消失或 hash 变化（`candidates`：当前最前界面上 role 相同、name 或 text 相同的控件）。请重新取快照 |
-| `occluded` | 控件隐藏、在窗口外，或（对 `click`、`setText`、`scroll`、`mouse` 的 `down`/`click`）落点上有绘制在它之上的控件、或上层接受输入的界面中的控件（`occludedBy`）。`force:true` 强制执行 |
-| `not_ready` | 客户端线程未及时响应，或还没有场景 |
-| `unsupported` | Ore UI 节点，或本游戏版本的界面布局与预期不符 |
+| `stale_ref` | 未知 ref、界面已关闭、控件消失或已改变。`candidates`：≤5 行角色和名字/文字相同的控件（其自身界面已关闭时取自最前面界面） |
+| `occluded` | 隐藏；在窗口外（`point`）；或在该点被遮挡（`occludedBy`、`point`），遮挡者为其界面上更晚的输入控件（JSON UI）或上方接收输入的界面。≥ 半个窗口的控件不计。`force:true` 强制执行 |
+| `not_ready` | `timeoutMs` 内无应答、无场景，或 Ore UI 页面无响应 |
+| `unsupported` | ref 是整个 Ore UI 页面，或无法读取 UI |
+| `bad_args` | `maxNodes`/`depth`/`timeoutMs` 不是整数、`format` 不是 text/json、`find`/`ref` 不是字符串 |
+| `bad_request` | 动作缺 `ref`、未知 `action`、`setText` 缺 `text` |
 
-回复含 `point`、`target`（操作后的节点）、`screen`（最前面的界面）和 `changed`（文字、状态、位置或最前界面是否变化）。`observeMs`（`150`）是读取结果前等待游戏绘制的时间。
+## 1.26.60
 
-## BeDD 能读到什么（1.26.60）
+JSON UI：标题（`start_screen`）、HUD（`hud_screen`）、聊天、暂停、背包、退出对话框；未见滑块或开关。Ore UI：世界列表
+（`/play/all`）、设置（`/oreui-settings/...`）。悬停命中最内层控件（背包：`grid_item_for_inventory` 中的
+`item_button_ref`）。等入场动画结束后再读。
 
-| 界面 | 技术栈 |
+## 实现
+
+| 部分 | |
 |---|---|
-| 标题（`start_screen`）、HUD（`hud_screen`）、聊天、暂停、背包、退出对话框 | JSON UI |
-| 世界列表（`/play/all`）、设置（`/oreui-settings/...`） | Ore UI：一个带 `source.url` 和 `source.route` 的节点 |
-
-悬停落在指针下最内层的控件上：背包中格子的 `grid_item_for_inventory` 里有一个显示 `hovered` 的 `item_button_ref`。界面的入场动画会短暂移动控件：请在界面稳定后再取快照。
-
-游戏没有 RTTI，BeDD 通过虚表区分组件类型：文字组件靠其导出的 `render`，文本框、滑块和滚动视图来自 ScreenView 中的对应列表，按钮和开关靠它们指向的状态控件。1.26.60 的 JSON UI 界面里没有见到滑块和开关（设置界面是 Ore UI）。
+| JSON UI | SceneStack → `UIScene::mScreenView` → `VisualTree::mRootControl` → `UIControl::mChildren`/`mComponents`，在客户端线程（`ClientInstance::update` 钩子）。按虚表判断类型（无 RTTI）（文字：导出的 `render`；文本框/滑块/滚动：ScreenView 的列表；按钮/开关：4/8 个状态 weak_ptr）。SEH：布局异常 → `unsupported` |
+| Ore UI | 最上层 Ore UI 页面的 DOM，经 `oreui` 脚本（≤4000 节点，120 字符），角色按标签、input `type` 和 ARIA role 判断（`domRole`，`src/UiView.cpp`）。无文字的控件取其内部文字；与有文字控件相邻的无文字 `act` 2 元素视为其一层 |
 
 ## Ore UI 界面：`oreui`
 
-`ui` 把 Ore UI 界面显示为一个节点。要看它的内部，发送 `{"op":"oreui"}`：BeDD 在 Ore UI 视图的页面中运行一段只读脚本，返回它的 DOM。
+原始 Ore UI DOM，无 ref（调试用）。
 
-```json
-{"id": 23, "op": "oreui"}
-```
+| 字段 | 默认 | |
+|---|---|---|
+| `url` | 任意 | 等待 `location.href`（如 `ui://./hbui/index.html`）包含该串的视图；不是路由 |
+| `maxNodes` | 2000 | 1..50000 |
+| `maxText` | 200 | 8..4096 |
+| `timeoutMs` | 3000 | 100..30000，之后 `not_ready` |
+| `force` | `false` | 允许 9 以外的 V8 主版本 |
 
-回复含 `url`（路由，如 `/play/all`）、`title`、`width`、`height`、按文档顺序排列的 `nodes` 和 `truncated`。节点有 `tag`，以及（存在时）`id`、`class`、`testId`（`data-testid`）、`role`、`name`（`aria-label`、`title`、`alt`、`placeholder` 或 `name`）、`text`（节点自身的文字）、`value`、`state`（`disabled`、`checked`、`selected`、`expanded`、`hidden`、`focused`、`invisible`）、以游戏客户区像素计的 `bounds`，以及 `children`（`nodes` 中的下标）。
+回复：`url`、`title`、`width`、`height`、`nodes`（文档顺序）、`truncated`、`findings`（`method`、`gameface`、`v8`、`jsCalls`、
+`contextsSeen`、`missingExports`）。节点：`tag`、`id`、`class`、`testId`、`role`、`type`、`act`、`name`、`text`（自身）、
+`value`、`state`（`disabled, checked, selected, expanded, hidden, focused, invisible`）、`bounds`（客户区像素）、`children`
+（索引）。`act`：1 = 按标签、ARIA role、tabindex、test id 或 React/Preact 处理函数可点击；2 = 仅有 `-interactive` 悬停样式
+（且不在 `act` 祖先内）。
 
-Ore UI 节点没有 ref。要点击某个节点，向其 `bounds` 的中心发送 `action: "click"` 的 `mouse`。例如从世界列表打开一个世界：
-
-```js
-const dom = await call('oreui')
-const tile = dom.nodes.find(n => n.text === 'My World' && n.bounds?.w > 0)
-await call('mouse', { action: 'click', x: tile.bounds.x + tile.bounds.w / 2, y: tile.bounds.y + tile.bounds.h / 2 })
-```
-
-脚本在视图下一次运行自己的脚本时执行，Ore UI 界面每秒会运行很多次。`timeoutMs`（`3000`）是等待时长，`url` 等待 URL 包含它的视图；最前面没有 Ore UI 界面时，该操作以 `not_ready` 结束。`maxNodes`（`2000`）和 `maxText`（`200`）限制回复大小。
-
-`oreui` 调用游戏 `v8.dll` 中的 V8 引擎（1.26.60 中为 V8 9）。遇到其他主版本时，它返回 `unsupported`，并在 `findings.v8` 中给出版本；`"force": true` 则仍然尝试。若对 V8 的调用崩溃，BeDD 会捕获它，并在游戏重启前关闭 `oreui`。
+钩住 `v8.dll` 中的 `v8::Function::Call`/`v8::Object::CallAsFunction`（V8 9.4；首次使用时），在页面下一次调用时（~300/s）
+运行只读脚本；同一时间一个请求。`unsupported`（`findings`）：其他 V8 主版本、导出缺失、脚本错误、DOM > 15 MiB。V8 崩溃
+（SEH）或脚本不结束会禁用 `oreui` 和 `ui` 中的 Ore UI，直到重启。

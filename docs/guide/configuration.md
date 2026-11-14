@@ -1,91 +1,58 @@
 # Configuration
 
-The mod reads `mods\BeDD\config\config.json` in its clone. `BeDD.exe mod install` writes it with the defaults; change
-keys with `mod config`, never by hand-editing a file inside a clone (its files may be hardlinks shared with the base):
+The mod reads `mods\BeDD\config\config.json` (missing: defaults). Edit only via `BeDD.exe` (hardlinked files):
 
 ```powershell
-BeDD.exe mod config 1.26.60.05-2                                      # print it
-BeDD.exe mod config 1.26.60.05-2 --set clientWidth=1600 --set clientHeight=900
-BeDD.exe mod config 1.26.60.05-2 --set 'allowHosts=["play.example.net"]' --set manager=false
+BeDD.exe mod config 1.26.60.05-2                                        # print
+BeDD.exe mod config 1.26.60.05-2 --set clientWidth=1600 --unset timeScale # --unset: back to default
 ```
 
-A value is read as JSON when it parses as JSON (`true`, `8`, `["a"]`) and as a string otherwise. Without a config
-file the game runs with the defaults.
-
-`BeDD.exe mod install` and `launch` also switch the clone's LeviLamina to its built-in crash logger
-(`modules.crashLogger.builtin` in `mods\LeviLamina\config\Config.json`): the default `CrashLogger.exe` is a console
-program, and its console window would flash on the desktop at every game start.
+`--set` (also on `mod install`): JSON if it parses, else a string. `--world-mode` sets `mode` and
+`allowHosts` ([Where the world runs](/guide/modes)). `mod install` and `launch` also set
+`modules.crashLogger.builtin` in `mods\LeviLamina\config\Config.json` (else `CrashLogger.exe` flashes a console).
 
 ## Keys
 
-| Key | |
-|---|---|
-| `clientWidth`, `clientHeight` | game window size (0 = leave it), so clicks land in the same place every run |
-| `wsPort` | default `0`: the WebSocket's port on `127.0.0.1`; 0 picks a free one, which `run\<pid>.json` reports. Set a fixed port only for one game at a time |
-| `wsMaxClients` | default `8`: WebSocket connections the game serves at once (each one's held keys, buttons and `input` override are released when it closes) |
-| `allowOrigins` | default `[]`: web page origins (`"http://localhost:5173"`) allowed to connect. Any request with an `Origin` header not listed here gets 403, so a web page you happen to open cannot reach the game |
-| `manager` | default `true`: the game shows up in the [manager window](/guide/several-games#the-manager-window) and closes when none attaches within 30 s or it loses it. `false` for headless CI runs without the window: the game stays hidden and never closes by itself |
-| `loopbackOnly` | default `true`: the game stays on the PC, so no Windows Firewall prompt for each new clone, and game servers outside the PC are not queried (they could show up as "LAN worlds" ahead of your test world). In BeDD's server mod it is on by default too and keeps the server on loopback (its IPv4/IPv6 ports, LAN discovery and NetherNet), so no prompt; `state` reports it. Its port is then reachable at `127.0.0.1` only |
-| `mode` | where the world runs: `ClientOnly` (default), `ClientServer` or `Remote` ([world modes](#world-modes)); `launch --world-mode` sets it for one run. `state` and `join` report it |
-| `allowHosts` | host names or addresses `loopbackOnly` still lets the game reach (the server of the Remote world mode). Those hosts are queried, the game's outgoing UDP socket can reach them without a firewall prompt, and datagrams to any other host off the PC are refused (`state` `stats.sendsRefused`). Hosts on the PC need no entry |
-| `mute` | ignored: a BeDD game is always silent (FMOD opens no audio device); `false` only logs a warning |
-| `trace` | log every input that reaches the game to `logs\latest.log`, for bug reports |
-| `timeScale` | default `1`: the game speed (0.05..20) of every world this game hosts, set when it enters one (the `timescale` op changes it later). On a server with BeDD the server's speed leads and the client follows it; on a server without BeDD it does nothing. In BeDD's server mod: applied once the server has started and sent to its players |
+| Key | Default | |
+|---|---|---|
+| `clientWidth`, `clientHeight` | `0` (leave) | window size, for stable click positions |
+| `wsPort` | `0` (free port) | WebSocket port on `127.0.0.1`, see `run\<pid>.json`; fixed only for one game at a time |
+| `wsMaxClients` | `8` | connections at once |
+| `allowOrigins` | `[]` | web origins allowed to connect; other `Origin` headers get 403 |
+| `manager` | `true` | show in the [manager window](/guide/several-games#the-manager-window), close without one for 30 s; `false`: hidden, never self-closes (headless CI) |
+| `loopbackOnly` | `true` | keep every socket on loopback: no firewall prompt, no "LAN worlds" from other hosts. Server mod: same for its IPv4/IPv6 ports, LAN discovery, NetherNet; `state` reports it |
+| `mode` | `ClientOnly` | `ClientOnly`, `ClientServer`, `Remote` ([world modes](/guide/modes)); `state` and `join` report it |
+| `allowHosts` | `[]` | off-PC hosts still reachable (the Remote server); while it names one, datagrams to other off-PC hosts are refused (`state` `stats.sendsRefused`) |
+| `mute` | ignored | always silent; `false` only logs a warning |
+| `trace` | `false` | log every input to `logs\latest.log` |
+| `timeScale` | `1` | game speed 0.05..20 of hosted worlds (`timescale` op changes it). Behind a BeDD server the server leads; without BeDD no effect. Server mod: applied at start, sent to players |
+| `gameHooks` | `true` | bedboo ops `world`, `look`, `input`, `slot`, `action`, `button` |
+| `tap` | `true` | `tap` op ([Tap protocol](/reference/tap)): the player's whole session; disables the blob cache |
+| `tapLoopback` | `true` | with `tap`: also singleplayer and hosted LAN worlds |
+| `tapJournalMiB` | `128` | join journal cap; past it late attaches get `complete:false` |
+| `allowSend` | `true` | `send` op (chat, commands) |
+| `sendAllow` | `[9, 77, 78, 97]` | packet ids `send` may send (text, command_request, command_block_update, book_edit); login, inventory_transaction, player_auth_input, item_stack_request always refused |
+| `allowStack` | `true` | `stack` op (item stack requests) |
+| `ui` | `true` | `ui` op ([UI tree](/reference/ui)) |
+| `uiMaxNodes` | `1000` | default node cap of a `format:"json"` `ui` reply (a request's `maxNodes` replaces it) |
 
 ## Feature keys
 
-These turn the [operation modes](/guide/operation-modes) and their riskier ops on and off. All are **on** by
-default: the WebSocket only listens on `127.0.0.1` and wants the token, which only your user can read from
-`%LOCALAPPDATA%\BeDD\run`. An op whose key is `false` answers `{"ok":false,"code":"disabled","key":"<key>"}`.
+Feature keys `gameHooks`, `tap`, `allowSend`, `allowStack`, `ui`: all on (only your user reads the token). Off: their ops answer `code:"disabled"`;
+e.g. `allowSend=false` forces chat through the chat screen. Risks: [Security](/reference/websocket#security).
 
-| Key | |
-|---|---|
-| `gameHooks` | default `true`: hook the game's own systems for the bedboo ops `world`, `look`, `input` (walk, jump, sneak and sprint whatever the key bindings), `slot`, `action` and `button` (hotbar, drop/inventory/perspective/pause, attack/use/pick held for game ticks or until the targeted block breaks) |
-| `tap` | default `true`: the `tap` op streams the game packets the client receives and sends as binary WebSocket messages ([Tap protocol](/reference/tap)), with a join journal so a reader can attach in the middle of a session. It carries the whole session of the signed-in player. While it is on the client asks servers not to use its blob cache, so every chunk arrives in full |
-| `tapLoopback` | default `true`, used only with `tap`: also tap singleplayer worlds and LAN worlds this game hosts (packets re-serialized; LAN guests' traffic is left out) |
-| `tapJournalMiB` | default `128`: size cap of the tap's join journal; past it a late attach is incomplete (`complete:false`) |
-| `allowSend` | default `true`: the `send` op, with which a script such as bedboo makes the client send chat and commands it serialized |
-| `sendAllow` | packet ids `send` may send, default `[9, 77, 78, 97]` (text, command_request, command_block_update, book_edit: what the player can type or write in the game's own screens); login, inventory_transaction, player_auth_input and item_stack_request are always refused |
-| `allowStack` | default `true`: the `stack` op lets a script make the game send item stack requests (inventory moves, crafting, chest moves) for the signed-in player, as bedboo does |
-| `ui` | default `true`: the `ui` op, the [UI tree](/guide/operation-modes#ui-tree) of the game's screens |
-| `uiMaxNodes` | default `1000`: the most nodes one `ui` reply holds (a request's `maxNodes` can only lower it); `truncated` says when nodes were left out |
+## No firewall prompts
 
-Turn a key off for a run that must not do that, e.g. `allowSend=false` when a test checks that chat goes through
-the chat screen. See [Security](/reference/websocket#security) for what each key lets a WebSocket client do.
-
-## World modes
-
-A BeDD game runs headless in every mode; the mode is about where the world runs ([Where the world runs](/guide/modes)).
-
-| Mode | The world runs | Network |
-|---|---|---|
-| `ClientOnly` (default) | in the client: a local world | loopback only |
-| `ClientServer` | in a dedicated server with BeDD on this PC; its game speed drives the client's | loopback only: join it at `127.0.0.1` |
-| `Remote` | in a server without BeDD, possibly off the PC; the client cannot change its game speed | loopback only, except for `allowHosts` |
-
-The `join` op joins a server in any mode, from the title screen or from inside a world
-([Driving the game](/guide/usage#servers)).
-
-### No firewall prompts
-
-A BeDD game never makes Windows Firewall ask "allow access?": the firewall asks the first time a program (by full exe
-path, so every clone anew) binds a socket explicitly to an address other than loopback. With `loopbackOnly` every
-wildcard bind goes to loopback instead, in all three modes; the WebSocket listens on `127.0.0.1` too. In Remote mode,
-`allowHosts` changes one thing: the client's outgoing UDP socket (a wildcard bind to port 0) is not bound explicitly
-at all but connected towards the allowed server, which binds it implicitly (the firewall does not ask for that);
-listening sockets (LAN hosting, LAN discovery) stay on loopback, and datagrams to other hosts off the PC are refused.
-Do not turn `loopbackOnly` off to reach a remote server: every new clone would prompt again. A dedicated server you
-start yourself is another program: one without BeDD's loopback binding asks once per server folder.
+Windows prompts once per exe path (per clone) on a non-loopback bind. `loopbackOnly` moves wildcard binds to loopback;
+with `allowHosts` the outgoing UDP socket connects to the host instead (no prompt). Never turn `loopbackOnly` off for
+a remote server.
 
 ## Environment variables
 
 | Variable | Read by | |
 |---|---|---|
-| `BEDD_HOME` | `BeDD.exe`, the mod | Be.D.D.'s folder (default `%LOCALAPPDATA%\BeDD`): clones, `run`, `locks`, `servers`, `tools`, `logs` ([Setting up a new PC](/guide/new-pc#folders)) |
-| `BEDD_INSTANCES_DIR` | `BeDD.exe` | where clones go; put it on the base instance's volume so clones are hardlinked, not copied |
-| `BEDD_SERVERS_DIR` | `BeDD.exe` | where the dedicated servers of [client + server runs](/guide/modes) live (default `%LOCALAPPDATA%\BeDD\servers`) |
-| `BEDD_LEVILAUNCHER` | `BeDD.exe` | the `LeviLauncher.exe` whose instances Be.D.D. reads |
-| `BEDD_INSTANCE` | `BeDD.exe` | the base instance, when LeviLauncher has several of 1.26.60 (`--base` on the command line) |
-| `BEDD_LABEL` | the mod | the game's name in the manager window (`launch --label` sets it) |
-| `BEDD_RETURN_FOCUS` | the mod | a window handle that gets the foreground back if the game still activates itself while starting (`launch` sets it to the window that was in front) |
-| `BEDD_DIR` | your harness | where Be.D.D. is unpacked ([Installation](/guide/installation#let-the-harness-fetch-it)) |
+| `BEDD_HOME`, `BEDD_INSTANCES_DIR`, `BEDD_SERVERS_DIR` | `BeDD.exe` (+ mod: `BEDD_HOME`) | [Folders](/guide/new-pc#folders) |
+| `BEDD_LEVILAUNCHER`, `BEDD_INSTANCE` | `BeDD.exe` | [Which instance](/guide/new-pc#which-instance) |
+| `BEDD_LABEL` | `BeDD.exe`, mod | manager window name (`launch --label`) |
+| `BEDD_RETURN_FOCUS` | mod | gets the foreground back if the game takes it at start (set by `launch`) |
+| `BEDD_DIR` | your harness | an unpacked Be.D.D. ([Installation](/guide/installation#let-the-harness-fetch-it)) |

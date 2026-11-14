@@ -1,8 +1,10 @@
-// Semantic UI actions (issue #21): click, setText and scroll on a ref of the connection's last `ui`
-// snapshot, and the `mouse` op aimed at a ref. A ref is resolved against the live tree (read again
-// on the client thread): the control must still be there with the same hash (else stale_ref), be
-// visible and on screen, and its target point must not be covered by an input control painted
-// after it or by a screen above that takes input (else occluded; "force": true skips that check).
+// Semantic UI actions (issue #21): click, setText and scroll on a ref (UiView.cpp), and the `mouse`
+// op aimed at a ref. A ref is resolved against the live tree (read again on the client thread; an
+// Ore UI element against its page, read again): the control must still be there in the same role
+// (JSON UI: with the same name; Ore UI: with the same text, as its path is only a place in the page)
+// or the reply is stale_ref, be visible and on screen, and its target point must not be covered by
+// an input control painted after it or by a screen above that takes input (else occluded;
+// "force": true skips that check).
 // Then the action runs as plain `mouse`, `key` and `text` requests through handleControlLine: the
 // same virtual pointer, GameInput buttons and window messages as a script sending them itself, with
 // the same per-connection ownership of held keys and buttons.
@@ -21,22 +23,14 @@ namespace {
 
 using json = nlohmann::json;
 
-// The live tree of scene `scene` and the screens above it (what can cover it).
-std::shared_ptr<Tree> liveTree(json const& req, uint64_t scene, json& error) {
+int timeoutOf(json const& req) { return std::clamp(req.value("timeoutMs", 3000), 100, 30000); }
+
+// The live tree of scene `scene` and the screens above it (what can cover it); dom: with the page.
+std::shared_ptr<Tree> liveTree(json const& req, uint64_t scene, bool dom, json& error) {
     WalkOptions opt;
     opt.fromScene        = scene;
     opt.includeInvisible = true;
-    auto tree            = std::make_shared<Tree>();
-    auto timeout         = std::chrono::milliseconds(req.value("timeoutMs", 3000));
-    if (!runOnClientThread([tree, opt] { *tree = walk(opt); }, timeout)) {
-        error = fail("not_ready", "the client thread did not read the UI within the timeout (still loading?)");
-        return nullptr;
-    }
-    if (!tree->ok) {
-        error = tree->error == "unsupported" ? fail("unsupported", "the UI of this game version could not be read") : fail("not_ready", tree->error);
-        return nullptr;
-    }
-    return tree;
+    return readTree(opt, timeoutOf(req), dom, error);
 }
 
 int findLive(Tree const& t, StoredNode const& s) {
@@ -48,28 +42,29 @@ int findLive(Tree const& t, StoredNode const& s) {
 }
 
 int screenOf(Tree const& t, int idx) {
+    uint64_t scene = t.nodes[static_cast<size_t>(idx)].sceneId;
     for (size_t s = 0; s < t.screens.size(); ++s)
-        if (t.screens[s].root >= 0 && idx >= t.screens[s].root && idx < t.screens[s].end) return static_cast<int>(s);
+        if (t.screens[s].id == scene) return static_cast<int>(s);
     return -1;
 }
 
-// Nodes of the live tree that look like the one a stale ref named.
+// Controls of the live tree that look like the one a stale ref named, as lines with their refs.
 json candidates(Tree const& t, StoredNode const& s) {
     json c = json::array();
     for (auto const& n : t.nodes) {
         if (c.size() >= 5) break;
-        if (!n.visible || n.role != s.role) continue;
+        if (!n.visible || n.role != s.role || actionsOf(n, t.client).empty()) continue;
         bool same = (!s.name.empty() && n.name == s.name) || (!s.text.empty() && n.text == s.text);
-        if (!same) continue;
-        c.push_back({
-            {"role",    n.role                              },
-            {"name",    n.name                              },
-            {"text",    n.text                              },
-            {"surface", surfaceId(n.sceneId)},
-            {"path",    n.path                              },
-        });
+        if (same) c.push_back(nodeLine(n, t.client, true));
     }
     return c;
+}
+
+// Whether a live node is still the control a ref named.
+bool sameControl(Node const& n, StoredNode const& s) {
+    // A control can read as a group until its kind is known (the first read of a toggle, say).
+    if (n.role != s.role && n.role != "group" && s.role != "group") return false;
+    return n.kind == "dom" ? n.text == s.text : n.name == s.name;
 }
 
 // Where on the control to point: anchor (center, top_left, top, top_right, left, right,
@@ -111,9 +106,11 @@ json occluderOf(Tree const& t, int idx, POINT p) {
         return n.visible && n.interactive && control && n.bounds.w > 0 && n.bounds.h > 0 && n.bounds.w * n.bounds.h < half
             && n.bounds.contains(px, py);
     };
-    // Painted after it (later in pre-order, outside its subtree) in its own screen.
-    for (int j = t.nodes[static_cast<size_t>(idx)].subtreeEnd; j < s.end; ++j)
-        if (takes(t.nodes[static_cast<size_t>(j)])) return describe(t.nodes[static_cast<size_t>(j)]);
+    // Painted after it (later in pre-order, outside its subtree) in its own screen (JSON UI only:
+    // an Ore UI page has no input components to read).
+    if (t.nodes[static_cast<size_t>(idx)].kind == "jsonui")
+        for (int j = t.nodes[static_cast<size_t>(idx)].subtreeEnd; j < s.end; ++j)
+            if (takes(t.nodes[static_cast<size_t>(j)])) return describe(t.nodes[static_cast<size_t>(j)]);
     // A screen above that takes input.
     for (size_t u = static_cast<size_t>(si) + 1; u < t.screens.size(); ++u) {
         Screen const& up = t.screens[u];
@@ -132,35 +129,36 @@ struct Target {
     StoredNode            stored;
 };
 
-// The live node behind req's snapshot + ref, and the point to aim at; or the error reply.
+// The live node behind req's ref, and the point to aim at; or the error reply.
 json resolve(json const& req, bool checkOcclusion, Target& out) {
-    if (!req.contains("snapshot") || !req["snapshot"].is_string() || !req.contains("ref") || !req["ref"].is_string())
-        return fail("bad_request", "a ui action needs \"snapshot\" and \"ref\" (strings) from the last {op:\"ui\"}");
+    if (!req.contains("ref") || !req["ref"].is_string())
+        return fail("bad_request", "a ui action needs \"ref\" (a string from a {\"op\":\"ui\"} reply)");
+    std::string ref = req["ref"].get<std::string>();
+    if (!refEntry(ref, out.stored))
+        return fail("stale_ref", "no ref '" + ref + "' (its screen closed, or no reply named it): read again with {\"op\":\"ui\"}");
     json err;
-    if (!lookupRef(req["snapshot"].get<std::string>(), req["ref"].get<std::string>(), out.stored, err)) return err;
-    out.tree = liveTree(req, out.stored.sceneId, err);
+    out.tree = liveTree(req, out.stored.sceneId, out.stored.kind == "dom", err);
     if (!out.tree) return err;
     Tree const& t = *out.tree;
     out.idx       = findLive(t, out.stored);
-    if (out.idx < 0 || nodeHash(t.nodes[static_cast<size_t>(out.idx)]) != out.stored.hash) {
-        json e = fail(
+    if (out.idx < 0 || !sameControl(t.nodes[static_cast<size_t>(out.idx)], out.stored)) {
+        std::string what = out.stored.text.empty() ? out.stored.name : "\"" + out.stored.text + "\"";
+        json        e    = fail(
             "stale_ref",
-            "'" + out.stored.ref + "' (" + out.stored.role + " '" + (out.stored.text.empty() ? out.stored.name : out.stored.text)
-                + "') " + (out.idx < 0 ? "is gone" : "has changed") + ": take a new snapshot with {op:\"ui\"}"
+            "'" + ref + "' (" + out.stored.role + " " + what + ") " + (out.idx < 0 ? "is gone" : "is another control now")
+                + ": read again with {\"op\":\"ui\"}"
         );
         // Its screen is gone: look for it on the screen now in front.
         std::shared_ptr<Tree> front;
         if (out.idx < 0 && t.nodes.empty()) {
-            WalkOptions opt;
-            front = std::make_shared<Tree>();
-            if (!runOnClientThread([front, opt] { *front = walk(opt); }, std::chrono::milliseconds(req.value("timeoutMs", 3000))))
-                front.reset();
+            json ignored;
+            front = readTree(WalkOptions{}, timeoutOf(req), true, ignored);
         }
-        e["candidates"] = candidates(front && front->ok ? *front : t, out.stored);
+        e["candidates"] = candidates(front ? *front : t, out.stored);
         return e;
     }
     Node const& n = t.nodes[static_cast<size_t>(out.idx)];
-    if (n.kind != "jsonui") return fail("unsupported", "'" + out.stored.ref + "' is an Ore UI page: its controls cannot be targeted yet");
+    if (n.kind == "oreui") return fail("unsupported", "'" + ref + "' is a whole Ore UI page: act on the controls the view lists inside it");
     out.point = pointOf(n, req);
     if (!n.visible || n.bounds.w <= 0 || n.bounds.h <= 0)
         return fail("occluded", "'" + out.stored.ref + "' is not visible");
@@ -209,23 +207,33 @@ void copyTiming(json const& from, json& to) {
         if (from.contains(k)) to[k] = from[k];
 }
 
-// The reply of an action: the target as it is now, and whether the UI changed.
+// The reply of an action: whether the UI changed, the target's line as it is now (null: gone), the
+// screen in front, and when another screen came to the front, its view (as {op:"ui"} gives it).
 json after(json const& req, Target const& tg, json r) {
     // A label shows typed text, and a screen opens or closes, a frame or two after the input.
     std::this_thread::sleep_for(std::chrono::milliseconds(std::clamp(req.value("observeMs", 150), 0, 5000)));
     json err;
-    auto now   = liveTree(req, tg.stored.sceneId, err);
+    auto now   = liveTree(req, tg.stored.sceneId, tg.stored.kind == "dom", err);
     r["ok"]    = true;
     r["ref"]   = tg.stored.ref;
     r["point"] = {{"x", tg.point.x}, {"y", tg.point.y}};
-    if (!now) {
-        r["changed"] = nullptr;
-        return r;
+    Tree const& was = *tg.tree;
+    if (!now || now->nodes.empty()) { // its screen is gone
+        r["changed"] = true;
+        r["target"]  = nullptr;
+    } else {
+        r["changed"] = digest(*now) != digest(was);
+        int i        = findLive(*now, tg.stored);
+        bool same    = i >= 0 && sameControl(now->nodes[static_cast<size_t>(i)], tg.stored);
+        r["target"]  = same ? json(nodeLine(now->nodes[static_cast<size_t>(i)], now->client, true)) : json(nullptr);
     }
-    r["changed"] = digest(*now) != digest(*tg.tree);
-    if (now->active >= 0) r["screen"] = now->screens[static_cast<size_t>(now->active)].name;
-    int i = findLive(*now, tg.stored);
-    r["target"] = i >= 0 ? nodeJson(now->nodes[static_cast<size_t>(i)], now->client) : json(nullptr);
+    // Another screen in front, or the same Ore UI screen on another route.
+    Screen const* was0  = was.active >= 0 ? &was.screens[static_cast<size_t>(was.active)] : nullptr;
+    uint64_t      front = 0;
+    json          view  = screenView({{"timeoutMs", timeoutOf(req)}}, &front);
+    if (!view.value("ok", false)) return r;
+    r["screen"] = view.value("screen", "");
+    if (!was0 || front != was0->id || r["screen"] != screenName(*was0)) r["view"] = view["view"];
     return r;
 }
 
@@ -310,7 +318,7 @@ nlohmann::json uiMouseOp(nlohmann::json const& req) {
     // Pressing on a covered control would press what covers it; moving there is a plain hover.
     if (auto e = ui::resolve(req, action == "click" || action == "down", tg); !e.is_null()) return e;
     nlohmann::json m = req;
-    for (char const* k : {"id", "ref", "snapshot", "anchor", "offsetX", "offsetY", "rx", "ry", "force"}) m.erase(k);
+    for (char const* k : {"id", "ref", "snapshot", "anchor", "offsetX", "offsetY", "rx", "ry", "force", "observeMs"}) m.erase(k);
     m["x"]           = tg.point.x;
     m["y"]           = tg.point.y;
     nlohmann::json r = ui::sub(m);

@@ -362,7 +362,6 @@ void uninstallMoveInputHooks();
 /// Drop the move override now ("release", a control client disconnecting).
 void clearMoveInput();
 /// Drop the move override if client `client` set it (it disconnected).
-void clearMoveInputOf(uint64_t client);
 /// The "input" op: the reply object (ok:false with a code on refusal).
 [[nodiscard]] nlohmann::json moveInputOp(nlohmann::json const& request);
 

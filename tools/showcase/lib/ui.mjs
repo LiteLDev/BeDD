@@ -34,10 +34,10 @@ export function pickRef (nodes, match) {
 }
 
 // { ref, snapshot } of the control, or the fallback point { rx, ry }. Both spread into a `mouse`
-// request: v2's `mouse` takes ref + snapshot (it points at the control's centre) as well as a point.
+// request: v2's `mouse` takes a ref (it points at the control's centre; snapshot is ignored) as well as a point.
 export async function find (g, match, fallback) {
   try {
-    const snap = await g.call('ui', {})
+    const snap = await g.call('ui', { format: 'json' })
     const ref = pickRef(snap.nodes, match)
     if (ref) return { ref, snapshot: snap.snapshot }
   } catch (e) {

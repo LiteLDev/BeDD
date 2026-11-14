@@ -1,76 +1,53 @@
 # Setting up a new PC
 
-Be.D.D. needs one thing prepared: a LeviLauncher instance of Minecraft 1.26.60 with LeviLamina. Everything else it
-does itself, in its own folder.
-
 ## The game
-
-Signing in and installing the game are LeviLauncher's job (a script cannot buy Minecraft for you):
 
 ```powershell
 LeviLauncher.exe account login              # once per PC: a Microsoft account that owns Minecraft
-LeviLauncher.exe install 1.26.60 --loader   # the GDK release, with LeviLamina 26.60.x
+LeviLauncher.exe install 1.26.60 --loader   # the GDK release with LeviLamina 26.60.x
 LeviLauncher.exe instance list              # check: 1.26.60.xx, loader 26.60.x
 ```
 
-You need LeviLauncher **1.1** or newer: older ones have no command line. When `BeDD.exe` finds no LeviLauncher at
-all, it downloads the latest release to `%LOCALAPPDATA%\BeDD\tools` and tells you to run the two steps above with it.
+LeviLauncher 1.1+ is required (first with a CLI). If none is installed, `BeDD.exe` downloads the latest to
+`%LOCALAPPDATA%\BeDD\tools` and asks you to run the steps above with it.
 
 ## Which instance
 
-Be.D.D. asks LeviLauncher for its instances (`LeviLauncher.exe instance list --json`) and uses the one of 1.26.60
-with LeviLamina as the **base**. It only reads it: Be.D.D. never writes into a LeviLauncher instance, and never
-starts one through the launcher.
+`BeDD.exe` takes the 1.26.60 LeviLamina instance from `LeviLauncher.exe instance list --json` as the **base**. It
+never writes into it or starts it.
 
-```powershell
-BeDD.exe instance list --all                # BeDD's clones, and the LeviLauncher instances they come from
-BeDD.exe instance show 1.26.60.05-1         # one of them: folder, base, game and loader version, mod
-```
-
-To point it elsewhere:
-
-| | |
+| Override | |
 |---|---|
-| `BEDD_LEVILAUNCHER` | the `LeviLauncher.exe` to ask (default: the installed one, else the one in `tools`) |
-| `BEDD_INSTANCE` or `--base <name>` | the base instance, by name, when there are several of 1.26.60 |
+| `BEDD_LEVILAUNCHER` | the `LeviLauncher.exe` to ask (default: installed, else the one in `tools`) |
+| `BEDD_INSTANCE` / `--base <name>` | the base, when several are 1.26.60 |
 
 ## Clones
 
-Every game Be.D.D. starts is a **clone** of the base, slot 1 included: `<gameVersion>-<slot>`, e.g. `1.26.60.05-2`.
-A clone has its own `mods\`, logs, worlds and options, and is made in seconds because the game files are
-hardlinked to the base's.
+Every game runs in a clone `<gameVersion>-<slot>` (e.g. `1.26.60.05-2`; slot 1 too) with its own `mods\`, logs,
+worlds and options; game files are hardlinked to the base.
 
 ```powershell
-BeDD.exe instance clone --slot 2            # makes 1.26.60.05-2, or brings it up to date
-BeDD.exe instance refresh 1.26.60.05-2      # re-links it after the base changed (an update, a new mod)
-BeDD.exe instance path 1.26.60.05-2         # its folder, for scripts
-BeDD.exe instance remove 1.26.60.05-2       # deletes it (never the base)
+BeDD.exe instance list --all                # clones and their LeviLauncher bases
+BeDD.exe instance show 1.26.60.05-2         # folder, base, game/loader version, mod, hardlinked or copied
+BeDD.exe instance clone --slot 2            # make or update
+BeDD.exe instance refresh 1.26.60.05-2      # re-link after the base changed
+BeDD.exe instance path 1.26.60.05-2         # its folder
+BeDD.exe instance remove 1.26.60.05-2       # delete (never the base)
 ```
 
-`BeDD.exe launch --slot N` makes the clone when it is missing, and refreshes it when the base has changed since.
-
-::: tip Same volume
-Hardlinks work only within one volume. When the base (under `%LOCALAPPDATA%\LeviLauncher\Instances`) and
-Be.D.D.'s `instances` folder are on different drives, every clone is a full copy (several GB, and minutes instead of
-seconds). Set `BEDD_INSTANCES_DIR` to a folder on the base's volume to avoid that; `instance show` tells
-which.
-:::
+`launch --slot N` clones when missing and refreshes when the base changed. Hardlinks need one volume: if
+`%LOCALAPPDATA%\LeviLauncher\Instances` and `instances` are on different drives, each clone is a full copy (GB,
+minutes); set `BEDD_INSTANCES_DIR` on the base's volume.
 
 ## Folders
 
-Everything Be.D.D. keeps is under `%LOCALAPPDATA%\BeDD`:
+`%LOCALAPPDATA%\BeDD` (`BEDD_HOME` moves it):
 
-| Folder | |
+| | |
 |---|---|
-| `instances` | the clones (`BEDD_INSTANCES_DIR` moves just this one) |
-| `run` | one `<pid>.json` per running game or server: its WebSocket URL and token ([Driving the game](/guide/usage#which-game)) |
-| `locks` | the slot and signaling locks, held by the running games |
-| `servers` | Bedrock Dedicated Servers for [client + server runs](/guide/modes) (`BEDD_SERVERS_DIR`) |
-| `tools` | what Be.D.D. downloaded: LeviLauncher when none was installed, lip for servers |
-| `logs` | the app's own logs (`manager.log`, …) |
-
-`BEDD_HOME` moves the whole tree, e.g. to a fast data drive on a CI machine.
-
-## Next
-
-[Driving the game](/guide/usage).
+| `instances` | clones (`BEDD_INSTANCES_DIR`) |
+| `run` | `<pid>.json` per running game or server: URL and token ([Which game](/guide/usage#which-game)) |
+| `locks` | slot and signaling locks |
+| `servers` | dedicated servers ([client + server](/guide/modes); `BEDD_SERVERS_DIR`) |
+| `tools` | downloaded LeviLauncher, lip |
+| `logs` | the app's logs (`manager.log`, …) |

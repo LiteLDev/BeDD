@@ -264,7 +264,7 @@ const CANCEL = /^cancel$/i
 // start screen. No pixel probing of screenshots.
 async function atTitle (g) {
   try {
-    const snap = await g.ws.call('ui', {})
+    const snap = await g.ws.call('ui', { format: 'json' })
     if (pickRef(snap.nodes, PLAY)) return true
   } catch (e) {
     if (!SOFT.has(e.code)) throw e

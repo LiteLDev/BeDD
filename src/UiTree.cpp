@@ -1,8 +1,7 @@
-// The `ui` op (config "ui"): a snapshot of the game's UI as a tree of nodes with refs (issue #21).
-// The walk itself (UiJson.cpp) runs on the client thread: a ClientInstance::update hook runs the
-// jobs the control-pipe threads queue, which wait for them with a timeout. This file turns the walk
-// into the reply: nodes pruned (compact), capped (maxNodes), numbered e1.. in paint order, hashed;
-// and it keeps the last snapshot of each control-pipe client so actions can name refs of it.
+// The `ui` op (config "ui", issue #21): the walk (UiJson.cpp) runs on the client thread, where a
+// ClientInstance::update hook runs the jobs the connection threads queue (they wait with a
+// timeout). This file holds that job queue and the node fields every reply uses; UiView.cpp builds
+// the replies, UiActions.cpp acts on refs.
 #include "UiTree.h"
 
 #include "BeDD.h"
@@ -40,14 +39,6 @@ std::vector<std::shared_ptr<Job>> gJobs;           // guarded by gJobsMutex
 bool                              gRunning = false; // the frame hook is installed (gJobsMutex)
 std::atomic<bool>                 gHooked{false};
 
-// ---------------------------------------------------------------------------------------------
-// Snapshots: the last one of each control-pipe client.
-// ---------------------------------------------------------------------------------------------
-std::mutex                         gSnapMutex;
-std::map<uint64_t, StoredSnapshot> gSnaps; // guarded by gSnapMutex
-std::atomic<uint64_t>              gNextSnapshot{0};
-std::once_flag                     gGoneOnce;
-
 std::string fnvHex(std::initializer_list<std::string const*> parts) {
     uint64_t h = 0xcbf29ce484222325ull;
     for (auto const* p : parts) {
@@ -70,9 +61,11 @@ json rectJson(Rect const& r) {
 
 double round4(double v) { return std::round(v * 10000.0) / 10000.0; }
 
+} // namespace
+
 json actionsOf(Node const& n, POINT client) {
     json a = json::array();
-    if (!n.visible || n.kind != "jsonui") return a;
+    if (!n.visible || (n.kind != "jsonui" && n.kind != "dom")) return a;
     // A plain panel that takes input is clickable too (a custom control), unless it is one of the
     // window-sized input catchers every screen has.
     bool panel = n.interactive && n.bounds.w * n.bounds.h < 0.5 * client.x * client.y;
@@ -82,9 +75,6 @@ json actionsOf(Node const& n, POINT client) {
     if (n.role == "scroll") a.push_back("scroll");
     return a;
 }
-
-
-} // namespace
 
 json fail(char const* code, std::string const& msg) {
     return {
@@ -120,14 +110,15 @@ json nodeJson(Node const& n, POINT client) {
     json source{
         {"kind", n.kind}
     };
-    if (n.kind == "jsonui") {
+    if (n.kind != "oreui") {
         source["path"] = n.path;
-        source["type"] = n.type;
+        source["type"] = n.type; // dom: the tag
         if (n.collectionIndex >= 0) {
             source["collectionIndex"] = n.collectionIndex;
             source["collectionName"]  = n.collectionName;
         }
-    } else {
+    }
+    if (n.kind != "jsonui") {
         source["url"]   = n.url;
         source["route"] = n.route;
     }
@@ -158,26 +149,6 @@ bool runOnClientThread(std::function<void()> fn, std::chrono::milliseconds timeo
     bool done = gJobsCv.wait_for(lock, timeout, [&] { return job->done; });
     if (!done) job->cancelled = true; // it captured what it writes by value: it may still run, harmlessly
     return done && job->ran;
-}
-
-bool lookupRef(std::string const& snapshot, std::string const& ref, StoredNode& out, json& error) {
-    std::lock_guard lock(gSnapMutex);
-    auto            it = gSnaps.find(currentClient());
-    if (it == gSnaps.end() || it->second.id != snapshot) {
-        std::string last = it == gSnaps.end() ? "none" : it->second.id;
-        error            = fail("stale_snapshot", "snapshot '" + snapshot + "' is not this connection's last ui snapshot (" + last + "): take a new one with {op:\"ui\"}");
-        error["snapshot"] = last == "none" ? json(nullptr) : json(last);
-        return false;
-    }
-    for (auto const& n : it->second.nodes) {
-        if (n.ref == ref) {
-            out = n;
-            return true;
-        }
-    }
-    error = fail("stale_ref", "no ref '" + ref + "' in snapshot " + snapshot + ": take a new one with {op:\"ui\"}");
-    error["candidates"] = json::array();
-    return false;
 }
 
 namespace {
@@ -214,111 +185,6 @@ void drainJobs() {
     gJobsCv.notify_all();
 }
 
-json readOp(json const& req) {
-    WalkOptions opt;
-    opt.scope            = req.value("scope", std::string("active"));
-    opt.includeInvisible = req.value("includeInvisible", false);
-    opt.debug            = req.value("debug", false);
-    int  depth           = req.value("depth", -1);
-    int  maxNodes        = std::max(1, req.value("maxNodes", options().uiMaxNodes));
-    bool compact         = req.value("compact", true);
-    auto timeout         = std::chrono::milliseconds(req.value("timeoutMs", 3000));
-
-    auto tree = std::make_shared<Tree>();
-    if (!runOnClientThread([tree, opt] { *tree = walk(opt); }, timeout))
-        return fail("not_ready", "the client thread did not read the UI within the timeout (still loading?)");
-    if (!tree->ok) {
-        if (tree->error == "unsupported") return fail("unsupported", "the UI of this game version could not be read");
-        return fail("not_ready", tree->error);
-    }
-    Tree& t = *tree;
-
-    // Which nodes to report: within depth; with compact, only what can be seen, read or used, and
-    // the groups that hold several of those (a chain of single-child layout panels collapses into
-    // the nearest reported ancestor). Every reported node keeps its full source path.
-    size_t            n = t.nodes.size();
-    std::vector<char> keep(n, 0);
-    std::vector<int>  through(n, 0); // reported nodes a parent sees through this one
-    for (size_t k = n; k-- > 0;) {
-        Node const& nd = t.nodes[k];
-        if (depth >= 0 && nd.depth > depth) continue;
-        if (!nd.visible && !opt.includeInvisible) continue;
-        int inner = 0;
-        for (int c : nd.children) inner += keep[static_cast<size_t>(c)] ? 1 : through[static_cast<size_t>(c)];
-        // Hidden button states and unused labels are laid out at zero size: nothing to see or click.
-        bool shown = nd.bounds.w > 0 && nd.bounds.h > 0;
-        bool plain = nd.role == "group" || (nd.role == "text" && nd.text.empty());
-        keep[k]    = !compact || nd.parent < 0 || inner >= 2 || (shown && (!plain || nd.interactive));
-        through[k] = inner;
-    }
-    std::vector<std::string> refs(n);
-    size_t                   count     = 0;
-    bool                     truncated = t.truncated;
-    for (size_t k = 0; k < n; ++k) {
-        if (!keep[k]) continue;
-        if (count >= static_cast<size_t>(maxNodes)) {
-            truncated = true;
-            break;
-        }
-        refs[k] = "e" + std::to_string(++count);
-    }
-    // The nearest reported ancestor of each reported node.
-    std::vector<int> up(n, -1);
-    for (size_t k = 0; k < n; ++k) {
-        int p = t.nodes[k].parent;
-        while (p >= 0 && refs[static_cast<size_t>(p)].empty()) p = t.nodes[static_cast<size_t>(p)].parent;
-        up[k] = p;
-    }
-
-    StoredSnapshot snap;
-    snap.id    = "ui-" + std::to_string(++gNextSnapshot);
-    json nodes = json::object();
-    json roots = json::array();
-    for (size_t k = 0; k < n; ++k) {
-        if (refs[k].empty()) continue;
-        Node const& nd = t.nodes[k];
-        json        j  = nodeJson(nd, t.client);
-        j["ref"]       = refs[k];
-        j["children"]  = json::array();
-        j["parent"]    = up[k] >= 0 ? json(refs[static_cast<size_t>(up[k])]) : json(nullptr);
-        if (up[k] >= 0) nodes[refs[static_cast<size_t>(up[k])]]["children"].push_back(refs[k]);
-        else roots.push_back(refs[k]);
-        snap.nodes.push_back({refs[k], nd.role, nd.name, nd.text, nd.path, j["hash"].get<std::string>(), nd.kind, nd.sceneId});
-        nodes[refs[k]] = std::move(j);
-    }
-    json screens = json::array();
-    for (auto const& s : t.screens) {
-        json js{
-            {"id",          surfaceId(s.id)},
-            {"kind",        s.kind       },
-            {"screen",      s.name       },
-            {"interactive", s.absorbsInput},
-            {"modal",       s.modal      },
-        };
-        if (s.rawName != s.name) js["rawScreen"] = s.rawName;
-        if (!s.route.empty()) js["route"] = s.route;
-        if (!s.ready) js["ready"] = false;
-        if (!s.debug.is_null()) js["debug"] = s.debug;
-        screens.push_back(std::move(js));
-    }
-    json r{
-        {"ok",        true                                                                        },
-        {"snapshot",  snap.id                                                                     },
-        {"tick",      worldPose().tick                                                            },
-        {"screens",   std::move(screens)                                                          },
-        {"active",    t.active >= 0 ? json(surfaceId(t.screens[static_cast<size_t>(t.active)].id)) : json(nullptr)},
-        {"roots",     std::move(roots)                                                            },
-        {"nodes",     std::move(nodes)                                                            },
-        {"truncated", truncated                                                                   },
-        {"client",    {{"w", t.client.x}, {"h", t.client.y}}                                      },
-    };
-    {
-        std::lock_guard lock(gSnapMutex);
-        gSnaps[currentClient()] = std::move(snap);
-    }
-    return r;
-}
-
 } // namespace
 
 } // namespace ui
@@ -332,12 +198,6 @@ LL_TYPE_INSTANCE_HOOK(UiFrameHook, ll::memory::HookPriority::Normal, ClientInsta
 
 void startUi() {
     if (!options().ui || ui::gHooked) return;
-    std::call_once(ui::gGoneOnce, [] {
-        onClientGone([](uint64_t client) {
-            std::lock_guard lock(ui::gSnapMutex);
-            ui::gSnaps.erase(client);
-        });
-    });
     {
         HookPause pause;
         ui::gHooked = UiFrameHook::hook(false) == 0;
@@ -374,7 +234,7 @@ nlohmann::json uiOp(nlohmann::json const& req) {
             {"error", "ui is off (config.json \"ui\": true)"}
         };
     if (req.contains("action")) return ui::actionOp(req);
-    return ui::readOp(req);
+    return ui::viewOp(req);
 }
 
 } // namespace bedd

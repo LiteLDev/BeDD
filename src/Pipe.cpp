@@ -1,5 +1,5 @@
 // The control protocol: one JSON request per WebSocket text message, one JSON reply per request,
-// in order on each connection (WsServer.cpp is the transport). See docs/reference/protocol.md.
+// in order on each connection (WsServer.cpp is the transport). See docs/reference/websocket.md and spec/bedd.asyncapi.yaml.
 // handle() dispatches the ops; the rest of this file ties connections to their clients (held keys,
 // the disconnect cleanup) and starts the WebSocket server and its discovery file.
 #include "BeDD.h"
@@ -562,8 +562,7 @@ void clientGone(uint64_t id) {
     std::lock_guard input(gInputMutex);
 #ifndef LL_PLAT_S
     releaseClientInput(id);
-    clearMoveInputOf(id);      // the `input` override, if this client set it (MoveInput.cpp)
-    releaseGameButtonsOf(id);  // `button` holds of this client (GameActions.cpp)
+    releaseGameButtonsOf(id);  // open-ended `button` holds of this client (GameActions.cpp)
 #endif
     std::vector<std::function<void(uint64_t)>> callbacks;
     {

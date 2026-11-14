@@ -3,7 +3,9 @@
 //
 // An override {move x/z, jump, sneak, sprint} lives until its dead-man deadline (ttlMs, default
 // 300 ms): a controller that stops refreshing it (crashed, hung, disconnected) never leaves the
-// player running. "release", ttlMs:0 and a control-client disconnect clear it at once. ttlTicks
+// player running. "release" and ttlMs:0 clear it at once. The client that set it disconnecting does
+// not: the override is bounded anyway (ttlMs at most 60000), and a one-shot caller that sends the op
+// and hangs up expects it to run for the time it asked. ttlTicks
 // instead counts client ticks, so the override covers the same game time at any game speed; it
 // also ends once the client stops ticking for a while (kTtlStale: out of the world, paused).
 //
@@ -336,15 +338,6 @@ void clearMoveInput() {
         std::lock_guard lock(gKeyMutex);
         applyKeysLocked(nullptr);
     }
-}
-
-void clearMoveInputOf(uint64_t client) {
-    {
-        std::lock_guard lock(gMutex);
-        if (!gOverride.active || gOverride.owner != client) return;
-    }
-    if (options().trace) log().info("input: client {} left: its move override is cleared", client);
-    clearMoveInput();
 }
 
 json moveInputOp(json const& j) {
