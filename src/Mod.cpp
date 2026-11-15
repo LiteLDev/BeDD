@@ -76,7 +76,8 @@ void readOptions(std::filesystem::path const& file) {
         gOptions.mode = "ClientOnly";
     }
     // A BeDD game is headless: nobody can hear it on purpose, so it is always silent.
-    if (j.value("mute", true) == false) log().warn("mute: false is ignored: a BeDD game is always silent");
+    if (j.value("mute", true) == false)
+        log().warn("mute: false is ignored: a BeDD game is silent unless its sound is turned on in the manager window");
     gOptions.gameHooks    = j.value("gameHooks", gOptions.gameHooks);
     gOptions.tap          = j.value("tap", gOptions.tap);
     gOptions.tapLoopback  = gOptions.tap && j.value("tapLoopback", gOptions.tapLoopback);

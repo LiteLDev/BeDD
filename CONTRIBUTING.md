@@ -28,14 +28,14 @@ a Bedrock Dedicated Server) and the app `BeDD.exe` (C# in `app/`), which sets up
 | `src/Window.cpp` | window discovery, subclassing, synthetic event dispatch, focus shield, window kept off screen |
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
-| `src/Audio.cpp` | FMOD hooks: always silent (NOSOUND output, master channel group muted) |
+| `src/Audio.cpp` | FMOD hooks: silent (master channel group muted) unless the manager turns the sound on |
 | `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`, `allowHosts`); also in the server target |
 | `src/ServerTimeScale.cpp` | server target only: `server`, `timescale`, `command` ops, config `timeScale`, LevelEvent 3007 to players |
 | `src/Join.cpp` | `join` op (the game's external-server join, client thread; `host: null` leaves the world); where the client plays, for `state` |
 | `src/WsServer.cpp`, `.h` | WebSocket server: Winsock on 127.0.0.1, RFC 6455 handshake and framing, token and `Origin` checks, one thread per connection |
 | `src/Discovery.cpp`, `.h` | writes `%LOCALAPPDATA%\BeDD\run\<pid>.json` (`BEDD_HOME`) while listening, deletes it at exit |
 | `src/Pipe.cpp` | the protocol: `handle()` dispatches every op (one `else if` per op), `concurrentOp()`, per-connection ownership (name is historical) |
-| `src/Manager.cpp` | `manager` and `close` ops; closing a game no manager attaches |
+| `src/Manager.cpp` | `manager` and `close` ops (`audio`; `input` is in `Pipe.cpp`); closing a game no manager attaches |
 | `src/UiJson.cpp` | `ui`: reads the scene stack (JSON UI control trees) on the client thread |
 | `src/UiTree.cpp`, `UiTree.h` | `ui`: client-thread job queue, node fields every reply uses |
 | `src/UiView.cpp` | `ui`: builds the replies (text view or JSON), keeps the refs, maps Ore UI DOM to roles |
@@ -62,7 +62,8 @@ App: `app/BeDD.slnx` = `app/BeDD/BeDD.csproj` (.NET 10, `WinExe`, NativeAOT, Win
 arguments, else runs the command line attached to the parent console. `app/BeDD/Cli/`: `Dispatcher`, `Registry`,
 `Help`, `Ctx` (output), one file per command or small group. `app/BeDD/Core/`: shared by commands and window
 (`Paths`, `Discovery`, `Instances`, the WebSocket client, launching, mod install, servers, `BuildInfo`).
-`app/BeDD/Gui/`: the manager window (`ManagerApp`, DWM thumbnails, attached over each game's WebSocket).
+`app/BeDD/Gui/`: the manager window (`ManagerApp`, DWM thumbnails, attached over each game's WebSocket; `InputForwarder`
+sends the user's input to the game they control).
 
 Other: `spec/bedd.asyncapi.yaml` (protocol), `tests/ws/`, `tests/installer/`, `packaging/wix/` (`Package/` MSI,
 `Bundle/` setup.exe), `tools/showcase/`, `docs/` (site, `docs/zh/` Chinese), `.github/workflows/` (`build.yml`,

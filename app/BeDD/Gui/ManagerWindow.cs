@@ -9,33 +9,56 @@ using Windows.Win32.Foundation;
 using Windows.Win32.Graphics.Dwm;
 using Windows.Win32.Graphics.Gdi;
 using Windows.Win32.System.Memory;
+using Windows.Win32.UI.Input;
+using Windows.Win32.UI.Input.Ime;
+using Windows.Win32.UI.Input.KeyboardAndMouse;
 using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace BeDD.Gui;
 
 // The manager window, plain Win32: a header line, then a tile per game with a caption (dot, title,
-// instance and pid, status) above a live DWM thumbnail of the game window. Double-click a tile to
-// show only that game (again: all), right-click it for its menu. Closing the window closes every
-// game (it asks first, unless the stop event asked).
+// instance and pid, status) above a live DWM thumbnail of the game window. Double-click a tile's
+// caption to show only that game (again: all), right-click it for its menu. Closing the window
+// closes every game (it asks first, unless the stop event asked).
+//
+// Click a game's picture to control it, as in a virtual machine: the window's keyboard and mouse go
+// to that game (InputForwarder) and the pointer stays inside its picture, hidden while the game
+// holds the mouse (in a world, where relative movement turns the camera). The system's own keys
+// (Windows key, Alt+Tab, Alt+Esc, Ctrl+Esc) go to the game too, through a low-level keyboard hook
+// that lives only while a game is controlled and this window is in front. Ctrl+Left Alt (VMware's
+// release keys; Minecraft binds no Ctrl+Alt chord, and AltGr is Ctrl+Right Alt, so typing is safe)
+// releases the keyboard and mouse, as does anything that takes the focus from this window.
 [System.Runtime.Versioning.SupportedOSPlatform("windows10.0.15063")]
 internal sealed unsafe class ManagerWindow
 {
     private const uint WM_DESTROY = 0x0002, WM_SIZE = 0x0005, WM_PAINT = 0x000F, WM_CLOSE = 0x0010,
         WM_QUERYENDSESSION = 0x0011, WM_ERASEBKGND = 0x0014, WM_ENDSESSION = 0x0016, WM_GETMINMAXINFO = 0x0024,
         WM_TIMER = 0x0113, WM_LBUTTONDBLCLK = 0x0203, WM_RBUTTONUP = 0x0205, WM_DPICHANGED = 0x02E0, WM_APP = 0x8000;
+    private const uint WM_MOVE = 0x0003, WM_ACTIVATE = 0x0006, WM_KILLFOCUS = 0x0008, WM_SETCURSOR = 0x0020, WM_INPUT = 0x00FF,
+        WM_KEYDOWN = 0x0100, WM_KEYUP = 0x0101, WM_CHAR = 0x0102, WM_DEADCHAR = 0x0103, WM_SYSKEYDOWN = 0x0104, WM_SYSKEYUP = 0x0105,
+        WM_SYSCHAR = 0x0106, WM_SYSDEADCHAR = 0x0107, WM_MOUSEMOVE = 0x0200, WM_LBUTTONDOWN = 0x0201, WM_LBUTTONUP = 0x0202,
+        WM_RBUTTONDOWN = 0x0204, WM_RBUTTONDBLCLK = 0x0206, WM_MBUTTONDOWN = 0x0207, WM_MBUTTONUP = 0x0208, WM_MBUTTONDBLCLK = 0x0209,
+        WM_MOUSEWHEEL = 0x020A, WM_XBUTTONDOWN = 0x020B, WM_XBUTTONUP = 0x020C, WM_XBUTTONDBLCLK = 0x020D;
+    private const int VK_TAB = 0x09, VK_SHIFT = 0x10, VK_CONTROL = 0x11, VK_MENU = 0x12, VK_ESCAPE = 0x1B, VK_LWIN = 0x5B, VK_RWIN = 0x5C,
+        VK_F4 = 0x73, VK_LSHIFT = 0xA0, VK_LCONTROL = 0xA2, VK_RCONTROL = 0xA3, VK_LMENU = 0xA4, VK_RMENU = 0xA5, VK_PACKET = 0xE7;
+    private const int HTCLIENT = 1, WheelDelta = 120;
+    private const uint IACE_DEFAULT = 0x10;
+    private const uint LLKHF_EXTENDED = 0x01, LLKHF_UP = 0x80;
     private const uint WM_APP_CHANGED = WM_APP + 1, WM_APP_STOP = WM_APP + 2, WM_APP_EXIT = WM_APP + 3;
     private const uint DWM_TNP_RECTDESTINATION = 0x1, DWM_TNP_OPACITY = 0x4, DWM_TNP_VISIBLE = 0x8, DWM_TNP_SOURCECLIENTAREAONLY = 0x10;
     private const int IdcArrow = 32512, AppIconId = 32512, CfUnicodeText = 13;
     private const nint ENDSESSION_CLOSEAPP = 0x1;
-    private const int CmdSolo = 1, CmdLogs = 2, CmdFolder = 3, CmdCopyUrl = 4, CmdClose = 5;
+    private const int CmdSolo = 1, CmdLogs = 2, CmdFolder = 3, CmdCopyUrl = 4, CmdClose = 5, CmdControl = 6, CmdSound = 7;
 
     private static readonly COLORREF Back = Rgb(24, 24, 27), CaptionBack = Rgb(39, 39, 42), BodyBack = Rgb(0, 0, 0);
     private static readonly COLORREF Text1 = Rgb(244, 244, 245), Text2 = Rgb(161, 161, 170);
     private static readonly COLORREF ActiveDot = Rgb(74, 222, 128), IdleDot = Rgb(113, 113, 122), BadDot = Rgb(248, 113, 113);
+    private static readonly COLORREF ControlledCaption = Rgb(30, 64, 175), Accent = Rgb(147, 197, 253);
 
     private static ManagerWindow? s_current;
     // Kept alive for as long as the class is registered.
     private static readonly WNDPROC s_wndProc = WndProc;
+    private static readonly HOOKPROC s_keyboardProc = KeyboardProc;
 
     private readonly GameMonitor _monitor;
     private readonly HashSet<Game> _thumbed = [];
@@ -45,6 +68,14 @@ internal sealed unsafe class ManagerWindow
     private int _focusPid;
     private int _changePosted;
     private bool _closing;
+
+    // The game the user controls, and what goes with it (UI thread only).
+    private Game? _input;
+    private InputForwarder? _forwarder;
+    private UnhookWindowsHookExSafeHandle? _keyboardHook;
+    private int _wheel;
+    private bool _eatLeftUp;
+    private readonly HashSet<int> _hookKeys = [];
 
     public ManagerWindow(GameMonitor monitor)
     {
@@ -183,6 +214,8 @@ internal sealed unsafe class ManagerWindow
     private bool OnMessage(HWND hwnd, uint msg, WPARAM wParam, LPARAM lParam, out LRESULT result)
     {
         result = default;
+        if (_forwarder is not null && OnControlMessage(msg, wParam, lParam, out result))
+            return true;
         switch (msg)
         {
             case WM_ERASEBKGND:
@@ -213,8 +246,15 @@ internal sealed unsafe class ManagerWindow
                 Volatile.Write(ref _changePosted, 0);
                 Relayout();
                 return true;
+            case WM_LBUTTONDOWN:
+                if (GameAt(lParam) is { } picked && picked.Dest.Contains(PointOf(lParam)))
+                    Control(picked, PointOf(lParam));
+                return true;
+            case WM_ACTIVATE:
+            case WM_KILLFOCUS:
+                return false;
             case WM_LBUTTONDBLCLK:
-                if (GameAt(lParam) is { } solo)
+                if (GameAt(lParam) is { } solo && solo.Caption.Contains(PointOf(lParam)))
                 {
                     _focusPid = _focusPid == solo.Pid ? 0 : solo.Pid;
                     Relayout();
@@ -254,6 +294,7 @@ internal sealed unsafe class ManagerWindow
                 }
                 return true;
             case WM_DESTROY:
+                Release("the window closed");
                 PInvoke.KillTimer(hwnd, 1);
                 DropAllThumbs();
                 DeleteFonts();
@@ -280,6 +321,7 @@ internal sealed unsafe class ManagerWindow
     // Hides the window, closes every game on a worker thread, then destroys the window.
     private void BeginShutdown(string why)
     {
+        Release("shutting down");
         _closing = true;
         ManagerLog.Write("shutting down: " + why);
         SavePlacement();
@@ -298,6 +340,261 @@ internal sealed unsafe class ManagerWindow
             }
             PInvoke.PostMessage(hwnd, WM_APP_EXIT, 0, 0);
         });
+    }
+
+    // --- controlling a game ------------------------------------------------------------------------
+
+    // The window's messages while the user controls a game: input goes to the game, not to this
+    // window (so Alt+F4, Alt+Space and F10 do nothing here either). False: handled as usual.
+    private bool OnControlMessage(uint msg, WPARAM wParam, LPARAM lParam, out LRESULT result)
+    {
+        result = default;
+        var fwd = _forwarder!;
+        var g = _input!;
+        switch (msg)
+        {
+            case WM_KEYDOWN:
+            case WM_SYSKEYDOWN:
+            case WM_KEYUP:
+            case WM_SYSKEYUP:
+                OnKey(fwd, msg is WM_KEYDOWN or WM_SYSKEYDOWN, wParam, lParam);
+                return true;
+            case WM_CHAR:
+                int c = (int)(nuint)wParam;
+                if (c is > 0 and <= 0xFFFF)
+                    fwd.Char(c);
+                return true;
+            case WM_SYSCHAR:
+            case WM_DEADCHAR:
+            case WM_SYSDEADCHAR:
+                return true;
+            case WM_MOUSEMOVE:
+                bool grabbed;
+                lock (_monitor.Sync)
+                    grabbed = g.Grabbed;
+                // While the game holds the mouse it turns the camera with relative movement (WM_INPUT).
+                if (!grabbed && g.ToGame(PointOf(lParam)) is { } p)
+                    fwd.Move(p.X, p.Y);
+                return true;
+            case WM_LBUTTONDOWN:
+            case WM_LBUTTONDBLCLK:
+                fwd.Button("left", true);
+                return true;
+            case WM_LBUTTONUP:
+                if (!_eatLeftUp)
+                    fwd.Button("left", false);
+                _eatLeftUp = false;
+                return true;
+            case WM_RBUTTONDOWN:
+            case WM_RBUTTONDBLCLK:
+                fwd.Button("right", true);
+                return true;
+            case WM_RBUTTONUP:
+                fwd.Button("right", false);
+                return true;
+            case WM_MBUTTONDOWN:
+            case WM_MBUTTONDBLCLK:
+                fwd.Button("middle", true);
+                return true;
+            case WM_MBUTTONUP:
+                fwd.Button("middle", false);
+                return true;
+            case WM_XBUTTONDOWN:
+            case WM_XBUTTONDBLCLK:
+            case WM_XBUTTONUP:
+                fwd.Button((((nuint)wParam >> 16) & 0xFFFF) == 1 ? "x1" : "x2", msg != WM_XBUTTONUP);
+                result = (LRESULT)1;
+                return true;
+            case WM_MOUSEWHEEL:
+                _wheel += (short)(((nuint)wParam >> 16) & 0xFFFF);
+                int notches = _wheel / WheelDelta;
+                _wheel -= notches * WheelDelta;
+                fwd.Wheel(notches);
+                return true;
+            case WM_INPUT:
+                OnRawInput(fwd, lParam);
+                return false; // DefWindowProc cleans up
+            case WM_SETCURSOR:
+                bool hide;
+                lock (_monitor.Sync)
+                    hide = g.Grabbed;
+                if (!hide || ((nuint)(nint)lParam & 0xFFFF) != HTCLIENT)
+                    return false;
+                PInvoke.SetCursor(default);
+                result = (LRESULT)1;
+                return true;
+            case WM_ACTIVATE:
+                if (((nuint)wParam & 0xFFFF) == 0) // WA_INACTIVE
+                    Release("another window took the focus");
+                return false;
+            case WM_KILLFOCUS:
+                Release("the window lost the keyboard");
+                return false;
+            case WM_MOVE:
+                Clip();
+                return false;
+        }
+        return false;
+    }
+
+    private void OnKey(InputForwarder fwd, bool down, WPARAM wParam, LPARAM lParam)
+    {
+        int vk = (int)(nuint)wParam;
+        long lp = lParam;
+        // Ctrl + Left Alt: give the keyboard and mouse back (AltGr is Ctrl + Right Alt).
+        if (down && PInvoke.GetKeyState(VK_CONTROL) < 0 && PInvoke.GetKeyState(VK_LMENU) < 0)
+        {
+            Release("Ctrl+Alt");
+            return;
+        }
+        bool extended = ((lp >> 24) & 1) != 0;
+        vk = vk switch
+        {
+            VK_SHIFT => ShiftOf((uint)((lp >> 16) & 0xFF)),
+            VK_CONTROL => extended ? VK_RCONTROL : VK_LCONTROL,
+            VK_MENU => extended ? VK_RMENU : VK_LMENU,
+            _ => vk,
+        };
+        if (vk is <= 0 or >= 0xFF or VK_PACKET)
+            return;
+        // Alt+F4 closes neither this window nor the game (whose window procedure would close it).
+        if (vk == VK_F4 && down && PInvoke.GetKeyState(VK_MENU) < 0)
+            return;
+        fwd.Key(vk, down);
+    }
+
+    private static int ShiftOf(uint scanCode)
+    {
+        int vk = (int)PInvoke.MapVirtualKey(scanCode, MAP_VIRTUAL_KEY_TYPE.MAPVK_VSC_TO_VK_EX);
+        return vk is 0xA0 or 0xA1 ? vk : VK_LSHIFT;
+    }
+
+    private void OnRawInput(InputForwarder fwd, LPARAM lParam)
+    {
+        RAWINPUT raw;
+        uint size = (uint)sizeof(RAWINPUT);
+        uint got = PInvoke.GetRawInputData(new HRAWINPUT((nint)lParam), RAW_INPUT_DATA_COMMAND_FLAGS.RID_INPUT, (void*)&raw, &size,
+            (uint)sizeof(RAWINPUTHEADER));
+        if (got == uint.MaxValue || got < (uint)sizeof(RAWINPUTHEADER) || raw.header.dwType != 0) // RIM_TYPEMOUSE
+            return;
+        if (((uint)raw.data.mouse.usFlags & 0x1) != 0) // MOUSE_MOVE_ABSOLUTE (a remote desktop, a tablet)
+            return;
+        fwd.Raw(raw.data.mouse.lLastX, raw.data.mouse.lLastY);
+    }
+
+    // Gives the window's keyboard and mouse to the game (a click on its picture, or its menu).
+    private void Control(Game g, Point? at)
+    {
+        Release("another game");
+        var fwd = _monitor.Forwarder(g);
+        if (fwd is null)
+            return;
+        lock (_monitor.Sync)
+        {
+            if (g.Dest.IsEmpty)
+                return;
+            g.Controlled = true;
+        }
+        _input = g;
+        _forwarder = fwd;
+        _wheel = 0;
+        _eatLeftUp = at is not null; // the click that took control is not the game's
+        var mouse = new RAWINPUTDEVICE { usUsagePage = 0x01, usUsage = 0x02, dwFlags = 0, hwndTarget = _hwnd };
+        if (!PInvoke.RegisterRawInputDevices(&mouse, 1, (uint)sizeof(RAWINPUTDEVICE)))
+            ManagerLog.Write("RegisterRawInputDevices failed (" + Marshal.GetLastWin32Error() + "): no camera movement");
+        _keyboardHook = PInvoke.SetWindowsHookEx(WINDOWS_HOOK_ID.WH_KEYBOARD_LL, s_keyboardProc, PInvoke.GetModuleHandle((string?)null), 0);
+        if (_keyboardHook.IsInvalid)
+            ManagerLog.Write("SetWindowsHookEx failed (" + Marshal.GetLastWin32Error() + "): the Windows key and Alt+Tab stay the system's");
+        // No IME while the keys are the game's: W, A, S and D must not start a composition.
+        PInvoke.ImmAssociateContextEx(_hwnd, default(HIMC), 0);
+        Clip();
+        if (at is { } p && g.ToGame(p) is { } gp)
+            fwd.Move(gp.X, gp.Y);
+        ManagerLog.Write($"the user controls game {g.Pid}");
+        PInvoke.InvalidateRect(_hwnd, (RECT*)null, false);
+    }
+
+    // Gives the keyboard and mouse back to the window (and lets go of what the game holds).
+    private void Release(string why)
+    {
+        if (_forwarder is not { } fwd || _input is not { } g)
+            return;
+        _forwarder = null;
+        _input = null;
+        lock (_monitor.Sync)
+            g.Controlled = false;
+        fwd.Release();
+        PInvoke.ClipCursor((RECT*)null);
+        var mouse = new RAWINPUTDEVICE { usUsagePage = 0x01, usUsage = 0x02, dwFlags = RAWINPUTDEVICE_FLAGS.RIDEV_REMOVE, hwndTarget = default };
+        PInvoke.RegisterRawInputDevices(&mouse, 1, (uint)sizeof(RAWINPUTDEVICE));
+        _keyboardHook?.Dispose();
+        _keyboardHook = null;
+        _hookKeys.Clear();
+        PInvoke.ImmAssociateContextEx(_hwnd, default(HIMC), IACE_DEFAULT);
+        ManagerLog.Write($"the user released game {g.Pid}: {why}");
+        if (!_hwnd.IsNull)
+            PInvoke.InvalidateRect(_hwnd, (RECT*)null, false);
+    }
+
+    // Keeps the pointer inside the controlled game's picture.
+    private void Clip()
+    {
+        if (_input is not { } g)
+            return;
+        Rectangle dest;
+        lock (_monitor.Sync)
+            dest = g.Dest;
+        if (dest.IsEmpty)
+            return;
+        var tl = new Point(dest.Left, dest.Top);
+        var br = new Point(dest.Right, dest.Bottom);
+        PInvoke.ClientToScreen(_hwnd, &tl);
+        PInvoke.ClientToScreen(_hwnd, &br);
+        var r = new RECT(tl.X, tl.Y, br.X, br.Y);
+        PInvoke.ClipCursor(&r);
+    }
+
+    // The low-level keyboard hook (installed only while a game is controlled): the keys Windows
+    // keeps for itself go to the game while this window is in front.
+    private static LRESULT KeyboardProc(int code, WPARAM wParam, LPARAM lParam)
+    {
+        var self = s_current;
+        if (code >= 0 && self is not null)
+        {
+            try
+            {
+                if (self.OnLowLevelKey((KBDLLHOOKSTRUCT*)(nint)lParam))
+                    return (LRESULT)1;
+            }
+            catch (Exception e)
+            {
+                ManagerLog.Write("keyboard hook: " + e);
+            }
+        }
+        return PInvoke.CallNextHookEx(null, code, wParam, lParam);
+    }
+
+    private bool OnLowLevelKey(KBDLLHOOKSTRUCT* k)
+    {
+        if (_forwarder is not { } fwd || PInvoke.GetForegroundWindow() != _hwnd)
+            return false;
+        int vk = (int)k->vkCode;
+        bool up = ((uint)k->flags & LLKHF_UP) != 0;
+        if (up)
+        {
+            if (!_hookKeys.Remove(vk))
+                return false;
+            fwd.Key(vk, false);
+            return true;
+        }
+        bool alt = (PInvoke.GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+        bool ctrl = (PInvoke.GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+        bool system = vk is VK_LWIN or VK_RWIN || (vk == VK_TAB && alt) || (vk == VK_ESCAPE && (alt || ctrl));
+        if (!system)
+            return false;
+        _hookKeys.Add(vk);
+        fwd.Key(vk, true);
+        return true;
     }
 
     // --- layout and thumbnails ---------------------------------------------------------------------
@@ -347,6 +644,16 @@ internal sealed unsafe class ManagerWindow
             if (_focusPid != 0 && !_monitor.Games.Any(g => g.Pid == _focusPid))
                 _focusPid = 0;
         }
+        if (_input is { } controlled)
+        {
+            bool gone;
+            lock (_monitor.Sync)
+                gone = !_monitor.Games.Contains(controlled) || controlled.Dest.IsEmpty || controlled.Closing || !controlled.Attached;
+            if (gone)
+                Release("the game is no longer shown");
+            else
+                Clip();
+        }
         PInvoke.InvalidateRect(_hwnd, (RECT*)null, false);
     }
 
@@ -373,6 +680,7 @@ internal sealed unsafe class ManagerWindow
         else if (PInvoke.DwmQueryThumbnailSourceSize(g.Thumb, out var size).Succeeded && size.cx > 0 && size.cy > 0)
             g.Source = new Size(size.cx, size.cy);
         var dest = TileLayout.Fit(g.Body, g.Source);
+        g.Dest = visible ? dest : Rectangle.Empty;
         var p = new DWM_THUMBNAIL_PROPERTIES
         {
             dwFlags = DWM_TNP_RECTDESTINATION | DWM_TNP_OPACITY | DWM_TNP_VISIBLE | DWM_TNP_SOURCECLIENTAREAONLY,
@@ -390,6 +698,7 @@ internal sealed unsafe class ManagerWindow
             PInvoke.DwmUnregisterThumbnail(g.Thumb);
         g.Thumb = 0;
         g.ThumbSource = 0;
+        g.Dest = Rectangle.Empty;
         _thumbed.Remove(g);
     }
 
@@ -443,10 +752,20 @@ internal sealed unsafe class ManagerWindow
             var header = new Rectangle(0, 0, client.Width, HeaderHeight);
             string count = n == 0 ? "No headless games" : n == 1 ? "1 headless game" : n.ToString(CultureInfo.InvariantCulture) + " headless games";
             if (_focusPid != 0 && n > 1)
-                count += " (showing one: double-click it to show all)";
-            Text(dc, count, _bold, Text1, new Rectangle(S(12), 0, header.Width / 2 - S(12), header.Height), DRAW_TEXT_FORMAT.DT_LEFT);
-            Text(dc, "Closing this window closes every game in it", _small, Text2,
-                new Rectangle(header.Width / 2, 0, header.Width / 2 - S(12), header.Height), DRAW_TEXT_FORMAT.DT_RIGHT);
+                count += " (showing one: double-click its title to show all)";
+            if (_input is { } controlled)
+            {
+                Text(dc, "Controlling " + controlled.Title, _bold, Text1, new Rectangle(S(12), 0, header.Width / 2 - S(12), header.Height),
+                    DRAW_TEXT_FORMAT.DT_LEFT);
+                Text(dc, "Press Ctrl+Left Alt to release the keyboard and mouse", _small, Accent,
+                    new Rectangle(header.Width / 2, 0, header.Width / 2 - S(12), header.Height), DRAW_TEXT_FORMAT.DT_RIGHT);
+            }
+            else
+            {
+                Text(dc, count, _bold, Text1, new Rectangle(S(12), 0, header.Width / 2 - S(12), header.Height), DRAW_TEXT_FORMAT.DT_LEFT);
+                Text(dc, n == 0 ? "Closing this window closes every game in it" : "Click a game to control it  ·  closing this window closes every game",
+                    _small, Text2, new Rectangle(header.Width / 2, 0, header.Width / 2 - S(12), header.Height), DRAW_TEXT_FORMAT.DT_RIGHT);
+            }
             if (n == 0)
             {
                 var body = Rectangle.FromLTRB(0, header.Bottom, client.Width, client.Height);
@@ -454,7 +773,7 @@ internal sealed unsafe class ManagerWindow
                 int mid = body.Top + body.Height / 2;
                 Text(dc, "Games started with BeDD show up here.", _font, Text2,
                     new Rectangle(0, mid - line, client.Width, line), DRAW_TEXT_FORMAT.DT_CENTER);
-                Text(dc, "Double-click a game to enlarge it, right-click it for more.", _font, Text2,
+                Text(dc, "Click a game to control it (Ctrl+Left Alt releases it), double-click its title to enlarge it, right-click for more.", _font, Text2,
                     new Rectangle(0, mid, client.Width, line), DRAW_TEXT_FORMAT.DT_CENTER);
                 return;
             }
@@ -462,7 +781,7 @@ internal sealed unsafe class ManagerWindow
             {
                 if (g.Tile.IsEmpty)
                     continue;
-                Fill(dc, g.Caption, CaptionBack);
+                Fill(dc, g.Caption, g.Controlled ? ControlledCaption : CaptionBack);
                 Fill(dc, g.Body, BodyBack);
                 var (status, kind) = g.Status(now);
                 int d = S(8);
@@ -551,10 +870,20 @@ internal sealed unsafe class ManagerWindow
         var menu = PInvoke.CreatePopupMenu();
         try
         {
-            bool closing;
+            bool closing, attached, audio, shown;
             string instanceDir = g.Endpoint.InstanceDir;
             lock (_monitor.Sync)
+            {
                 closing = g.Closing;
+                attached = g.Attached && g.Connected;
+                audio = g.Audio;
+                shown = !g.Dest.IsEmpty;
+            }
+            bool controlled = _input == g;
+            Append(menu, CmdControl, controlled ? "Release the keyboard and mouse	Ctrl+Left Alt" : "Control this game	click it",
+                controlled || (attached && shown && !closing));
+            Append(menu, CmdSound, "Play its sound on this PC", attached && !closing, audio);
+            PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, (PCWSTR)null);
             Append(menu, CmdSolo, _focusPid == g.Pid ? "Show all games" : "Show only this game", true);
             PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, (PCWSTR)null);
             Append(menu, CmdLogs, "Open log folder", instanceDir.Length > 0);
@@ -568,6 +897,15 @@ internal sealed unsafe class ManagerWindow
                 pt.X, pt.Y, 0, _hwnd, (RECT*)null);
             switch (cmd)
             {
+                case CmdControl:
+                    if (controlled)
+                        Release("from the menu");
+                    else
+                        Control(g, null);
+                    break;
+                case CmdSound:
+                    _monitor.SetAudio(g, !audio);
+                    break;
                 case CmdSolo:
                     _focusPid = _focusPid == g.Pid ? 0 : g.Pid;
                     Relayout();
@@ -593,10 +931,15 @@ internal sealed unsafe class ManagerWindow
         }
     }
 
-    private static void Append(HMENU menu, int id, string text, bool enabled)
+    private static void Append(HMENU menu, int id, string text, bool enabled, bool check = false)
     {
+        var flags = MENU_ITEM_FLAGS.MF_STRING;
+        if (!enabled)
+            flags |= MENU_ITEM_FLAGS.MF_GRAYED;
+        if (check)
+            flags |= MENU_ITEM_FLAGS.MF_CHECKED;
         fixed (char* p = text)
-            PInvoke.AppendMenu(menu, enabled ? MENU_ITEM_FLAGS.MF_STRING : MENU_ITEM_FLAGS.MF_STRING | MENU_ITEM_FLAGS.MF_GRAYED, (nuint)id, p);
+            PInvoke.AppendMenu(menu, flags, (nuint)id, p);
     }
 
     private static void OpenFolder(string path)

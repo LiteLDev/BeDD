@@ -155,9 +155,9 @@ No config key. Reply after the game thread dispatched the input (`timeoutMs` 500
 
 | op | reply |
 |---|---|
-| `ping` | [example](#choosing-a-mode); `hwnd` 0 before the window, `managed` = manager attached |
+| `ping` | [example](#choosing-a-mode); `hwnd` 0 before the window, `managed` = manager attached, `audio` = sound on, `grabbed` = the game holds the mouse |
 | `state` | window fields, `stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal, sendsRefused}`, `clients`, `held[{vk, client}]`, `hooks{name: installed}`, `mode` ClientOnly\|ClientServer\|Remote, `connection{connection none\|local\|remote, inLevel, host, port}` |
-| `manager` | `action:"attach"`: this connection is the manager; window kept off screen, taskbar, Alt+Tab. Config `manager` (true): game closes if none attaches within 30 s of its window or the attached one drops; `false`: hidden, never self-closes. Label: env `BEDD_LABEL` |
+| `manager` | `action:"attach"`: this connection is the manager; window kept off screen, taskbar, Alt+Tab. Config `manager` (true): game closes if none attaches within 30 s of its window or the attached one drops; `false`: hidden, never self-closes. Label: env `BEDD_LABEL`. Reply has `audio`. Attached manager only: `action:"audio"`, `on` true\|false (the game's sound on this PC; off again when the manager drops); `action:"input"`, `events[]` of `{t:"key", vk, down}`, `{t:"char", c}`, `{t:"move", x, y}`, `{t:"raw", dx, dy}`, `{t:"button", button, down}` (left\|right\|middle\|x1\|x2), `{t:"wheel", notches}`, `{t:"release"}`: the user's input while they control the game in the manager window, nothing waits; replies `{grabbed, audio}` |
 | `close` | `{ok}`, then the game closes |
 
 ## Errors

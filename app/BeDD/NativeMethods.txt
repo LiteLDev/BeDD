@@ -114,3 +114,16 @@ GetWindowText
 GetClipCursor
 GetSystemMetrics
 GetConsoleProcessList
+RegisterRawInputDevices
+GetRawInputData
+RAWINPUT
+SetWindowsHookEx
+UnhookWindowsHookEx
+CallNextHookEx
+KBDLLHOOKSTRUCT
+ClipCursor
+SetCursor
+GetKeyState
+MapVirtualKey
+ImmAssociateContextEx
+GetAsyncKeyState

@@ -137,6 +137,9 @@ void installApiHooks();
 void uninstallApiHooks();
 /// "Name=calls ..." of the hooked user32 functions the game has called (trace / "state" op).
 [[nodiscard]] std::string apiHookStats();
+/// The game holds the mouse (in a world: it confines and re-centres the cursor and turns the camera
+/// with relative movement), as its hooked ClipCursor / SetCursorPos calls tell (`grabbed`).
+[[nodiscard]] bool cursorGrabbed();
 
 // ---------------------------------------------------------------------------------------------
 // Window (Window.cpp)
@@ -206,15 +209,19 @@ struct Stats {
 void installGameInputHooks();
 void uninstallGameInputHooks();
 /// GameInput mouse button bits (GameInputMouseButtons).
-enum : int { kGiLeft = 0x1, kGiRight = 0x2, kGiMiddle = 0x4 };
+enum : int { kGiLeft = 0x1, kGiRight = 0x2, kGiMiddle = 0x4, kGiX1 = 0x8, kGiX2 = 0x10 };
 /// Move / scroll / press the virtual GameInput mouse (what the game reads).
 void gameInputMouse(int64_t dx, int64_t dy, int wheelNotches, int buttonMask, bool buttonDown);
 [[nodiscard]] uint32_t    gameInputButtons();
 [[nodiscard]] std::string gameInputStats();
 
-// Audio.cpp: the game is silent (FMOD).
+// Audio.cpp: the game is silent (FMOD) unless the manager turned its sound on.
 void installAudioHooks();
 void uninstallAudioHooks();
+/// Plays the game's sound on this PC (true) or keeps it silent (false, the default). False when
+/// FMOD is not hooked.
+bool                      setAudible(bool on);
+[[nodiscard]] bool        audible();
 [[nodiscard]] std::string audioStats();
 
 // NetHooks.cpp: loopback-only network (no Windows Firewall prompts).
@@ -287,6 +294,9 @@ void stopManagerLink();
 /// The `manager` op (attach, or the status without an action) and the `close` op: whole replies.
 [[nodiscard]] nlohmann::json managerOp(nlohmann::json const& req);
 [[nodiscard]] nlohmann::json closeOp(nlohmann::json const& req);
+/// The client is the attached manager connection (the only one that may turn the sound on or
+/// forward the user's input: `manager` actions `audio` and `input`).
+[[nodiscard]] bool isManagerClient(uint64_t client);
 
 // ---------------------------------------------------------------------------------------------
 // Tick cadence (TickCadence.cpp): the measured client tick interval, so waits follow the game speed.

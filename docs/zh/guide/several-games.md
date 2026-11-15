@@ -30,8 +30,11 @@ N 号槽位就是克隆 `<gameVersion>-<N>`（[克隆](/zh/guide/new-pc#克隆)�
 
 ![看标题栏：只有终端是激活的](/showcase/desktop-poster.webp)
 
-- 每个游戏：实时画面、`--label`、实例、pid、输入活动。双击：只看它。右键：关闭、打开 `latest.log` 或实例目录、
-  复制 WebSocket URL。
+- 每个游戏：实时画面、`--label`、实例、pid、输入活动。双击标题栏：只看它。右键：控制它、播放它的声音、关闭、
+  打开 `latest.log` 或实例目录、复制 WebSocket URL。
+- 单击游戏画面即可**控制它**，像虚拟机一样：键盘、鼠标、滚轮和视角都交给这个游戏；指针限制在画面内；Windows 键和
+  Alt+Tab 也交给游戏。按 **Ctrl+左 Alt** 释放（AltGr 照常输入），切换到别的窗口也会释放。控制期间 Alt+F4 无效。
+- **在本机播放它的声音**（右键）：这个游戏的声音从扬声器播放，直到取消勾选或关闭窗口。其余时间游戏都是静音的。
 - 关掉它（先确认）或强制结束它会关掉所有游戏。
 - 命令行：`BeDD.exe ps`、`stop <pid>`、`manager status`、`manager stop`（不确认，全部关闭）。
 

@@ -205,7 +205,28 @@ Button buttonOf(json const& j) {
     if (b == "left") return {VK_LBUTTON, kGiLeft};
     if (b == "right") return {VK_RBUTTON, kGiRight};
     if (b == "middle") return {VK_MBUTTON, kGiMiddle};
+    if (b == "x1") return {VK_XBUTTON1, kGiX1};
+    if (b == "x2") return {VK_XBUTTON2, kGiX2};
     throw OpError("unknown button '" + b + "'");
+}
+
+bool isButtonVk(int vk) {
+    return vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON || vk == VK_XBUTTON1 || vk == VK_XBUTTON2;
+}
+
+Button buttonOfVk(int vk) {
+    switch (vk) {
+    case VK_RBUTTON:
+        return {vk, kGiRight};
+    case VK_MBUTTON:
+        return {vk, kGiMiddle};
+    case VK_XBUTTON1:
+        return {vk, kGiX1};
+    case VK_XBUTTON2:
+        return {vk, kGiX2};
+    default:
+        return {VK_LBUTTON, kGiLeft};
+    }
 }
 
 void setButton(Button const& b, bool down) {
@@ -240,11 +261,93 @@ json heldInput() {
     return held;
 }
 
+// Lets go of the keys and mouse buttons the client still holds (and nobody pressed after it).
+// A key-down is in the virtual state only once the game thread dispatched it, so a key it owns is
+// released even when it does not look down yet (a stray key-up is harmless). True when a key-up
+// was posted (flush to wait for it).
+bool releaseHeldBy(uint64_t id, bool gone) {
+    bool posted = false;
+    for (int vk = 1; vk < 256; ++vk) {
+        if (gKeyOwner[static_cast<size_t>(vk)] != id) continue;
+        bool button = isButtonVk(vk);
+        if (button && !vstate::keyDown(vk)) continue;
+        try {
+            if (button) {
+                setButton(buttonOfVk(vk), false);
+            } else {
+                postKey(vk, false);
+                posted = true;
+            }
+            if (gone) log().info("client {} left holding vk {:#x}: released", id, vk);
+        } catch (std::exception const& e) {
+            log().warn("client {}: could not release vk {:#x}: {}", id, vk, e.what());
+        }
+    }
+    return posted;
+}
+
+// `{op:"manager", action:"input", events:[...]}`: the user's keyboard and mouse while they control
+// the game in its tile of the manager window. Only from the attached manager. Unlike key and mouse,
+// nothing here waits (no flush, no hold): the events come as the user makes them.
+//   {t:"key", vk, down}       a key (left/right-specific vks for Shift, Ctrl, Alt)
+//   {t:"char", c}             a character (WM_CHAR, UTF-16 code unit)
+//   {t:"move", x, y}          the pointer, in client pixels
+//   {t:"raw", dx, dy}         relative movement (the camera while the game holds the mouse)
+//   {t:"button", button, down} left, right, middle, x1, x2
+//   {t:"wheel", notches}      positive = away from the user
+//   {t:"release"}             let go of everything this connection holds
+json managerInputOp(json const& j) {
+    if (!isManagerClient(tClient))
+        return {
+            {"ok",    false                                                       },
+            {"code",  "bad_request"                                               },
+            {"error", "input: only the attached manager forwards the user's input"}
+        };
+    if (!gameWindow())
+        return {
+            {"ok",    false               },
+            {"code",  "not_ready"         },
+            {"error", "no game window yet"}
+        };
+    auto const& events = j.contains("events") && j["events"].is_array() ? j["events"] : json::array();
+    for (auto const& e : events) {
+        std::string t = e.value("t", "");
+        if (t == "key") {
+            int vk = e.at("vk").get<int>();
+            if (vk <= 0 || vk >= 256 || isButtonVk(vk)) throw OpError("input: bad vk " + std::to_string(vk));
+            postKey(vk, e.value("down", true));
+        } else if (t == "char") {
+            int c = e.at("c").get<int>();
+            if (c <= 0 || c > 0xFFFF) throw OpError("input: bad char " + std::to_string(c));
+            if (!post(Event{.msg = WM_CHAR, .wp = static_cast<WPARAM>(c), .lp = 1}))
+                throw OpError("no game window yet");
+        } else if (t == "move") {
+            postMove({e.at("x").get<LONG>(), e.at("y").get<LONG>()});
+        } else if (t == "raw") {
+            gameInputMouse(e.value("dx", 0), e.value("dy", 0), 0, 0, false);
+        } else if (t == "button") {
+            setButton(buttonOf(e), e.value("down", true));
+        } else if (t == "wheel") {
+            gameInputMouse(0, 0, e.value("notches", 0), 0, false);
+        } else if (t == "release") {
+            releaseHeldBy(tClient, false);
+        } else {
+            throw OpError("input: unknown event '" + t + "'");
+        }
+    }
+    return {
+        {"ok",      true           },
+        {"grabbed", cursorGrabbed()},
+        {"audio",   audible()      },
+    };
+}
+
 json windowInfo() {
     HWND h = gameWindow();
     json j{
-        {"hwnd",       reinterpret_cast<uintptr_t>(h)},
-        {"managed",    managed()                   },
+        {"hwnd",    reinterpret_cast<uintptr_t>(h)},
+        {"managed", managed()                     },
+        {"audio",   audible()                     },
     };
     if (h) {
         POINT s     = clientSize();
@@ -252,6 +355,7 @@ json windowInfo() {
         POINT c     = vstate::cursor();
         j["cursor"] = {{"x", c.x}, {"y", c.y}};
         j["realForeground"] = real::GetForegroundWindow() == h;
+        j["grabbed"]        = cursorGrabbed();
     }
     return j;
 }
@@ -382,9 +486,8 @@ json handle(json const& j) {
         clearMoveInput();
         for (int vk = 1; vk < 256; ++vk) {
             if (!vstate::keyDown(vk)) continue;
-            if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON) {
-                json b{{"button", vk == VK_LBUTTON ? "left" : vk == VK_RBUTTON ? "right" : "middle"}};
-                setButton(buttonOf(b), false);
+            if (isButtonVk(vk)) {
+                setButton(buttonOfVk(vk), false);
             } else if (vk != VK_SHIFT && vk != VK_CONTROL && vk != VK_MENU) {
                 postKey(vk, false);
             }
@@ -417,6 +520,7 @@ json handle(json const& j) {
     } else if (op == "join") {
         r = joinOp(j);
     } else if (op == "manager") {
+        if (j.value("action", "") == "input") return managerInputOp(j);
         r = managerOp(j);
     } else if (op == "close") {
         r = closeOp(j);
@@ -504,11 +608,10 @@ std::vector<std::function<void(uint64_t)>> gGoneCallbacks; // guarded by gGoneMu
 // Serializes the ops that post input, so two clients cannot interleave a press or a typed text.
 std::mutex gInputMutex;
 
-// Ops that run without gInputMutex: they post no window input. `tap` and `world` only read;
-// `look`, `input`, `send`, `stack`, `timescale`, `join` and a `ui` snapshot (no "action") hand their
-// work to the client thread (and may wait for it, up to their timeoutMs), so serializing them would
-// only stall the other clients. `screenshot` only reads the window, and may wait for the game thread
-// to answer PrintWindow.
+// Ops that run without gInputMutex: they post no window input (`manager` but its `input` action). `tap` and `world`
+// only read; `look`, `input`, `send`, `stack`, `timescale`, `join` and a `ui` snapshot (no "action") hand their work to
+// the client thread (and may wait for it, up to their timeoutMs), so serializing them would only stall the other
+// clients. `screenshot` only reads the window, and may wait for the game thread to answer PrintWindow.
 bool concurrentOp(std::string const& line) {
 #ifdef LL_PLAT_S
     (void)line;
@@ -517,9 +620,10 @@ bool concurrentOp(std::string const& line) {
     json req = json::parse(line, nullptr, false);
     if (!req.is_object()) return true;
     std::string op = req.value("op", "");
-    return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input" || op == "send"
-        || op == "stack" || op == "settings" || op == "timescale" || op == "join" || op == "manager" || op == "close"
-        || op == "screenshot" || op == "oreui" || (op == "ui" && !req.contains("action"));
+    return op == "ping" || op == "state" || op == "tap" || op == "world" || op == "look" || op == "input"
+        || op == "send" || op == "stack" || op == "settings" || op == "timescale" || op == "join" || op == "close"
+        || (op == "manager" && req.value("action", "") != "input") || op == "screenshot" || op == "oreui"
+        || (op == "ui" && !req.contains("action"));
 }
 
 std::string handleClientLine(std::string const& line) {
@@ -530,28 +634,8 @@ std::string handleClientLine(std::string const& line) {
 
 #ifndef LL_PLAT_S // a server holds no input for its clients
 
-// Lets go of the keys and mouse buttons the client still holds (and nobody pressed after it).
-// A key-down is in the virtual state only once the game thread dispatched it, so a key it owns is
-// released even when it does not look down yet (a stray key-up is harmless).
 void releaseClientInput(uint64_t id) {
-    bool posted = false;
-    for (int vk = 1; vk < 256; ++vk) {
-        if (gKeyOwner[static_cast<size_t>(vk)] != id) continue;
-        bool button = vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON;
-        if (button && !vstate::keyDown(vk)) continue;
-        try {
-            if (button) {
-                setButton(Button{vk, vk == VK_LBUTTON ? kGiLeft : vk == VK_RBUTTON ? kGiRight : kGiMiddle}, false);
-            } else {
-                postKey(vk, false);
-                posted = true;
-            }
-            log().info("client {} left holding vk {:#x}: released", id, vk);
-        } catch (std::exception const& e) {
-            log().warn("client {}: could not release vk {:#x}: {}", id, vk, e.what());
-        }
-    }
-    if (posted) flush(1s);
+    if (releaseHeldBy(id, true)) flush(1s);
 }
 
 #endif // LL_PLAT_S

@@ -33,8 +33,13 @@ Double-click `BeDD.exe`, or `launch` opens it; later runs reuse it.
 
 ![Look at the title bars: only the terminal is active](/showcase/desktop-poster.webp)
 
-- Each game: live picture, `--label`, instance, pid, input activity. Double-click: show only it. Right-click: close,
-  open `latest.log` or the instance folder, copy the WebSocket URL.
+- Each game: live picture, `--label`, instance, pid, input activity. Double-click its title: show only it. Right-click:
+  control it, play its sound, close, open `latest.log` or the instance folder, copy the WebSocket URL.
+- Click a game's picture to **control it**, as in a virtual machine: keyboard, mouse, wheel and camera go to that game;
+  the pointer stays in the picture; the Windows key and Alt+Tab go to the game too. **Ctrl+Left Alt** releases them
+  (AltGr still types), and so does switching to another window. Alt+F4 does nothing meanwhile.
+- **Play its sound on this PC** (right-click): that game's sound on the speakers, until unchecked or the window
+  closes. Games are silent otherwise.
 - Closing it (asks first) or killing it closes every game.
 - CLI: `BeDD.exe ps`, `stop <pid>`, `manager status`, `manager stop` (closes all without asking).
 
