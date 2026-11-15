@@ -6,7 +6,7 @@ English | [简体中文](README.zh-CN.md)
 
 [![Release](https://img.shields.io/github/v/release/LiteLDev/BeDD)](https://github.com/LiteLDev/BeDD/releases)
 [![License](https://img.shields.io/github/license/LiteLDev/BeDD)](COPYING.LESSER)
-[![Docs](https://img.shields.io/badge/docs-docs.levimc.org%2FBeDD-blue)](https://docs.levimc.org/BeDD/)
+[![Docs](https://img.shields.io/badge/docs-docs.levimc.org%2FBeDD-blue)](https://levimc.org/BeDD/)
 
 Be.D.D. (Bedrock Deep Dive, after the H.D.D. of Zenless Zone Zero) runs end-to-end tests of
 [LeviLamina](https://github.com/LiteLDev/LeviLamina) client mods **in the background**: your script or agent plays
@@ -14,7 +14,7 @@ Minecraft Bedrock over a local WebSocket while your mouse, keyboard and windows 
 It is a testing toolkit, not a mod for players: `BeDD.exe` (manager window and command line) clones, starts and
 shows the games and puts a client-side LeviLamina module into each one for a run.
 
-**Documentation: <https://docs.levimc.org/BeDD/>**
+**Documentation: <https://levimc.org/BeDD/>**
 
 <p align="center"><img src="docs/public/showcase/desktop.webp" alt="Three headless Minecraft games react to a test script in the manager window" width="100%"></p>
 
@@ -98,7 +98,7 @@ screenshot costs an agent far more tokens and pixel positions break.
    `screenshot`.
 
 Protocol: [`spec/bedd.asyncapi.yaml`](spec/bedd.asyncapi.yaml) (AsyncAPI 3.0) and the
-[WebSocket reference](https://docs.levimc.org/BeDD/reference/websocket).
+[WebSocket reference](https://levimc.org/BeDD/reference/websocket).
 
 ## Commands
 
@@ -111,7 +111,7 @@ non-zero with a hint on failure. `BeDD.exe ps` lists running games (`--json`: wi
   single-player (`BeDD.exe world singleplayer <worldDir>`): games on one PC share an online sign-in, and multiplayer
   worlds opened at once fail with "An error has occurred" (code "Blaze").
 - **Client and server**: `BeDD.exe server init|start|stop s1` runs a Bedrock Dedicated Server with BeDD's server
-  module next to the game, whose speed it leads ([modes](https://docs.levimc.org/BeDD/guide/modes)).
+  module next to the game, whose speed it leads ([modes](https://levimc.org/BeDD/guide/modes)).
 - **Manager window**: `BeDD.exe` without arguments (the first `launch` starts it) is the only place games show up;
   it never takes the focus. Closing it closes every game in it (it asks first); a game it does not attach within
   30 s, or loses, closes itself. `BeDD.exe manager status|stop`.
@@ -130,7 +130,7 @@ non-zero with a hint on failure. `BeDD.exe ps` lists running games (`--json`: wi
   [AlleviatedBackpacks](https://github.com/MiracleForest/AlleviatedBackpacks/tree/main/tools/e2e) have complete
   harnesses.
 
-Settings (`mods\BeDD\config\config.json` of the clone): [Configuration](https://docs.levimc.org/BeDD/guide/configuration).
+Settings (`mods\BeDD\config\config.json` of the clone): [Configuration](https://levimc.org/BeDD/guide/configuration).
 The token is the boundary: whoever has it can do what the signed-in player can; it is written only to
 `%LOCALAPPDATA%\BeDD\run\<pid>.json`, readable by your user alone.
 

@@ -1,6 +1,6 @@
 # WebSocket API
 
-Contract: [bedd.asyncapi.yaml](https://docs.levimc.org/BeDD/bedd.asyncapi.yaml) (`spec/`, AsyncAPI 3.0; [Studio](https://studio.asyncapi.com/?url=https://docs.levimc.org/BeDD/bedd.asyncapi.yaml)).
+Contract: [bedd.asyncapi.yaml](https://levimc.org/BeDD/bedd.asyncapi.yaml) (`spec/`, AsyncAPI 3.0; [Studio](https://studio.asyncapi.com/?url=https://levimc.org/BeDD/bedd.asyncapi.yaml)).
 
 ## Connecting
 

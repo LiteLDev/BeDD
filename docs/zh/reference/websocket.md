@@ -1,6 +1,6 @@
 # WebSocket 接口
 
-契约：[bedd.asyncapi.yaml](https://docs.levimc.org/BeDD/bedd.asyncapi.yaml)（`spec/`，AsyncAPI 3.0；[Studio](https://studio.asyncapi.com/?url=https://docs.levimc.org/BeDD/bedd.asyncapi.yaml)）。
+契约：[bedd.asyncapi.yaml](https://levimc.org/BeDD/bedd.asyncapi.yaml)（`spec/`，AsyncAPI 3.0；[Studio](https://studio.asyncapi.com/?url=https://levimc.org/BeDD/bedd.asyncapi.yaml)）。
 
 ## 连接
 

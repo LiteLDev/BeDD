@@ -27,7 +27,7 @@ Be.D.D. 在后台运行 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 客
 ## 系统要求
 
 - Windows 10 或 11，x64。
-- [LeviLauncher](https://docs.levimc.org/LeviLauncher/) **1.1+**，装有 Minecraft 基岩版 **1.26.60**（GDK 正式版）实例，
+- [LeviLauncher](https://levimc.org/LeviLauncher/) **1.1+**，装有 Minecraft 基岩版 **1.26.60**（GDK 正式版）实例，
   实例里有 LeviLamina **26.60.x**（[在新电脑上准备](/zh/guide/new-pc)）。
 
 不需要 PowerShell、lip 或 .NET 运行时。

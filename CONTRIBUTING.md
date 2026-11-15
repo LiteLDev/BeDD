@@ -1,11 +1,11 @@
 # Contributing to Be.D.D.
 
 Rules for everyone changing this repository, humans and agents. The protocol, the tap and the internals are
-documented once, on the docs site: [WebSocket reference](https://docs.levimc.org/BeDD/reference/websocket)
-(`docs/reference/websocket.md`), [Tap](https://docs.levimc.org/BeDD/reference/tap) (`tap.md`),
-[UI tree](https://docs.levimc.org/BeDD/reference/ui) (`ui.md`),
-[How it works](https://docs.levimc.org/BeDD/reference/how-it-works) (`how-it-works.md`),
-[Building](https://docs.levimc.org/BeDD/reference/building) (`building.md`: full setup with winget, dev-loop flags).
+documented once, on the docs site: [WebSocket reference](https://levimc.org/BeDD/reference/websocket)
+(`docs/reference/websocket.md`), [Tap](https://levimc.org/BeDD/reference/tap) (`tap.md`),
+[UI tree](https://levimc.org/BeDD/reference/ui) (`ui.md`),
+[How it works](https://levimc.org/BeDD/reference/how-it-works) (`how-it-works.md`),
+[Building](https://levimc.org/BeDD/reference/building) (`building.md`: full setup with winget, dev-loop flags).
 
 ## Bug reports and features
 
@@ -153,7 +153,7 @@ Other: `spec/bedd.asyncapi.yaml` (protocol), `tests/ws/`, `tests/installer/`, `p
 
 ### Docs and showcase
 
-- `docs/` is the site <https://docs.levimc.org/BeDD/> (levimc-kit, built by `.github/workflows/docs.yml`).
+- `docs/` is the site <https://levimc.org/BeDD/> (levimc-kit, built by `.github/workflows/docs.yml`).
   `docs/public/showcase/` holds its gallery and the README pictures.
 - Docs are minimal, unambiguous and complete: every sentence carries a fact, each fact lives on one page and others
   link to it.
