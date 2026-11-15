@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-This will be **0.4.0**, a breaking release: Be.D.D. becomes one app, `BeDD.exe`, and the game speaks WebSocket only. The PowerShell client, the named pipes and the setup scripts are gone.
+## [0.4.0] - 2026-11-15
+
+A breaking release: Be.D.D. becomes one app, `BeDD.exe`, and the game speaks WebSocket only. The PowerShell client, the named pipes and the setup scripts are gone.
 
 ### Breaking
 
@@ -192,7 +194,8 @@ The entries below that name PowerShell scripts or pipes describe changes made be
 - `Start-HeadlessGame.ps1` (start an instance without activating it) and `clone-instance.ps1` (cheap clone instances for parallel games).
 - Trace mode: message, API-hook and GameInput statistics, and every input event that reaches the game, marked synthetic or real.
 
-[Unreleased]: https://github.com/LiteLDev/BeDD/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/LiteLDev/BeDD/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/LiteLDev/BeDD/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/LiteLDev/BeDD/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/LiteLDev/BeDD/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/LiteLDev/BeDD/compare/v0.1.3...v0.2.0
