@@ -23,7 +23,7 @@ BeDD.exe mod config 1.26.60.05-2 --set clientWidth=1600 --unset timeScale # --un
 | `loopbackOnly` | `true` | 所有套接字留在回环地址：不弹防火墙提示，没有来自其他主机的"局域网世界"。服务端模组：其 IPv4/IPv6 端口、局域网发现、NetherNet 同样如此；`state` 报告它 |
 | `mode` | `ClientOnly` | `ClientOnly`、`ClientServer`、`Remote`（[世界模式](/zh/guide/modes)）；`state` 和 `join` 报告它 |
 | `allowHosts` | `[]` | 仍可访问的本机以外主机（Remote 服务器）；列了主机时，发往其他本机以外主机的数据报一律拒绝（`state` 的 `stats.sendsRefused`）。`"*"`：`join` 加入时把目标主机加进来，无需重启即可连任意服务器（其他主机照样拒绝） |
-| `mute` | 忽略 | 始终静音；`false` 只记一条警告 |
+| `mute` | 忽略 | 静音，除非在管理窗口里打开它的声音；`false` 只记一条警告 |
 | `trace` | `false` | 把每个输入记进 `logs\latest.log` |
 | `timeScale` | `1` | 本游戏主持的世界的游戏速度 0.05..20（`timescale` 操作可改）。在 BeDD 服务器后面时以服务器为准；没有 BeDD 的服务器上无效。服务端模组：启动时生效，并发给玩家 |
 | `gameHooks` | `true` | bedboo 操作 `world`、`look`、`input`、`slot`、`action`、`button` |

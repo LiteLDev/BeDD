@@ -221,7 +221,7 @@ internal sealed class GameMonitor : IDisposable
 
         while (!_stop.IsCancellationRequested && client.IsOpen)
         {
-            (nint, System.Drawing.Size, bool, long, bool) before = default, after = default;
+            (nint, System.Drawing.Size, bool, long, bool, bool, bool) before = default, after = default;
             try
             {
                 await Task.Delay(1000, _stop.Token).ConfigureAwait(false);
@@ -279,9 +279,9 @@ internal sealed class GameMonitor : IDisposable
         }
     }
 
-    // What the window's layout and thumbnail depend on.
-    private static (nint, System.Drawing.Size, bool, long, bool) Look(Game g) =>
-        (g.Hwnd, g.ClientSize, g.Failures >= 3, g.Synthetic, g.Attached);
+    // What the window's layout, thumbnail and pointer depend on.
+    private static (nint, System.Drawing.Size, bool, long, bool, bool, bool) Look(Game g) =>
+        (g.Hwnd, g.ClientSize, g.Failures >= 3, g.Synthetic, g.Attached, g.Grabbed, g.Audio);
 
     private async Task TryAttach(Game g, GameClient client)
     {
@@ -358,6 +358,60 @@ internal sealed class GameMonitor : IDisposable
             else
                 job.Dispose();
         }
+    }
+
+    // Plays the game's sound on this PC, or silences it again ({op:"manager", action:"audio"}).
+    public void SetAudio(Game g, bool on)
+    {
+        GameClient? client;
+        lock (Sync)
+            client = _games.Contains(g) && g.Attached ? g.Client : null;
+        if (client is null)
+            return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var r = await client.CallAsync(new JsonObject { ["op"] = "manager", ["action"] = "audio", ["on"] = on }, CallTimeout, _stop.Token)
+                    .ConfigureAwait(false);
+                if (!GameClient.IsOk(r))
+                {
+                    ManagerLog.Write($"game {g.Pid}: sound {(on ? "on" : "off")} refused: {GameClient.Error(r)}");
+                    return;
+                }
+                lock (Sync)
+                    g.Apply(r, DateTime.Now);
+                ManagerLog.Write($"game {g.Pid}: sound {(on ? "on" : "off")}");
+                Changed?.Invoke();
+            }
+            catch (Exception e) when (e is GameClientException or OperationCanceledException)
+            {
+                ManagerLog.Write($"game {g.Pid}: sound {(on ? "on" : "off")}: {e.Message}");
+            }
+        });
+    }
+
+    // A forwarder of the user's input to the game, or null while it is not attached.
+    public InputForwarder? Forwarder(Game g)
+    {
+        GameClient? client;
+        lock (Sync)
+            client = _games.Contains(g) && g.Attached && g.Client is { IsOpen: true } c ? c : null;
+        if (client is null)
+            return null;
+        return new InputForwarder(client, reply =>
+        {
+            bool changed;
+            lock (Sync)
+            {
+                bool before = g.Grabbed;
+                if (GameClient.IsOk(reply))
+                    g.Apply(reply, DateTime.Now);
+                changed = before != g.Grabbed;
+            }
+            if (changed)
+                Changed?.Invoke();
+        });
     }
 
     // Asks one game to close ({op:"close"}) and kills it if it is still there after 10 s.

@@ -108,6 +108,40 @@ public class GameTileTests
     }
 
     [Fact]
+    public void SoundAndControlShowInTheStatus()
+    {
+        var g = NewGame();
+        var t0 = new DateTime(2026, 1, 1, 12, 0, 0);
+        g.Started = t0;
+        g.Connected = g.Attached = true;
+        g.Apply(JsonNode.Parse("""{"ok":true,"hwnd":1,"audio":true,"grabbed":true}""")!.AsObject(), t0);
+        Assert.True(g.Audio);
+        Assert.True(g.Grabbed);
+        Assert.Equal("idle 5 s  ·  sound on", g.Status(t0.AddSeconds(5)).Text);
+        g.Controlled = true;
+        Assert.Equal(("controlled  ·  sound on", GameStatusKind.Active), g.Status(t0));
+        g.Apply(JsonNode.Parse("""{"ok":true,"audio":false,"grabbed":false}""")!.AsObject(), t0);
+        Assert.False(g.Audio);
+        Assert.False(g.Grabbed);
+        Assert.Equal("controlled", g.Status(t0).Text);
+    }
+
+    [Fact]
+    public void PicturePointsMapToGamePixels()
+    {
+        var g = NewGame();
+        g.ClientSize = new Size(1280, 720);
+        g.Dest = new Rectangle(100, 50, 640, 360);
+        Assert.Equal(new Point(0, 0), g.ToGame(new Point(100, 50)));
+        Assert.Equal(new Point(640, 360), g.ToGame(new Point(420, 230)));
+        Assert.Equal(new Point(1278, 718), g.ToGame(new Point(739, 409)));
+        Assert.Null(g.ToGame(new Point(99, 60)));
+        Assert.Null(g.ToGame(new Point(740, 60)));
+        g.Dest = Rectangle.Empty;
+        Assert.Null(g.ToGame(new Point(120, 60)));
+    }
+
+    [Fact]
     public void AgoReadsLikeTheOldManager()
     {
         Assert.Equal("5 s", Game.Ago(TimeSpan.FromSeconds(5)));
@@ -180,10 +214,99 @@ public class GameMonitorTests
         }
     }
 
+    [Fact]
+    public async Task TurnsTheSoundOnAndOff()
+    {
+        string run = Path.Combine(Path.GetTempPath(), "bedd-monitor-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(run);
+        bool audio = false;
+        await using var server = new FakeGameServer(req => (string?)req["op"] switch
+        {
+            "manager" when (string?)req["action"] == "audio" => new JsonObject { ["ok"] = true, ["audio"] = audio = (bool)req["on"]! },
+            "manager" => new JsonObject { ["ok"] = true, ["attached"] = true },
+            "ping" or "state" => new JsonObject { ["ok"] = true, ["hwnd"] = 0, ["audio"] = audio },
+            _ => new JsonObject { ["ok"] = false, ["error"] = "unknown op" },
+        });
+        try
+        {
+            using var monitor = new GameMonitor(run, useJobs: false);
+            monitor.Start();
+            var ep = server.Endpoint();
+            await File.WriteAllTextAsync(Path.Combine(run, ep.Pid + ".json"),
+                JsonSerializer.Serialize(ep, DiscoveryJson.Default.GameEndpoint), TestContext.Current.CancellationToken);
+            await Until(() => { lock (monitor.Sync) return monitor.Games.Count == 1 && monitor.Games[0].Attached; }, "the attach");
+            Game g;
+            lock (monitor.Sync)
+                g = monitor.Games[0];
+            Assert.NotNull(monitor.Forwarder(g));
+
+            monitor.SetAudio(g, true);
+            await Until(() => { lock (monitor.Sync) return g.Audio; }, "the sound to go on");
+            monitor.SetAudio(g, false);
+            await Until(() => { lock (monitor.Sync) return !g.Audio; }, "the sound to go off");
+        }
+        finally
+        {
+            Directory.Delete(run, true);
+        }
+    }
+
     private static JsonObject Count(ref int n, JsonObject? reply = null)
     {
         Interlocked.Increment(ref n);
         return reply ?? new JsonObject { ["ok"] = true };
+    }
+}
+
+public class InputForwarderTests
+{
+    [Fact]
+    public async Task EventsGoInOrderAndMovesMergeWhileARequestIsOut()
+    {
+        var batches = new List<JsonArray>();
+        using var first = new ManualResetEventSlim();
+        using var gate = new ManualResetEventSlim();
+        await using var server = new FakeGameServer(req =>
+        {
+            if ((string?)req["op"] != "manager" || (string?)req["action"] != "input")
+                return new JsonObject { ["ok"] = false };
+            lock (batches)
+                batches.Add((JsonArray)req["events"]!.DeepClone());
+            first.Set();
+            gate.Wait(TimeSpan.FromSeconds(10));
+            return new JsonObject { ["ok"] = true, ["grabbed"] = true };
+        });
+        await using var client = await GameClient.ConnectAsync(server.Endpoint(), TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        int replies = 0;
+        var fwd = new InputForwarder(client, r => { if (GameClient.IsOk(r)) Interlocked.Increment(ref replies); });
+
+        fwd.Key(65, true);
+        Assert.True(first.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        // The first request is out: these wait, and the moves fold together.
+        fwd.Move(1, 1);
+        fwd.Move(2, 2);
+        fwd.Raw(1, 1);
+        fwd.Raw(2, 3);
+        fwd.Raw(0, 0);
+        fwd.Wheel(0);
+        fwd.Button("left", true);
+        fwd.Key(65, false);
+        fwd.Release();
+        Assert.Equal(5, fwd.Pending().Length);
+        gate.Set();
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (Volatile.Read(ref replies) < 2 && DateTime.UtcNow < deadline)
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        Assert.Equal(2, replies);
+        lock (batches)
+        {
+            Assert.Equal(2, batches.Count);
+            Assert.Equal("""[{"t":"key","vk":65,"down":true}]""", batches[0].ToJsonString());
+            Assert.Equal(
+                """[{"t":"move","x":2,"y":2},{"t":"raw","dx":3,"dy":4},{"t":"button","button":"left","down":true},{"t":"key","vk":65,"down":false},{"t":"release"}]""",
+                batches[1].ToJsonString());
+        }
     }
 }
 

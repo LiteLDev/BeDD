@@ -54,14 +54,20 @@ HookSlot* slotFor(std::string_view name);
     static HookSlot* slot_ = slotFor(name);                                                                            \
     if (slot_) slot_->calls.fetch_add(1, std::memory_order_relaxed)
 
+// What the game asked for, for cursorGrabbed(): it confines the cursor, and re-centres it every
+// frame, while it holds the mouse.
+std::atomic<bool>    gClipped{false};
+std::atomic<int64_t> gLastRecentre{0}; // GetTickCount64() of the last SetCursorPos
+
 BOOL WINAPI d_ClipCursor(RECT const* r) {
     HI_COUNT("ClipCursor");
-    (void)r;
+    gClipped = r != nullptr;
     return TRUE; // never confine the real cursor
 }
 
 BOOL WINAPI d_SetCursorPos(int x, int y) {
     HI_COUNT("SetCursorPos");
+    gLastRecentre = static_cast<int64_t>(GetTickCount64());
     // The game re-centres the cursor while the mouse is grabbed: move the virtual one only.
     if (HWND h = gameWindow()) {
         POINT p{x, y};
@@ -357,6 +363,8 @@ void uninstallApiHooks() {
         *s.original = nullptr;
     }
 }
+
+bool cursorGrabbed() { return gClipped.load() || static_cast<int64_t>(GetTickCount64()) - gLastRecentre.load() < 500; }
 
 std::string apiHookStats() {
     std::string out;

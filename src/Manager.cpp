@@ -8,6 +8,10 @@
 // again within 3 s (BeDD.exe restarting its connection), the game closes. With
 // manager:false it stays (hidden) whatever happens, e.g. for a harness that drives it directly.
 // `{op:"close"}` closes the game.
+//
+// Only the attached manager may also turn the game's sound on (`action:"audio"`, Audio.cpp: off
+// again when it goes away) and forward the user's keyboard and mouse to it while they control the
+// game in its tile (`action:"input"`, Pipe.cpp).
 #include "BeDD.h"
 #include "Discovery.h"
 
@@ -54,6 +58,7 @@ void onGone(uint64_t client) {
         gAttached = 0;
     }
     setManaged(false);
+    if (audible()) setAudible(false); // the user who turned it on no longer sees the game
     if (options().manager) {
         log().warn("the manager (client {}) went away; the game closes unless it attaches again within 3 s", client);
         std::lock_guard lock(gMutex);
@@ -117,20 +122,50 @@ json managerOp(json const& req) {
         }
         setManaged(true);
         if (before != client) log().info("the manager attached (client {}{})", client, before ? std::format(", replacing client {}", before) : "");
+    } else if (action == "audio") {
+        // The user's choice in the manager window: only the attached manager makes a game audible.
+        if (!isManagerClient(client))
+            return {
+                {"ok",    false                                                       },
+                {"code",  "bad_request"                                               },
+                {"error", "audio: only the attached manager turns the sound on or off"}
+            };
+        if (!req.contains("on") || !req["on"].is_boolean())
+            return {
+                {"ok",    false                              },
+                {"code",  "bad_request"                      },
+                {"error", "audio needs \"on\": true or false"}
+            };
+        if (!setAudible(req["on"].get<bool>()))
+            return {
+                {"ok",    false                                  },
+                {"code",  "not_ready"                            },
+                {"error", "the game's audio (FMOD) is not hooked"}
+            };
     } else if (!action.empty()) {
-        return {{"ok", false}, {"code", "bad_request"}, {"error", "unknown manager action '" + action + "' (attach)"}};
+        return {
+            {"ok",    false                                                           },
+            {"code",  "bad_request"                                                   },
+            {"error", "unknown manager action '" + action + "' (attach, audio, input)"}
+        };
     }
     std::lock_guard lock(gMutex);
     return {
-        {"ok",       true                                   },
-        {"attached", gAttached != 0                         },
-        {"you",      gAttached != 0 && gAttached == client  },
-        {"manager",  options().manager                      },
-        {"pid",      GetCurrentProcessId()                  },
+        {"ok",       true                                     },
+        {"attached", gAttached != 0                           },
+        {"you",      gAttached != 0 && gAttached == client    },
+        {"manager",  options().manager                        },
+        {"audio",    audible()                                },
+        {"pid",      GetCurrentProcessId()                    },
         {"hwnd",     reinterpret_cast<uintptr_t>(gameWindow())},
-        {"instance", instanceName()                         },
-        {"label",    label()                                },
+        {"instance", instanceName()                           },
+        {"label",    label()                                  },
     };
+}
+
+bool isManagerClient(uint64_t client) {
+    std::lock_guard lock(gMutex);
+    return client != 0 && client == gAttached;
 }
 
 json closeOp(json const&) {

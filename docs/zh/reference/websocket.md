@@ -154,9 +154,9 @@ level_event 3007（SimTimeScale，pos 0,0,0，`data` = float 位模式按 int32�
 
 | 操作 | 回复 |
 |---|---|
-| `ping` | [示例](#选择模式)；窗口出现前 `hwnd` 为 0，`managed` = 已有管理器附加 |
+| `ping` | [示例](#选择模式)；窗口出现前 `hwnd` 为 0，`managed` = 已有管理器附加，`audio` = 声音已打开，`grabbed` = 游戏占用了鼠标 |
 | `state` | 窗口字段、`stats{synthetic, swallowedInput, swallowedFocus, passed, realForegroundSeen, api, gameInput, loopbackRebinds, serverQueriesRefused, audio, tapLoopback, send, journal, sendsRefused}`、`clients`、`held[{vk, client}]`、`hooks{name: installed}`、`mode` ClientOnly\|ClientServer\|Remote、`connection{connection none\|local\|remote, inLevel, host, port}` |
-| `manager` | `action:"attach"`：本连接成为管理器；窗口保持在屏幕外，不出现在任务栏和 Alt+Tab。配置 `manager`（true）：窗口出现后 30 s 内无人附加，或已附加的断开，游戏即关闭；`false`：隐藏，从不自行关闭。标签：环境变量 `BEDD_LABEL` |
+| `manager` | `action:"attach"`：本连接成为管理器；窗口保持在屏幕外，不出现在任务栏和 Alt+Tab。配置 `manager`（true）：窗口出现后 30 s 内无人附加，或已附加的断开，游戏即关闭；`false`：隐藏，从不自行关闭。标签：环境变量 `BEDD_LABEL`。回复含 `audio`。仅限已附加的管理器：`action:"audio"`，`on` true\|false（在本机播放游戏声音；管理器断开即关闭）；`action:"input"`，`events[]` 为 `{t:"key", vk, down}`、`{t:"char", c}`、`{t:"move", x, y}`、`{t:"raw", dx, dy}`、`{t:"button", button, down}`（left\|right\|middle\|x1\|x2）、`{t:"wheel", notches}`、`{t:"release"}`：用户在管理窗口中控制游戏时的输入，不等待；回复 `{grabbed, audio}` |
 | `close` | `{ok}`，然后游戏关闭 |
 
 ## 错误

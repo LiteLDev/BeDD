@@ -617,7 +617,7 @@ components:
         - `no_client`: the client instance does not exist yet.
         - `remote`: the world is on a server this game does not host (its speed cannot change from here).
         - `server_led`: that server runs BeDD and leads the game speed: change it there.
-        - `bad_request`: the op cannot act on the request (an unknown `action`, a `ui` action without `ref`, `setText` without `text`, a binary message, `tap subscribe` / `manager attach` off a connection).
+        - `bad_request`: the op cannot act on the request (an unknown `action`, a `ui` action without `ref`, `setText` without `text`, a binary message, `tap subscribe` / `manager attach` off a connection, `manager audio` / `manager input` from a connection that is not the attached manager).
         - `internal`: a `ui` action's input step answered unreadably (a bug: report it).
         - `stale_ref`: no such ref (its screen closed), or its control is gone or is another control now; `candidates` lists look-alike controls with their refs.
         - `occluded`: the control is hidden, outside the window, or covered at the point an action would hit (`occludedBy`).
@@ -684,6 +684,8 @@ components:
         client: { $ref: '#/components/schemas/Size' }
         cursor: { $ref: '#/components/schemas/Point' }
         realForeground: { type: boolean, description: 'The game window really is in the foreground.' }
+        audio: { type: boolean, description: 'The game''s sound plays on this PC (turned on by the manager, `manager` action `audio`).' }
+        grabbed: { type: boolean, description: 'The game holds the mouse (in a world: it confines and re-centres the cursor and turns the camera with relative movement).' }
     Modes:
       type: object
       description: The ops of each mode.
@@ -887,6 +889,13 @@ components:
         Alt+Tab. With config `manager` (default `true`) a game that no manager attaches to within
         30 s of its window existing, or whose attached connection drops, closes itself. With
         `manager:false` the window stays hidden and the game never closes on its own.
+
+        Only the attached manager connection (otherwise `bad_request`):
+        - `audio`: plays the game's sound on this PC (`on: true`) or silences it (`on: false`, the
+          default; also when the manager's connection drops).
+        - `input`: the user's keyboard and mouse while they control the game in the manager window,
+          as `events` in order. Nothing waits (no flush, no hold); keys and buttons stay down until
+          their up event, a `release` event, or the connection dropping. Replies `{ok, grabbed, audio}`.
       tags: [{ $ref: '#/components/tags/system' }]
       payload:
         type: object
@@ -894,10 +903,39 @@ components:
         properties:
           id: { $ref: '#/components/schemas/Id' }
           op: { const: manager }
-          action: { type: string, enum: [attach] }
+          action: { type: string, enum: [attach, audio, input] }
+          on: { type: boolean, description: 'audio: the sound on (true) or off (false).' }
+          events:
+            type: array
+            description: 'input: the events, in order.'
+            items:
+              type: object
+              required: [t]
+              properties:
+                t:
+                  type: string
+                  enum: [key, char, move, raw, button, wheel, release]
+                  description: |
+                    key: `vk` (left/right-specific for Shift, Ctrl, Alt), `down`. char: `c`, a UTF-16
+                    code unit (WM_CHAR). move: `x`, `y` in client pixels. raw: `dx`, `dy` relative
+                    movement. button: `button` left|right|middle|x1|x2, `down`. wheel: `notches`
+                    (positive = away from the user). release: let go of everything this connection holds.
+                vk: { type: integer, minimum: 1, maximum: 254 }
+                down: { type: boolean, default: true }
+                c: { type: integer, minimum: 1, maximum: 65535 }
+                x: { type: integer }
+                y: { type: integer }
+                dx: { type: integer }
+                dy: { type: integer }
+                button: { type: string, enum: [left, right, middle, x1, x2] }
+                notches: { type: integer }
       examples:
         - name: attach
           payload: { id: 1, op: manager, action: attach }
+        - name: audio
+          payload: { id: 2, op: manager, action: audio, on: true }
+        - name: input
+          payload: { id: 3, op: manager, action: input, events: [{ t: move, x: 640, y: 360 }, { t: key, vk: 87, down: true }, { t: raw, dx: 12, dy: -3 }] }
     managerReply:
       name: manager
       title: manager reply
@@ -909,6 +947,8 @@ components:
             properties:
               attached: { type: boolean }
               label: { type: string, description: 'From the env `BEDD_LABEL` of the game.' }
+              audio: { type: boolean, description: 'The game''s sound plays on this PC.' }
+              grabbed: { type: boolean, description: '`input` only: the game holds the mouse.' }
             additionalProperties: true
     closeRequest:
       name: close

@@ -23,7 +23,7 @@ BeDD.exe mod config 1.26.60.05-2 --set clientWidth=1600 --unset timeScale # --un
 | `loopbackOnly` | `true` | keep every socket on loopback: no firewall prompt, no "LAN worlds" from other hosts. Server mod: same for its IPv4/IPv6 ports, LAN discovery, NetherNet; `state` reports it |
 | `mode` | `ClientOnly` | `ClientOnly`, `ClientServer`, `Remote` ([world modes](/guide/modes)); `state` and `join` report it |
 | `allowHosts` | `[]` | off-PC hosts still reachable (the Remote server); while it names one, datagrams to other off-PC hosts are refused (`state` `stats.sendsRefused`). `"*"`: `join` adds its host when it joins, so any server works without a restart (other hosts still refused) |
-| `mute` | ignored | always silent; `false` only logs a warning |
+| `mute` | ignored | silent unless its sound is turned on in the manager window; `false` only logs a warning |
 | `trace` | `false` | log every input to `logs\latest.log` |
 | `timeScale` | `1` | game speed 0.05..20 of hosted worlds (`timescale` op changes it). Behind a BeDD server the server leads; without BeDD no effect. Server mod: applied at start, sent to players |
 | `gameHooks` | `true` | bedboo ops `world`, `look`, `input`, `slot`, `action`, `button` |
