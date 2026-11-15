@@ -308,14 +308,6 @@ HookSlot* slotFor(std::string_view name) {
 
 } // namespace
 
-HookPause::HookPause() {
-    if (!ll::memory::shouldHookSuspendThreads()) return;
-    HANDLE heap   = GetProcessHeap();
-    bool   locked = HeapLock(heap) != FALSE;
-    mPauser.emplace();
-    if (locked) HeapUnlock(heap);
-}
-
 void installApiHooks() {
     if (gInstalled) return;
     gInstalled     = true;

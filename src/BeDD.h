@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -14,7 +15,6 @@
 #include <nlohmann/json_fwd.hpp>
 
 #include "ll/api/io/Logger.h"
-#include "ll/api/thread/GlobalThreadPauser.h"
 
 // BeDD: drive a LeviLamina Minecraft Bedrock client without touching the real
 // mouse, keyboard or foreground window.
@@ -118,17 +118,25 @@ BOOL  SetWindowPos(HWND h, HWND after, int x, int y, int cx, int cy, UINT flags)
 } // namespace real
 
 /// Pauses every other thread while a batch of hooks is (un)installed, as LeviLamina's HookRegistrar
-/// does (one pause per batch; nothing may be logged while it lasts). The process heap stays locked
-/// while the threads stop, so none of them is frozen inside it: the hooking code allocates, and a
-/// thread stopped holding the heap lock hung enable() for good.
+/// does (one pause per batch; nothing may be logged while it lasts), but never while one of them is
+/// inside the process heap (HookPause.cpp): the hooking code allocates, and a thread stopped in the
+/// heap hung enable() for good.
 class HookPause {
 public:
     HookPause();
+    ~HookPause();
+    HookPause(HookPause const&)            = delete;
+    HookPause& operator=(HookPause const&) = delete;
     /// Resume the threads now (before logging what the batch did).
-    void end() { mPauser.reset(); }
+    void end();
 
 private:
-    std::optional<ll::thread::GlobalThreadPauser> mPauser;
+    void resume();
+
+    std::unique_lock<std::recursive_mutex> mLock;
+    std::vector<HANDLE>                    mThreads;
+    int                                    mRetries = 0;
+    bool                                   mUnsafe  = false;
 };
 
 /// Already in load(): the game creates and shows its window before enable(), and that window must

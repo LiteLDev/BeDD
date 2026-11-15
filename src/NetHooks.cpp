@@ -429,16 +429,6 @@ void resolveAllowHosts() {
 
 } // namespace
 
-#ifdef LL_PLAT_S // the client build has it in ApiHooks.cpp (keep the two the same)
-HookPause::HookPause() {
-    if (!ll::memory::shouldHookSuspendThreads()) return;
-    HANDLE heap   = GetProcessHeap();
-    bool   locked = HeapLock(heap) != FALSE;
-    mPauser.emplace();
-    if (locked) HeapUnlock(heap);
-}
-#endif
-
 void installNetHooks() {
     resolveAllowHosts();
     size_t const count = gReachOff ? gHooks.size() : gHooks.size() - kSendHooks;
