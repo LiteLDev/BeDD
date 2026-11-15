@@ -20,7 +20,7 @@
 
     <Icon Id="BeDD.ico" SourceFile="$(IconFile)" />
     <Property Id="ARPPRODUCTICON" Value="BeDD.ico" />
-    <Property Id="ARPURLINFOABOUT" Value="https://docs.levimc.org/BeDD/" />
+    <Property Id="ARPURLINFOABOUT" Value="https://levimc.org/BeDD/" />
     <Property Id="ARPHELPLINK" Value="https://github.com/LiteLDev/BeDD/issues" />
     <Property Id="ARPNOMODIFY" Value="1" />
 

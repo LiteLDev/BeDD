@@ -1,4 +1,4 @@
-// Be.D.D. documentation — levimc-kit site config, served at https://docs.levimc.org/BeDD/.
+// Be.D.D. documentation — levimc-kit site config, served at https://levimc.org/BeDD/.
 // English at the root, Simplified Chinese in zh/, Traditional Chinese converted from it.
 import { defineDocsConfig, type NavEntry } from './kit/docs/node/config.ts';
 
@@ -132,8 +132,8 @@ export default defineDocsConfig({
   contentDir: '.',
   repo,
   editLink: `${repo}/edit/main/docs/:path`,
-  hostname: 'https://docs.levimc.org',
-  sitemap: { hostname: 'https://docs.levimc.org' },
+  hostname: 'https://levimc.org',
+  sitemap: { hostname: 'https://levimc.org' },
   i18n: {
     mode: 'folder',
     defaultLocale: 'root',

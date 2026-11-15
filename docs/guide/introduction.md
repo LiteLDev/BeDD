@@ -29,7 +29,7 @@ handled.
 ## Requirements
 
 - Windows 10 or 11, x64.
-- [LeviLauncher](https://docs.levimc.org/LeviLauncher/) **1.1+** with a Minecraft Bedrock **1.26.60** (GDK, release)
+- [LeviLauncher](https://levimc.org/LeviLauncher/) **1.1+** with a Minecraft Bedrock **1.26.60** (GDK, release)
   instance that has LeviLamina **26.60.x** ([Setting up a new PC](/guide/new-pc)).
 
 No PowerShell, lip or .NET runtime needed.

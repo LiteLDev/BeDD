@@ -47,7 +47,7 @@ info:
     url: https://www.gnu.org/licenses/lgpl-3.0.html
   externalDocs:
     description: WebSocket API reference
-    url: https://docs.levimc.org/BeDD/reference/websocket
+    url: https://levimc.org/BeDD/reference/websocket
   tags:
     - name: bedboo
       description: Semantic game ops (the default mode).
@@ -1530,7 +1530,7 @@ components:
         type: string
         format: binary
       externalDocs:
-        url: https://docs.levimc.org/BeDD/reference/tap
+        url: https://levimc.org/BeDD/reference/tap
 
     # ---- ui ----------------------------------------------------------------------------------
     uiRequest:

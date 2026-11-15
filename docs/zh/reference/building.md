@@ -18,7 +18,7 @@ Windows x64，另需（`winget install -e --id <id>`；LLVM、Build Tools 需要
 | 服务端模组 | `git checkout -- xmake-requires.lock`<br>`xmake f -P . -y -m release -p windows --target_type=server`<br>`xmake -P . -y`<br>`git checkout -- xmake-requires.lock` | `bin\BeDD-server\` → 服务器 `mods\BeDD-server\`（配置 `mods\BeDD-server\config\config.json`；[操作](/zh/reference/websocket#服务端目标)） |
 | 应用 | `$env:PATH = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer;$env:PATH"`（AOT 需要 vswhere）<br>`dotnet publish app/BeDD/BeDD.csproj -c Release -o bin\app`<br>`dotnet test app/BeDD.slnx`（无需 vswhere） | `bin\app\BeDD.exe` |
 | 安装程序 | `dotnet build packaging/wix/Bundle/BeDD.Bundle.wixproj -c Release -p:Platform=x64` | `packaging\wix\Package\bin\x64\Release\bedd.msi`、`packaging\wix\Bundle\bin\x64\Release\bedd-setup.exe` |
-| 文档 | `cd docs; npm ci; npm run build` | <https://docs.levimc.org/BeDD/>（CI：`docs.yml`） |
+| 文档 | `cd docs; npm ci; npm run build` | <https://levimc.org/BeDD/>（CI：`docs.yml`） |
 
 - `-P .`：否则 xmake 可能构建上级检出（在 worktree 中时）。
 - 版本取自 `git describe`：需要提交和标签（浅克隆时 `git fetch --tags`）。
