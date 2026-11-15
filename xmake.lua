@@ -52,7 +52,7 @@ target(is_config("target_type", "server") and "BeDD-server" or "BeDD")
     if is_config("target_type", "server") then
         -- No game window, input, audio, tap or manager on a server: the WebSocket server, the loopback-only
         -- network (no firewall prompts) and the server units only.
-        add_files("src/Mod.cpp", "src/Pipe.cpp", "src/WsServer.cpp", "src/Discovery.cpp", "src/MemoryOperators.cpp", "src/NetHooks.cpp", "src/ServerTimeScale.cpp")
+        add_files("src/Mod.cpp", "src/Pipe.cpp", "src/WsServer.cpp", "src/Discovery.cpp", "src/MemoryOperators.cpp", "src/NetHooks.cpp", "src/HookPause.cpp", "src/ServerTimeScale.cpp")
     else
         add_files("src/**.cpp")
         remove_files("src/ServerTimeScale.cpp")
