@@ -1,5 +1,5 @@
 // Be.D.D. documentation — levimc-kit site config, served at https://levimc.org/BeDD/.
-// English at the root, Simplified Chinese in zh/, Traditional Chinese converted from it.
+// English at the root, Simplified Chinese at zh-Hans/ (sources in zh/), Traditional at zh-Hant/ converted from it.
 import { defineDocsConfig, type NavEntry } from './kit/docs/node/config.ts';
 
 const repo = 'https://github.com/LiteLDev/BeDD';
@@ -10,12 +10,9 @@ interface Labels {
   gallery: string;
   showcase: string;
   help: string;
-  start: string;
-  introduction: string;
-  installation: string;
-  newPc: string;
   scripts: string;
   usage: string;
+  installs: string;
   severalGames: string;
   operationModes: string;
   modes: string;
@@ -26,7 +23,6 @@ interface Labels {
   ui: string;
   tap: string;
   howItWorks: string;
-  building: string;
 }
 
 const LABELS: Record<string, Labels> = {
@@ -36,12 +32,9 @@ const LABELS: Record<string, Labels> = {
     gallery: 'Gallery',
     showcase: 'Showcase',
     help: 'Help',
-    start: 'Getting started',
-    introduction: 'Introduction',
-    installation: 'Installation',
-    newPc: 'Setting up a new PC',
     scripts: 'Writing tests',
     usage: 'Driving the game',
+    installs: 'Installs and clones',
     severalGames: 'Several games at once',
     operationModes: 'Operation modes',
     modes: 'Where the world runs',
@@ -52,7 +45,6 @@ const LABELS: Record<string, Labels> = {
     ui: 'UI tree',
     tap: 'Tap protocol',
     howItWorks: 'How it works',
-    building: 'Building and contributing',
   },
   zh: {
     guide: '指南',
@@ -60,12 +52,9 @@ const LABELS: Record<string, Labels> = {
     gallery: '展示',
     showcase: '作品展示',
     help: '帮助',
-    start: '入门',
-    introduction: '简介',
-    installation: '安装',
-    newPc: '在新电脑上准备',
     scripts: '编写测试',
     usage: '驱动游戏',
+    installs: '安装与克隆',
     severalGames: '多开',
     operationModes: '操作模式',
     modes: '世界在哪里运行',
@@ -76,25 +65,16 @@ const LABELS: Record<string, Labels> = {
     ui: 'UI 控件树',
     tap: 'Tap 协议',
     howItWorks: '工作原理',
-    building: '构建与贡献',
   },
 };
 
 // The LeviMC navigation model (kit/README.md "Navigation model"): every top-level entry is a section, i.e. a header
-// tab and the sidebar tree of its pages; the brand links the home page. `p` is the locale's URL prefix ('/' or '/zh/');
+// tab and the sidebar tree of its pages; the brand links the home page. `p` is the locale's URL prefix ('/' or '/zh-Hans/');
 // zh-Hant is converted from zh by the kit.
 const nav = (p: string, t: Labels): NavEntry[] => [
   {
     text: t.guide,
     items: [
-      {
-        text: t.start,
-        items: [
-          { text: t.introduction, link: `${p}guide/introduction` },
-          { text: t.installation, link: `${p}guide/installation` },
-          { text: t.newPc, link: `${p}guide/new-pc` },
-        ],
-      },
       {
         text: t.scripts,
         items: [
@@ -104,6 +84,7 @@ const nav = (p: string, t: Labels): NavEntry[] => [
           { text: t.modes, link: `${p}guide/modes` },
           { text: t.integrating, link: `${p}guide/integrating` },
           { text: t.configuration, link: `${p}guide/configuration` },
+          { text: t.installs, link: `${p}guide/installs` },
         ],
       },
       { text: t.showcase, items: [{ text: t.gallery, link: `${p}gallery` }] },
@@ -117,10 +98,29 @@ const nav = (p: string, t: Labels): NavEntry[] => [
       { text: t.ui, link: `${p}reference/ui` },
       { text: t.tap, link: `${p}reference/tap` },
       { text: t.howItWorks, link: `${p}reference/how-it-works` },
-      { text: t.building, link: `${p}reference/building` },
     ],
   },
 ];
+
+// Pages that left the site (kit README "Site config API", `redirects`): every URL they had, in every locale and under
+// the former zh/ prefix, answers with a redirect. Setting up and the first run are the levimc.org tutorial; the
+// introduction is the home page; building and contributing is CONTRIBUTING.md in the repository.
+const TUTORIAL = 'https://levimc.org/tutorials/automate/bedd/';
+const TUTORIAL_HANS = 'https://levimc.org/tutorials/zh-Hans/automate/bedd/';
+const TUTORIAL_HANT = 'https://levimc.org/tutorials/zh-Hant/automate/bedd/';
+const CONTRIBUTING = `${repo}/blob/main/CONTRIBUTING.md`;
+const redirects: Record<string, string> = {};
+for (const [prefix, tutorial, home] of [
+  ['', TUTORIAL, ''],
+  ['zh-Hans/', TUTORIAL_HANS, 'zh-Hans/'],
+  ['zh/', TUTORIAL_HANS, 'zh-Hans/'],
+  ['zh-Hant/', TUTORIAL_HANT, 'zh-Hant/'],
+] as const) {
+  redirects[`${prefix}guide/installation`] = tutorial;
+  redirects[`${prefix}guide/new-pc`] = tutorial;
+  redirects[`${prefix}guide/introduction`] = home;
+  redirects[`${prefix}reference/building`] = CONTRIBUTING;
+}
 
 export default defineDocsConfig({
   base: '/BeDD/',
@@ -139,7 +139,7 @@ export default defineDocsConfig({
     defaultLocale: 'root',
     locales: [
       { code: 'root', label: 'English', lang: 'en', prefix: '' },
-      { code: 'zh', label: '简体中文', lang: 'zh-CN', prefix: 'zh/' },
+      { code: 'zh', label: '简体中文', lang: 'zh-Hans', prefix: 'zh-Hans/', folder: 'zh', formerPrefixes: ['zh/'] },
       { code: 'zh-Hant', label: '繁體中文', lang: 'zh-Hant', prefix: 'zh-Hant/', convertFrom: 'zh' },
     ],
   },
@@ -150,7 +150,8 @@ export default defineDocsConfig({
   outline: [2, 3],
   exclude: ['scripts/**', 'README.md'],
   sidebar: 'tabs',
-  nav: { root: nav('/', LABELS.root!), zh: nav('/zh/', LABELS.zh!) },
+  redirects,
+  nav: { root: nav('/', LABELS.root!), zh: nav('/zh-Hans/', LABELS.zh!) },
   // the resources slot: Download (the latest release), then the repository's GitHub icon (`repo`)
   header: { links: [{ kind: 'download', link: `${repo}/releases/latest` }] },
 });

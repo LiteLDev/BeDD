@@ -2,6 +2,8 @@
 
 Each game serves a WebSocket on `127.0.0.1`: one JSON request per message, one reply once the game has handled it.
 Drive it with bedboo first, then `ui`, then simulated input ([why](/guide/operation-modes#which-one-to-use)).
+Not installed yet: the tutorial [Drive the game client with Be.D.D.](https://levimc.org/tutorials/automate/bedd/)
+sets up a PC and runs a first script.
 
 ## Starting a game
 
@@ -10,7 +12,7 @@ BeDD.exe launch --slot 1 --json
 # {"pid":12345,"instance":"1.26.60.05-1","instanceDir":"…","url":"ws://127.0.0.1:53021/v1","token":"9f3c…","label":"…"}
 ```
 
-`launch` clones, installs or updates the mod ([which build](/guide/installation#upgrading)), starts the game in the
+`launch` clones, installs or updates the mod ([which build](/guide/installs#upgrading)), starts the game in the
 background, opens the [manager window](/guide/several-games#the-manager-window), waits for the WebSocket, prints and
 exits; the game keeps running. A running instance: exit 5.
 

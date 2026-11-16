@@ -116,7 +116,7 @@ function findBeDD () {
   const hit = candidates.find(f => existsSync(f))
   if (hit) return hit
   if (dry) return 'BeDD.exe'
-  throw new Error('BeDD.exe not found: publish the app (see docs/reference/building.md), pass --bedd or set BEDD_EXE')
+  throw new Error('BeDD.exe not found: publish the app (see CONTRIBUTING.md), pass --bedd or set BEDD_EXE')
 }
 const BeDD = findBeDD()
 

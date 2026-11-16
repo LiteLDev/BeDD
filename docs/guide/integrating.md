@@ -18,7 +18,7 @@ const bot = bedboo.createBot({ transport: 'bedd', bedd: { url: game.url, token: 
   `hint:` (`{"error":{code,message,hint}}`).
 - Exit codes: `0` ok, `1` failure, `2` usage, `4` not found, `5` conflict (e.g. slot in use), `10` declined.
 - One slot per parallel run; nothing to clean up.
-- Your own BeDD build: `mod install <instance> --from <dir>` ([pin](/guide/installation#upgrading)).
+- Your own BeDD build: `mod install <instance> --from <dir>` ([pin](/guide/installs#upgrading)).
 - `BeDD.exe dev`: common mod-development steps (`--help`).
 
 PowerShell: `[System.Net.WebSockets.ClientWebSocket]`, one UTF-8 text message per op, read until `EndOfMessage`.
@@ -44,7 +44,7 @@ The module, shim and named pipe are gone; ops are unchanged. Clones moved from L
 | `Set-WorldSinglePlayer` | `BeDD.exe world singleplayer <worldDir>` |
 | `Start-BeDDGame.ps1`, `Start-Game`; `Stop-Game` | `BeDD.exe launch [--slot N] [--label …] --json`; `stop <pid>` |
 | `$script:ExclusiveSignaling = $true` | `launch --exclusive-signaling` |
-| `clone-instance.ps1`, `New-BeDDClone`, `Initialize-BeDD.ps1`, `Initialize-BeDDInstance` | `BeDD.exe instance clone --slot N` ([new PC](/guide/new-pc)) |
+| `clone-instance.ps1`, `New-BeDDClone`, `Initialize-BeDD.ps1`, `Initialize-BeDDInstance` | `BeDD.exe instance clone --slot N` ([clones](/guide/installs#clones)) |
 | `Get-BeDDInstance`, `Initialize-BeDDServer`, `Get-BeDDServer` | `BeDD.exe instance show`, `server init`, `server list` |
 | `Start-BeDDServer.ps1` (`-Stop`, `-Command`) | `server start` / `server stop`; op `command` on the server |
 | `BeDDManager.ps1` (`-List`, `-Game <pid> -Action close`, `-Shutdown`) | `BeDD.exe` (window), `ps`, `stop <pid>`, `manager stop` |

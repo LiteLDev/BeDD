@@ -1,15 +1,33 @@
-# Setting up a new PC
+# Installs and clones
 
-## The game
+Installing Be.D.D. and setting up the first game on a PC: the tutorial
+[Drive the game client with Be.D.D.](https://levimc.org/tutorials/automate/bedd/). This page is what comes after:
+upgrades, CI, instances, clones and folders.
+
+## Upgrading
+
+Run the newer installer; it closes an open manager window and its games. Each `launch` then installs the clone's mod
+when missing, or replaces it (keeping `config.json`) when it differs from its source:
+
+- default: `mod\BeDD` next to `BeDD.exe`, else `bin\BeDD` of the checkout containing the current folder;
+- after `mod install <instance> --from <dir>`: that folder (pinned in `mods\BeDD\source.pin`); if it has no build any
+  more, `launch` warns and leaves the mod. `mod install` without `--from` ends the pin.
+
+Not replaced: with `launch --keep-mod`, or while a game of the clone runs.
+
+## Uninstalling
+
+Settings > Apps > Installed apps > **BeDD** removes the app, Start menu and `PATH` entries. To also remove
+`%LOCALAPPDATA%\BeDD` (clones, worlds, logs): `BeDD.exe instance remove --slot N --yes` each clone, then delete it.
+
+## Let the harness fetch it
+
+`BEDD_DIR` points at an unpacked copy. Pin a version in CI (`releases/download/v0.4.0/...`).
 
 ```powershell
-LeviLauncher.exe account login              # once per PC: a Microsoft account that owns Minecraft
-LeviLauncher.exe install 1.26.60 --loader   # the GDK release with LeviLamina 26.60.x
-LeviLauncher.exe instance list              # check: 1.26.60.xx, loader 26.60.x
+curl.exe -L -o "$env:TEMP\bedd.zip" https://github.com/LiteLDev/BeDD/releases/latest/download/bedd-windows-x64.zip
+mkdir "$env:LOCALAPPDATA\BeDD\app" -Force; tar.exe -xf "$env:TEMP\bedd.zip" -C "$env:LOCALAPPDATA\BeDD\app"
 ```
-
-LeviLauncher 1.1+ is required (first with a CLI). If none is installed, `BeDD.exe` downloads the latest to
-`%LOCALAPPDATA%\BeDD\tools` and asks you to run the steps above with it.
 
 ## Which instance
 
