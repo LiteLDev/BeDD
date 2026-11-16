@@ -14,7 +14,7 @@
 // covers it, found by its title and exe, nothing moved or focused) while demo.mjs drives the games
 // and writes its transcript, which is then drawn into the terminal pane (lib/terminal.mjs).
 // Output: out/take-<n>-manager.mkv, out/take-<n>-terminal.mkv (near-lossless), setup screenshots;
-// encode.mjs puts a take together into docs/public/showcase/.
+// encode.mjs puts a take together into out/showcase/ (for the docs' gallery).
 //
 // --keep-open keeps the games running after the first take: create out/take for another take
 // (scene.mjs and demo.mjs are re-read), out/stop to end. Cleanup always stops the games it launched

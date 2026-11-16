@@ -1,11 +1,10 @@
 # Contributing to Be.D.D.
 
 Rules for everyone changing this repository, humans and agents. The protocol, the tap and the internals are
-documented once, on the docs site: [WebSocket reference](https://levimc.org/BeDD/reference/websocket)
-(`docs/reference/websocket.md`), [Tap](https://levimc.org/BeDD/reference/tap) (`tap.md`),
-[UI tree](https://levimc.org/BeDD/reference/ui) (`ui.md`),
-[How it works](https://levimc.org/BeDD/reference/how-it-works) (`how-it-works.md`). This file covers
-building, testing and releasing Be.D.D. itself.
+documented once, on the docs site: [WebSocket reference](https://levimc.org/BeDD/reference/websocket),
+[Tap](https://levimc.org/BeDD/reference/tap), [UI tree](https://levimc.org/BeDD/reference/ui),
+[How it works](https://levimc.org/BeDD/reference/how-it-works) ([Docs and showcase](#docs-and-showcase): where
+they are edited). This file covers building, testing and releasing Be.D.D. itself.
 
 ## Bug reports and features
 
@@ -66,8 +65,8 @@ arguments, else runs the command line attached to the parent console. `app/BeDD/
 sends the user's input to the game they control).
 
 Other: `spec/bedd.asyncapi.yaml` (protocol), `tests/ws/`, `tests/installer/`, `packaging/wix/` (`Package/` MSI,
-`Bundle/` setup.exe), `tools/showcase/`, `docs/` (site, `docs/zh/` Chinese), `.github/workflows/` (`build.yml`,
-`release.yml`, `docs.yml`), `.github/actions/stage`.
+`Bundle/` setup.exe), `tools/showcase/`, `.github/workflows/` (`build.yml`, `release.yml`),
+`.github/actions/stage`.
 
 ### Building
 
@@ -78,7 +77,6 @@ Other: `spec/bedd.asyncapi.yaml` (protocol), `tests/ws/`, `tests/installer/`, `p
 | app | .NET 10 SDK | `dotnet build app/BeDD.slnx` |
 | app, NativeAOT | + VS C++ tools, `vswhere.exe` on `PATH` (`%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`) | `dotnet publish app/BeDD/BeDD.csproj -c Release -o bin\app` |
 | installers | WiX from NuGet; release layout in `bin\release\BeDD` (`.github/actions/stage`) | `dotnet build packaging/wix/Bundle/BeDD.Bundle.wixproj -c Release -p:Platform=x64` |
-| docs | Node 22.12+ (CI: 24) | `cd docs; npm ci; npm run build` |
 
 Tools (`winget install -e --id <id>`; LLVM and the Build Tools need admin; reopen the terminal afterwards):
 
@@ -112,9 +110,6 @@ dotnet test app/BeDD.slnx
 
 # installers → packaging\wix\Package\bin\x64\Release\bedd.msi, packaging\wix\Bundle\bin\x64\Release\bedd-setup.exe
 dotnet build packaging/wix/Bundle/BeDD.Bundle.wixproj -c Release -p:Platform=x64
-
-# docs → docs\dist (CI: docs.yml, which also runs typecheck and linkcheck)
-cd docs; npm ci; npm run typecheck; npm run build; npm run linkcheck
 ```
 
 - Always pass `-P .` (in a git worktree xmake otherwise builds the main checkout's `xmake.lua`).
@@ -198,8 +193,12 @@ cd docs; npm ci; npm run typecheck; npm run build; npm run linkcheck
 
 ### Docs and showcase
 
-- `docs/` is the site <https://levimc.org/BeDD/> (levimc-kit, built by `.github/workflows/docs.yml`).
-  `docs/public/showcase/` holds its gallery and the README pictures.
+- The docs (<https://levimc.org/BeDD/>, Chinese at <https://levimc.org/zh-Hans/BeDD/>) are edited in the levimc.org
+  repository, [`docs/BeDD/`](https://github.com/LiteLDev/liteldev.github.io/tree/main/docs/BeDD), and built and
+  published from there. Its `public/showcase/` holds the gallery and the README pictures. That build takes
+  `spec/bedd.asyncapi.yaml` from this repository's `main` branch and publishes it with the site: keep the spec at
+  that path. A change to an op lands here with
+  its spec; the matching docs change is a pull request there.
 - Docs are minimal, unambiguous and complete: every sentence carries a fact, each fact lives on one page and others
   link to it.
 - To drive a game, recommend bedboo first (or its ops), then `ui`, then simulated input (`key`, `text`, `mouse`,
@@ -208,7 +207,8 @@ cd docs; npm ci; npm run typecheck; npm run build; npm run linkcheck
   `tools/showcase/fixtures/Showcase.zip`, starts the games in a manager window, runs `demo.mjs` off screen without
   the focus and records the manager window and the script's console with ffmpeg 8+ `gfxcapture` (each window's own
   picture, whatever covers it); `encode.mjs` puts a take (manager left, terminal right) into the MP4, WebP and
-  poster files. Nothing moves in front of the user or takes the focus.
+  poster files in `tools/showcase/out/showcase/`, which go to the docs' `public/showcase/`. Nothing moves in front of
+  the user or takes the focus.
 
 ### Releasing
 

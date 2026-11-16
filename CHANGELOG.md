@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The documentation moved to the levimc.org repository ([`docs/BeDD/`](https://github.com/LiteLDev/liteldev.github.io/tree/main/docs/BeDD)); this repository no longer builds a docs site. English stays at <https://levimc.org/BeDD/>, Chinese moves to <https://levimc.org/zh-Hans/BeDD/>.
+
 ## [0.4.0] - 2026-11-15
 
 A breaking release: Be.D.D. becomes one app, `BeDD.exe`, and the game speaks WebSocket only. The PowerShell client, the named pipes and the setup scripts are gone.

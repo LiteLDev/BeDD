@@ -1,21 +1,21 @@
 # Be.D.D.
 
-<img src="docs/public/logo.png" alt="" width="128" align="right">
+<img src="https://levimc.org/BeDD/logo.png" alt="" width="128" align="right">
 
 [English](README.md) | 简体中文
 
 [![Release](https://img.shields.io/github/v/release/LiteLDev/BeDD)](https://github.com/LiteLDev/BeDD/releases)
 [![License](https://img.shields.io/github/license/LiteLDev/BeDD)](COPYING.LESSER)
-[![Docs](https://img.shields.io/badge/%E6%96%87%E6%A1%A3-docs.levimc.org%2FBeDD-blue)](https://levimc.org/BeDD/zh-Hans/)
+[![Docs](https://img.shields.io/badge/%E6%96%87%E6%A1%A3-levimc.org%2Fzh--Hans%2FBeDD-blue)](https://levimc.org/zh-Hans/BeDD/)
 
 Be.D.D.（Bedrock Deep Dive，得名自《绝区零》的 H.D.D.）让 [LeviLamina](https://github.com/LiteLDev/LeviLamina)
 客户端模组的端到端测试**在后台跑**：脚本或 agent 通过本机 WebSocket 玩 Minecraft 基岩版，你的鼠标、键盘和窗口照常归你用，
 还能同时开多个游戏。它是测试工具，不是给玩家的模组：`BeDD.exe`（管理窗口和命令行）负责克隆、启动和显示游戏，并在每次运行时
 往每个游戏里放一个客户端 LeviLamina 模块。
 
-**文档：<https://levimc.org/BeDD/zh-Hans/>**
+**文档：<https://levimc.org/zh-Hans/BeDD/>**
 
-<p align="center"><img src="docs/public/showcase/desktop.webp" alt="管理窗口里的三个无头 Minecraft 游戏跟着测试脚本动" width="100%"></p>
+<p align="center"><img src="https://levimc.org/BeDD/showcase/desktop.webp" alt="管理窗口里的三个无头 Minecraft 游戏跟着测试脚本动" width="100%"></p>
 
 > [!WARNING]
 > `mods\` 目录里有 Be.D.D. 的游戏不理会你真实的鼠标和键盘，只显示在管理窗口里。别把它留在你平时玩的游戏里。
@@ -92,7 +92,7 @@ BeDD.exe launch --slot 2 --json
 3. **模拟输入**，最后手段：`key`、`text`、`mouse`、`raw`、`release`、`flush`、`focus`、`window`、`screenshot`。
 
 协议：[`spec/bedd.asyncapi.yaml`](spec/bedd.asyncapi.yaml)（AsyncAPI 3.0）和
-[WebSocket 参考](https://levimc.org/BeDD/zh-Hans/reference/websocket)。
+[WebSocket 参考](https://levimc.org/zh-Hans/BeDD/reference/websocket)。
 
 ## 命令
 
@@ -103,7 +103,7 @@ BeDD.exe launch --slot 2 --json
   （`ps --json`）找自己的游戏，从不按名字 `Minecraft.Windows`。把测试存档设成单人（`BeDD.exe world singleplayer <worldDir>`）：
   同一台电脑上的游戏共用一个联机登录，同时打开多个多人存档会报"发生错误"（代码 "Blaze"）。
 - **客户端与服务端**：`BeDD.exe server init|start|stop s1` 在游戏旁运行装有 BeDD 服务端模块的基岩版专用服务器，
-  游戏速度以它为准（[世界模式](https://levimc.org/BeDD/zh-Hans/guide/modes)）。
+  游戏速度以它为准（[世界模式](https://levimc.org/zh-Hans/BeDD/guide/modes)）。
 - **管理窗口**：不带参数的 `BeDD.exe`（第一次 `launch` 会启动它）是游戏唯一显示的地方；它从不抢焦点。关掉它会关掉里面所有游戏
   （先确认）；30 秒内没被它接管或失去它的游戏会自行关闭。`BeDD.exe manager status|stop`。
 - **测试框架**：
@@ -120,7 +120,7 @@ BeDD.exe launch --slot 2 --json
   [BeetrootSkin](https://github.com/MiracleForest/BeetrootSkin/tree/main/tools/e2e) 和
   [AlleviatedBackpacks](https://github.com/MiracleForest/AlleviatedBackpacks/tree/main/tools/e2e) 有完整的测试框架。
 
-设置（克隆的 `mods\BeDD\config\config.json`）：[配置](https://levimc.org/BeDD/zh-Hans/guide/configuration)。
+设置（克隆的 `mods\BeDD\config\config.json`）：[配置](https://levimc.org/zh-Hans/BeDD/guide/configuration)。
 令牌就是边界：持有它的人能做登录玩家能做的一切；它只写进 `%LOCALAPPDATA%\BeDD\run\<pid>.json`，只有你的用户能读。
 
 构建、协议内部原理和贡献：[CONTRIBUTING.md](CONTRIBUTING.md#development)。

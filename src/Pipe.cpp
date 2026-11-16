@@ -1,5 +1,6 @@
 // The control protocol: one JSON request per WebSocket text message, one JSON reply per request,
-// in order on each connection (WsServer.cpp is the transport). See docs/reference/websocket.md and spec/bedd.asyncapi.yaml.
+// in order on each connection (WsServer.cpp is the transport). See spec/bedd.asyncapi.yaml and
+// https://levimc.org/BeDD/reference/websocket.
 // handle() dispatches the ops; the rest of this file ties connections to their clients (held keys,
 // the disconnect cleanup) and starts the WebSocket server and its discovery file.
 #include "BeDD.h"
