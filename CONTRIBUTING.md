@@ -4,8 +4,8 @@ Rules for everyone changing this repository, humans and agents. The protocol, th
 documented once, on the docs site: [WebSocket reference](https://levimc.org/BeDD/reference/websocket)
 (`docs/reference/websocket.md`), [Tap](https://levimc.org/BeDD/reference/tap) (`tap.md`),
 [UI tree](https://levimc.org/BeDD/reference/ui) (`ui.md`),
-[How it works](https://levimc.org/BeDD/reference/how-it-works) (`how-it-works.md`),
-[Building](https://levimc.org/BeDD/reference/building) (`building.md`: full setup with winget, dev-loop flags).
+[How it works](https://levimc.org/BeDD/reference/how-it-works) (`how-it-works.md`). This file covers
+building, testing and releasing Be.D.D. itself.
 
 ## Bug reports and features
 
@@ -80,6 +80,43 @@ Other: `spec/bedd.asyncapi.yaml` (protocol), `tests/ws/`, `tests/installer/`, `p
 | installers | WiX from NuGet; release layout in `bin\release\BeDD` (`.github/actions/stage`) | `dotnet build packaging/wix/Bundle/BeDD.Bundle.wixproj -c Release -p:Platform=x64` |
 | docs | Node 22.12+ (CI: 24) | `cd docs; npm ci; npm run build` |
 
+Tools (`winget install -e --id <id>`; LLVM and the Build Tools need admin; reopen the terminal afterwards):
+
+| Tool | winget id |
+|---|---|
+| xmake | `Xmake-io.Xmake` |
+| LLVM `clang-cl` (mod toolchain) | `LLVM.LLVM` |
+| Build Tools 2022/2026, C++ (MSVC 14.4x+) | `Microsoft.VisualStudio.2022.BuildTools` / `Microsoft.VisualStudio.BuildTools` + `--override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"` |
+| .NET 10 SDK | `Microsoft.DotNet.SDK.10` |
+| Node.js 24+ | `OpenJS.NodeJS.LTS` |
+
+In PowerShell, the full sequences:
+
+```powershell
+# mod, client (-m debug for a debug build) → bin\BeDD\
+$env:PATH = "C:\Program Files\LLVM\bin;$env:PATH"
+xmake f -P . -y -m release -p windows --target_type=client
+xmake -P . -y
+git checkout -- xmake-requires.lock
+
+# mod, server → bin\BeDD-server\ (in a server: mods\BeDD-server\, config mods\BeDD-server\config\config.json)
+git checkout -- xmake-requires.lock
+xmake f -P . -y -m release -p windows --target_type=server
+xmake -P . -y
+git checkout -- xmake-requires.lock
+
+# app → bin\app\BeDD.exe (vswhere on PATH for NativeAOT; dotnet test does not need it)
+$env:PATH = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer;$env:PATH"
+dotnet publish app/BeDD/BeDD.csproj -c Release -o bin\app
+dotnet test app/BeDD.slnx
+
+# installers → packaging\wix\Package\bin\x64\Release\bedd.msi, packaging\wix\Bundle\bin\x64\Release\bedd-setup.exe
+dotnet build packaging/wix/Bundle/BeDD.Bundle.wixproj -c Release -p:Platform=x64
+
+# docs → docs\dist (CI: docs.yml, which also runs typecheck and linkcheck)
+cd docs; npm ci; npm run typecheck; npm run build; npm run linkcheck
+```
+
 - Always pass `-P .` (in a git worktree xmake otherwise builds the main checkout's `xmake.lua`).
 - The mod version comes from `git describe`: the repository needs a commit (and its tags in a shallow clone).
 - The server target holds the WebSocket server, loopback-only network and server ops only; `xmake.lua` lists its
@@ -87,19 +124,27 @@ Other: `spec/bedd.asyncapi.yaml` (protocol), `tests/ws/`, `tests/installer/`, `p
 - `xmake-requires.lock` pins both targets, but xmake rewrites it with the configured target's pins only:
   `git checkout -- xmake-requires.lock` before configuring the other target and before committing (CI does too).
   To move a pin, configure each target and commit the union of both targets' entries.
+- Installers: WiX 7 from NuGet (`AcceptEula` in `packaging/wix/Directory.Build.props`) build a per-user MSI and a
+  `setup.exe` with an English/Chinese UI from `bin\release\BeDD`, which `.github/actions/stage` makes from `bin\app`,
+  `bin\BeDD`, `bin\BeDD-server` and the spec. The version comes from `app/BeDD/BeDD.csproj`, or `-p:ProductVersion=`.
 
 ### Testing
 
 - `dotnet test app/BeDD.slnx`.
 - `node --test tests/ws/` (Node 24): protocol tests against a running game, found through its discovery file
   (`BEDD_PID` picks one, else the newest live one); skipped without a game.
-- `node --test tests/installer/installer.test.mjs`: installs, upgrades, uninstalls the installers.
+- `node --test tests/installer/installer.test.mjs`: installs, upgrades, uninstalls the installers for the current
+  user; it refuses to run where BeDD is installed (CI runs it).
 - `npm test` in `tools/showcase/`.
 - In game: `bin\app\BeDD.exe dev` clones the base instance for slot 9 (`--slot`), installs `bin\BeDD`, launches in
   the background and logs every foreground and cursor-clip change to `tools\out\desktop-watch.log` until Ctrl+C,
   `tools\out\dev.stop` or game exit (`tools\out\dev.restart` reinstalls and relaunches). A line ending in
   `MINECRAFT HAS THE FOREGROUND` means a game took the focus: a bug. Check the ops work, the game never takes the
   foreground and real input never reaches it.
+- `dev` flags: `--slot N` (9), `--from <dir>` (`bin\BeDD`), `--label <text>` (`dev`), `--watch-log <file>`, `--keep`
+  (leave the game running on exit), `--watch-only` (only watch). `dev.stop` and `dev.restart` go in the watch log's
+  folder. It closes only its own clone's games, holds `%LOCALAPPDATA%\BeDD\locks\dev-<slot>.lock` and blocks the
+  shell.
 - CI (`build.yml`) builds both targets, checks `BuildInfo`, runs `dotnet test`, publishes, builds and tests the
   installers and validates the AsyncAPI spec. It must pass before merge.
 

@@ -50,8 +50,8 @@ BeDD.exe mod config 1.26.60.05-2 --set clientWidth=1600 --unset timeScale # --un
 
 | 变量 | 读取方 | |
 |---|---|---|
-| `BEDD_HOME`、`BEDD_INSTANCES_DIR`、`BEDD_SERVERS_DIR` | `BeDD.exe`（模组：`BEDD_HOME`） | [目录](/zh/guide/new-pc#目录) |
-| `BEDD_LEVILAUNCHER`、`BEDD_INSTANCE` | `BeDD.exe` | [用哪个实例](/zh/guide/new-pc#用哪个实例) |
+| `BEDD_HOME`、`BEDD_INSTANCES_DIR`、`BEDD_SERVERS_DIR` | `BeDD.exe`（模组：`BEDD_HOME`） | [目录](/zh/guide/installs#目录) |
+| `BEDD_LEVILAUNCHER`、`BEDD_INSTANCE` | `BeDD.exe` | [用哪个实例](/zh/guide/installs#用哪个实例) |
 | `BEDD_LABEL` | `BeDD.exe`、模组 | 管理窗口里的名字（`launch --label`） |
 | `BEDD_RETURN_FOCUS` | 模组 | 游戏启动时抢了前台就把它还回去（由 `launch` 设置） |
-| `BEDD_DIR` | 你的测试框架 | 解压好的 Be.D.D.（[安装](/zh/guide/installation#让测试框架自己下载)） |
+| `BEDD_DIR` | 你的测试框架 | 解压好的 Be.D.D.（[安装](/zh/guide/installs#让测试框架自己下载)） |

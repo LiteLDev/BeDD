@@ -51,8 +51,8 @@ a remote server.
 
 | Variable | Read by | |
 |---|---|---|
-| `BEDD_HOME`, `BEDD_INSTANCES_DIR`, `BEDD_SERVERS_DIR` | `BeDD.exe` (+ mod: `BEDD_HOME`) | [Folders](/guide/new-pc#folders) |
-| `BEDD_LEVILAUNCHER`, `BEDD_INSTANCE` | `BeDD.exe` | [Which instance](/guide/new-pc#which-instance) |
+| `BEDD_HOME`, `BEDD_INSTANCES_DIR`, `BEDD_SERVERS_DIR` | `BeDD.exe` (+ mod: `BEDD_HOME`) | [Folders](/guide/installs#folders) |
+| `BEDD_LEVILAUNCHER`, `BEDD_INSTANCE` | `BeDD.exe` | [Which instance](/guide/installs#which-instance) |
 | `BEDD_LABEL` | `BeDD.exe`, mod | manager window name (`launch --label`) |
 | `BEDD_RETURN_FOCUS` | mod | gets the foreground back if the game takes it at start (set by `launch`) |
-| `BEDD_DIR` | your harness | an unpacked Be.D.D. ([Installation](/guide/installation#let-the-harness-fetch-it)) |
+| `BEDD_DIR` | your harness | an unpacked Be.D.D. ([Installation](/guide/installs#let-the-harness-fetch-it)) |

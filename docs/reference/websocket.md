@@ -215,7 +215,7 @@ Turn off unneeded `allowSend`, `allowStack`, `tap`; never share a token.
 
 ## Server target
 
-`--target_type=server` ([Building](/reference/building)) runs in BDS with LeviLamina: same WebSocket, `kind:"server"`,
+`--target_type=server` ([Building](https://github.com/LiteLDev/BeDD/blob/main/CONTRIBUTING.md#building)) runs in BDS with LeviLamina: same WebSocket, `kind:"server"`,
 other ops `unknown op`.
 
 | op | fields (default) | reply |

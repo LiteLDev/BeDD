@@ -1,6 +1,6 @@
 # Gallery
 
-Recorded from the manager window and the terminal ([how](/reference/building#documentation-and-showcase-media)).
+Recorded from the manager window and the terminal ([how](https://github.com/LiteLDev/BeDD/blob/main/CONTRIBUTING.md#docs-and-showcase)).
 
 ## Three headless games, one manager window
 

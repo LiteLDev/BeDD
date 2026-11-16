@@ -2,6 +2,7 @@
 
 每个游戏在 `127.0.0.1` 上提供一个 WebSocket：每条消息一个 JSON 请求，游戏处理完后回复一条。先用 bedboo，再用 `ui`，
 最后才模拟输入（[原因](/zh/guide/operation-modes#用哪一种)）。
+还没装好：教程[用 Be.D.D. 驱动游戏客户端](https://levimc.org/tutorials/zh-Hans/automate/bedd/)带你准备电脑、跑第一个脚本。
 
 ## 启动游戏
 
@@ -10,7 +11,7 @@ BeDD.exe launch --slot 1 --json
 # {"pid":12345,"instance":"1.26.60.05-1","instanceDir":"…","url":"ws://127.0.0.1:53021/v1","token":"9f3c…","label":"…"}
 ```
 
-`launch` 克隆、安装或更新模组（[用哪个构建](/zh/guide/installation#升级)），在后台启动游戏，打开
+`launch` 克隆、安装或更新模组（[用哪个构建](/zh/guide/installs#升级)），在后台启动游戏，打开
 [管理窗口](/zh/guide/several-games#管理窗口)，等待 WebSocket，输出后退出；游戏继续运行。实例已在运行：退出码 5。
 
 | 参数 | |

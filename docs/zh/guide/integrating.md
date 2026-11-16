@@ -18,7 +18,7 @@ const bot = bedboo.createBot({ transport: 'bedd', bedd: { url: game.url, token: 
   `hint:`（`{"error":{code,message,hint}}`）。
 - 退出码：`0` 成功，`1` 失败，`2` 用法错误，`4` 找不到，`5` 冲突（如槽位正在使用），`10` 被拒绝。
 - 每个并行运行一个槽位；无需清理。
-- 你自己构建的 BeDD：`mod install <instance> --from <dir>`（[固定来源](/zh/guide/installation#升级)）。
+- 你自己构建的 BeDD：`mod install <instance> --from <dir>`（[固定来源](/zh/guide/installs#升级)）。
 - `BeDD.exe dev`：开发模组的常用步骤（`--help`）。
 
 PowerShell：`[System.Net.WebSockets.ClientWebSocket]`，每个操作一条 UTF-8 文本消息，读到 `EndOfMessage` 为止。
@@ -44,7 +44,7 @@ PowerShell：`[System.Net.WebSockets.ClientWebSocket]`，每个操作一条 UTF-
 | `Set-WorldSinglePlayer` | `BeDD.exe world singleplayer <worldDir>` |
 | `Start-BeDDGame.ps1`、`Start-Game`；`Stop-Game` | `BeDD.exe launch [--slot N] [--label …] --json`；`stop <pid>` |
 | `$script:ExclusiveSignaling = $true` | `launch --exclusive-signaling` |
-| `clone-instance.ps1`、`New-BeDDClone`、`Initialize-BeDD.ps1`、`Initialize-BeDDInstance` | `BeDD.exe instance clone --slot N`（[新电脑](/zh/guide/new-pc)） |
+| `clone-instance.ps1`、`New-BeDDClone`、`Initialize-BeDD.ps1`、`Initialize-BeDDInstance` | `BeDD.exe instance clone --slot N`（[克隆](/zh/guide/installs#克隆)） |
 | `Get-BeDDInstance`、`Initialize-BeDDServer`、`Get-BeDDServer` | `BeDD.exe instance show`、`server init`、`server list` |
 | `Start-BeDDServer.ps1`（`-Stop`、`-Command`） | `server start` / `server stop`；服务器上的 `command` 操作 |
 | `BeDDManager.ps1`（`-List`、`-Game <pid> -Action close`、`-Shutdown`） | `BeDD.exe`（窗口）、`ps`、`stop <pid>`、`manager stop` |

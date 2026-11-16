@@ -12,7 +12,7 @@ BeDD.exe ps
 
 ## Slots and clones
 
-Slot N is clone `<gameVersion>-<N>` ([Clones](/guide/new-pc#clones)); slot 1 too, the base never runs. No upper
+Slot N is clone `<gameVersion>-<N>` ([Clones](/guide/installs#clones)); slot 1 too, the base never runs. No upper
 limit. Give each parallel run (worktree, CI job) its own slot: one slot means one shared clone and its worlds.
 
 ## Rules for parallel runs

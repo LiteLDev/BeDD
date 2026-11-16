@@ -1,15 +1,32 @@
-# 在新电脑上准备
+# 安装与克隆
 
-## 游戏
+安装 Be.D.D.、在一台电脑上准备好第一个游戏：见教程
+[用 Be.D.D. 驱动游戏客户端](https://levimc.org/tutorials/zh-Hans/automate/bedd/)。本页讲之后的事：升级、CI、实例、克隆和目录。
+
+## 升级
+
+运行新版安装程序；它会关掉开着的管理窗口及其游戏。之后每次 `launch` 在克隆缺模组时安装，模组与来源不同时替换（保留
+`config.json`）：
+
+- 默认来源：`BeDD.exe` 旁的 `mod\BeDD`，否则是当前目录所在检出的 `bin\BeDD`；
+- `mod install <instance> --from <dir>` 之后：该目录（记在 `mods\BeDD\source.pin`）；目录里不再有构建时，`launch`
+  发出警告，不动模组。不带 `--from` 的 `mod install` 结束固定。
+
+不替换：`launch --keep-mod`，或该克隆有游戏在运行时。
+
+## 卸载
+
+设置 > 应用 > 已安装的应用 > **BeDD** 删除程序、开始菜单项和 `PATH` 项。要连 `%LOCALAPPDATA%\BeDD`（克隆、存档、日志）
+一起删：对每个克隆运行 `BeDD.exe instance remove --slot N --yes`，再删除该目录。
+
+## 让测试框架自己下载
+
+`BEDD_DIR` 指向解压好的一份。CI 里固定版本（`releases/download/v0.4.0/...`）。
 
 ```powershell
-LeviLauncher.exe account login              # once per PC: a Microsoft account that owns Minecraft
-LeviLauncher.exe install 1.26.60 --loader   # the GDK release with LeviLamina 26.60.x
-LeviLauncher.exe instance list              # check: 1.26.60.xx, loader 26.60.x
+curl.exe -L -o "$env:TEMP\bedd.zip" https://github.com/LiteLDev/BeDD/releases/latest/download/bedd-windows-x64.zip
+mkdir "$env:LOCALAPPDATA\BeDD\app" -Force; tar.exe -xf "$env:TEMP\bedd.zip" -C "$env:LOCALAPPDATA\BeDD\app"
 ```
-
-需要 LeviLauncher 1.1+（第一个带命令行的版本）。没装时，`BeDD.exe` 把最新版下载到 `%LOCALAPPDATA%\BeDD\tools`，
-并提示你用它执行上面几步。
 
 ## 用哪个实例
 

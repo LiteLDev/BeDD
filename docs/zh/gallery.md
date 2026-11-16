@@ -1,6 +1,6 @@
 # 展示
 
-直接录制管理窗口和终端（[方法](/zh/reference/building#文档与展示素材)）。
+直接录制管理窗口和终端（[方法](https://github.com/LiteLDev/BeDD/blob/main/CONTRIBUTING.md#docs-and-showcase)）。
 
 ## 三个无头游戏，一个管理窗口
 

@@ -213,7 +213,7 @@ level_event 3007（SimTimeScale，pos 0,0,0，`data` = float 位模式按 int32�
 
 ## 服务端目标
 
-`--target_type=server`（[构建](/zh/reference/building)）在装有 LeviLamina 的 BDS 中运行：同样的 WebSocket，
+`--target_type=server`（[构建](https://github.com/LiteLDev/BeDD/blob/main/CONTRIBUTING.md#building)）在装有 LeviLamina 的 BDS 中运行：同样的 WebSocket，
 `kind:"server"`，其他操作回复 `unknown op`。
 
 | 操作 | 字段（默认） | 回复 |
