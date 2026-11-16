@@ -1,5 +1,5 @@
 // ui mode helpers: find a control in the game's UI tree by its name or text and act on it by ref
-// (docs/reference/protocol.md, op `ui`). JSON UI screens are read control by control; an OreUI
+// (https://levimc.org/BeDD/reference/ui). JSON UI screens are read control by control; an OreUI
 // screen is one opaque node, so for those (and when the tree has no match) the caller passes the
 // point the control sits at, as a fraction of the client area, and the helper falls back to it.
 

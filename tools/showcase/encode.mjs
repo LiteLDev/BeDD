@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Puts a showcase take (record.mjs) together into the files in docs/public/showcase/.
+// Puts a showcase take (record.mjs) together into the files in out/showcase/, which go to the docs
+// (LiteLDev/liteldev.github.io: docs/BeDD/public/showcase/).
 //
 // A take is two recordings: the manager window (out/take-<n>-manager.mkv) and the terminal pane
 // (out/take-<n>-terminal.mkv, demo.mjs's output). The pictures put them side by side, 1920x1080: the
@@ -10,7 +11,7 @@
 //   node encode.mjs --take 2 --start 1.5 --duration 11 --still 6
 
 import { parseArgs } from 'node:util'
-import { readdirSync, statSync, existsSync } from 'node:fs'
+import { readdirSync, statSync, existsSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { findFFmpeg, ff, videoSize } from './ffmpeg.mjs'
@@ -68,7 +69,7 @@ const dry = values['dry-run']
 
 const manager = join(here, 'out', `take-${take}-manager.mkv`)
 const terminal = join(here, 'out', `take-${take}-terminal.mkv`)
-const dst = join(here, '..', '..', 'docs', 'public', 'showcase')
+const dst = join(here, 'out', 'showcase')
 const exe = dry ? (findFFmpeg({ install: false }) ?? 'ffmpeg') : findFFmpeg()
 const run = args => dry ? console.log(['ffmpeg', ...args].map(a => /[\s;[\]]/.test(a) ? `"${a}"` : a).join(' ')) : ff(exe, args)
 
@@ -79,6 +80,7 @@ if (!dry) {
       process.exit(4)
     }
   }
+  mkdirSync(dst, { recursive: true })
 }
 const termW = width - (dry && !existsSync(manager) ? 1248 : videoSize(exe, manager).width)
 const mp4 = ['-an', '-c:v', 'libx264', '-preset', 'slow', '-pix_fmt', 'yuv420p', '-movflags', '+faststart']

@@ -1,12 +1,12 @@
 # Be.D.D.
 
-<img src="docs/public/logo.png" alt="" width="128" align="right">
+<img src="https://levimc.org/BeDD/logo.png" alt="" width="128" align="right">
 
 English | [简体中文](README.zh-CN.md)
 
 [![Release](https://img.shields.io/github/v/release/LiteLDev/BeDD)](https://github.com/LiteLDev/BeDD/releases)
 [![License](https://img.shields.io/github/license/LiteLDev/BeDD)](COPYING.LESSER)
-[![Docs](https://img.shields.io/badge/docs-docs.levimc.org%2FBeDD-blue)](https://levimc.org/BeDD/)
+[![Docs](https://img.shields.io/badge/docs-levimc.org%2FBeDD-blue)](https://levimc.org/BeDD/)
 
 Be.D.D. (Bedrock Deep Dive, after the H.D.D. of Zenless Zone Zero) runs end-to-end tests of
 [LeviLamina](https://github.com/LiteLDev/LeviLamina) client mods **in the background**: your script or agent plays
@@ -16,7 +16,7 @@ shows the games and puts a client-side LeviLamina module into each one for a run
 
 **Documentation: <https://levimc.org/BeDD/>**
 
-<p align="center"><img src="docs/public/showcase/desktop.webp" alt="Three headless Minecraft games react to a test script in the manager window" width="100%"></p>
+<p align="center"><img src="https://levimc.org/BeDD/showcase/desktop.webp" alt="Three headless Minecraft games react to a test script in the manager window" width="100%"></p>
 
 > [!WARNING]
 > A game with Be.D.D. in its `mods\` folder ignores your real mouse and keyboard and shows up only in the manager

@@ -1,6 +1,6 @@
 // A small BeDD client for Node 24: no dependencies, the global WebSocket (undici) and the discovery
 // files a game writes while its WebSocket server listens (%LOCALAPPDATA%\BeDD\run\<pid>.json, the
-// folder moved by BEDD_HOME). See docs/reference/protocol.md for the ops.
+// folder moved by BEDD_HOME). See https://levimc.org/BeDD/reference/websocket for the ops.
 //
 //   import { connect } from './lib/bedd.mjs'
 //   const game = await connect({ pid: 1234 })            // or { instance: '1.26.60.05-2' } or { url, token }

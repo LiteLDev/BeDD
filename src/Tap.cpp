@@ -1,6 +1,6 @@
 // The tap (config "tap"): what the client receives and sends, streamed to one subscriber (bedboo's
 // transport 'bedd'). A WebSocket client sends {op:"tap", action:"subscribe"}; after the reply its
-// connection receives one binary message per tap frame (docs/reference/tap.md: the framing and
+// connection receives one binary message per tap frame (https://levimc.org/BeDD/reference/tap: the framing and
 // markers). The connection still takes requests; a second subscriber gets code:"busy".
 //
 // The capture hooks (NetTap.cpp, and any other tap publisher) call tap::emit, which lands in
