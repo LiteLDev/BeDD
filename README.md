@@ -44,7 +44,7 @@ only the test PC needs it.
 when it is elsewhere) and never writes into it. Every game, slot 1 included, runs in a clone
 `%LOCALAPPDATA%\BeDD\instances\<gameVersion>-<slot>`: hardlinked game files (copies across volumes), its own
 `mods\`, logs, worlds and options, refreshed when the instance changes. All of Be.D.D.'s data lives under
-`%LOCALAPPDATA%\BeDD` (`BEDD_HOME` moves it). `BeDD.exe instance list [--all] | clone --slot N | remove <name>`.
+`%LOCALAPPDATA%\BeDD` (`BEDD_HOME` moves it). `BeDD.exe instance list [--bases [--all]] | clone --slot N | remove <name>`.
 
 ## Quick start
 
@@ -104,11 +104,11 @@ Protocol: [`spec/bedd.asyncapi.yaml`](spec/bedd.asyncapi.yaml) (AsyncAPI 3.0) an
 
 `BeDD.exe help` lists every command. Every command takes `--json`, prints only its result on stdout and exits
 non-zero with a hint on failure. `BeDD.exe ps` lists running games (`--json`: with `url`, `token`);
-`BeDD.exe stop <pid>` closes one.
+`BeDD.exe stop --pid <pid>` closes one (`stop <instance>`: the games of an instance).
 
 - **Several games**: `launch --slot 3 --label settings --json` per game; each slot has its own clone and WebSocket.
   Find your game by its `instance` (`ps --json`), never by the name `Minecraft.Windows`. Make test worlds
-  single-player (`BeDD.exe world singleplayer <worldDir>`): games on one PC share an online sign-in, and multiplayer
+  single-player (`BeDD.exe world singleplayer <instance> [<world folder>]`): games on one PC share an online sign-in, and multiplayer
   worlds opened at once fail with "An error has occurred" (code "Blaze").
 - **Client and server**: `BeDD.exe server init|start|stop s1` runs a Bedrock Dedicated Server with BeDD's server
   module next to the game, whose speed it leads ([modes](https://levimc.org/BeDD/guide/modes)).
@@ -120,9 +120,9 @@ non-zero with a hint on failure. `BeDD.exe ps` lists running games (`--json`: wi
   ```
   BeDD.exe instance clone --slot 2 --json           # where the clone is (its mods\ and worlds)
   BeDD.exe mod install 1.26.60.05-2                 # the BeDD module; settings: mod config
-  BeDD.exe world singleplayer <the clone's world>   # after restoring your test world
+  BeDD.exe world singleplayer 1.26.60.05-2 <world>  # after restoring your test world
   BeDD.exe launch --slot 2 --json                   # url + token
-  BeDD.exe stop <pid>; BeDD.exe mod uninstall 1.26.60.05-2
+  BeDD.exe stop 1.26.60.05-2; BeDD.exe mod uninstall 1.26.60.05-2
   ```
 
   Deploy your own mod into the clone's `mods\` too, and keep `BeDD` out of any "move other mods aside" step.

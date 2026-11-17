@@ -27,6 +27,7 @@ a Bedrock Dedicated Server) and the app `BeDD.exe` (C# in `app/`), which sets up
 | `src/Window.cpp` | window discovery, subclassing, synthetic event dispatch, focus shield, window kept off screen |
 | `src/ApiHooks.cpp` | user32 hooks (cursor, key state, foreground, activation, raw input) |
 | `src/GameInputHooks.cpp` | GameInput v2 hooks (virtual mouse, keyboard readings) |
+| `src/HookPause.cpp` | stops the other threads while hooks are (un)installed, never while one is inside the process heap |
 | `src/Audio.cpp` | FMOD hooks: silent (master channel group muted) unless the manager turns the sound on |
 | `src/NetHooks.cpp` | loopback-only network (`loopbackOnly`, `allowHosts`); also in the server target |
 | `src/ServerTimeScale.cpp` | server target only: `server`, `timescale`, `command` ops, config `timeScale`, LevelEvent 3007 to players |

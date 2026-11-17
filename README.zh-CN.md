@@ -41,7 +41,7 @@ Be.D.D.（Bedrock Deep Dive，得名自《绝区零》的 H.D.D.）让 [LeviLami
 `BEDD_LEVILAUNCHER`），从不往里写。每个游戏（包括 1 号槽位）都在克隆
 `%LOCALAPPDATA%\BeDD\instances\<gameVersion>-<slot>` 里运行：游戏文件是硬链接（跨卷时复制），有自己的 `mods\`、日志、
 存档和设置，实例变了会刷新。Be.D.D. 的数据都在 `%LOCALAPPDATA%\BeDD` 下（`BEDD_HOME` 可移动）。
-`BeDD.exe instance list [--all] | clone --slot N | remove <name>`。
+`BeDD.exe instance list [--bases [--all]] | clone --slot N | remove <name>`。
 
 ## 快速上手
 
@@ -97,10 +97,10 @@ BeDD.exe launch --slot 2 --json
 ## 命令
 
 `BeDD.exe help` 列出所有命令。每个命令都支持 `--json`，stdout 只输出结果，失败时以非零退出并给出提示。`BeDD.exe ps`
-列出运行中的游戏（`--json`：带 `url`、`token`）；`BeDD.exe stop <pid>` 关掉一个。
+列出运行中的游戏（`--json`：带 `url`、`token`）；`BeDD.exe stop --pid <pid>` 关掉一个（`stop <instance>`：关掉某个实例的游戏）。
 
 - **多开**：每个游戏一条 `launch --slot 3 --label settings --json`；每个槽位有自己的克隆和 WebSocket。按 `instance`
-  （`ps --json`）找自己的游戏，从不按名字 `Minecraft.Windows`。把测试存档设成单人（`BeDD.exe world singleplayer <worldDir>`）：
+  （`ps --json`）找自己的游戏，从不按名字 `Minecraft.Windows`。把测试存档设成单人（`BeDD.exe world singleplayer <instance> [<world folder>]`）：
   同一台电脑上的游戏共用一个联机登录，同时打开多个多人存档会报"发生错误"（代码 "Blaze"）。
 - **客户端与服务端**：`BeDD.exe server init|start|stop s1` 在游戏旁运行装有 BeDD 服务端模块的基岩版专用服务器，
   游戏速度以它为准（[世界模式](https://levimc.org/zh-Hans/BeDD/guide/modes)）。
@@ -111,9 +111,9 @@ BeDD.exe launch --slot 2 --json
   ```
   BeDD.exe instance clone --slot 2 --json           # where the clone is (its mods\ and worlds)
   BeDD.exe mod install 1.26.60.05-2                 # the BeDD module; settings: mod config
-  BeDD.exe world singleplayer <the clone's world>   # after restoring your test world
+  BeDD.exe world singleplayer 1.26.60.05-2 <world>  # after restoring your test world
   BeDD.exe launch --slot 2 --json                   # url + token
-  BeDD.exe stop <pid>; BeDD.exe mod uninstall 1.26.60.05-2
+  BeDD.exe stop 1.26.60.05-2; BeDD.exe mod uninstall 1.26.60.05-2
   ```
 
   你自己的模组也部署进克隆的 `mods\`，并让任何"把其他模组挪开"的步骤跳过 `BeDD`。
